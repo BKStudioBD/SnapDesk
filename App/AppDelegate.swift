@@ -4,6 +4,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let coordinator = AppCoordinator()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // FIRST: if we're running from a temporary/translocated path (downloaded
+        // app not yet in /Applications), TCC permissions will never stick and the
+        // user gets an endless "allow again" loop. Offer to move + relaunch
+        // before anything requests a permission. (No-op once installed correctly.)
+        InstallHelper.ensureProperLocation()
+
         // Only one SnapDesk at a time: a freshly launched copy wins and quits any
         // older instances (e.g. one left running from a mounted DMG or a previous
         // build). Prevents duplicate menu-bar icons.

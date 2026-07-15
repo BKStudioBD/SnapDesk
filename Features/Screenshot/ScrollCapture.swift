@@ -5,7 +5,7 @@ import CoreGraphics
 /// Scrolling capture: pick a region, scroll the content yourself, press Done —
 /// SnapDesk grabs a frame whenever the content changes and stitches the frames
 /// into one tall image by matching the overlap between consecutive shots.
-final class ScrollCapture: NSObject {
+final class ScrollCapture: NSObject, @unchecked Sendable {
     private static var current: ScrollCapture?
 
     private let selection: RegionSelection

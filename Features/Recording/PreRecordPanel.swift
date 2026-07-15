@@ -443,7 +443,7 @@ private final class BlurSelectView: NSView {
             needsDisplay = true
             return
         }
-        if let i = movingIndex {
+        if movingIndex != nil {
             var r = movingRect
             r.origin = CGPoint(x: p.x - moveGrab.x, y: p.y - moveGrab.y)
             // Keep the box inside the recorded area.
