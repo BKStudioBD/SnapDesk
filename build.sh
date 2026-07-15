@@ -35,18 +35,28 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 SDK="$(xcrun --sdk macosx --show-sdk-path)"
 SOURCES=$(find "$ROOT" -name '*.swift' -not -path "$BUILD/*" -not -path "$ROOT/tools/*")
 
-# --- Compile an Apple Silicon (arm64) binary ---------------------------------
+# --- Compile a UNIVERSAL binary (arm64 + x86_64) -----------------------------
+# Build each arch separately, then lipo them into one fat binary so SnapDesk
+# runs natively on Apple Silicon AND on Intel Macs. (arm64-only wouldn't launch
+# at all on an Intel Mac — the #1 "my friend can't open it" cause.)
+BIN="$APP/Contents/MacOS/$APP_NAME"
 echo "▶ Compiling for Apple Silicon (arm64)…"
 xcrun -sdk macosx swiftc \
-  -O -whole-module-optimization \
-  -parse-as-library \
-  -target "arm64-apple-macos${MIN_MACOS}" \
-  -sdk "$SDK" \
-  $SOURCES \
-  -o "$APP/Contents/MacOS/$APP_NAME"
+  -O -whole-module-optimization -parse-as-library \
+  -target "arm64-apple-macos${MIN_MACOS}" -sdk "$SDK" \
+  $SOURCES -o "$BUILD/snapdesk-arm64"
 
-# Sanity-check that we really produced an arm64-only binary.
-echo "▶ Binary architectures: $(lipo -archs "$APP/Contents/MacOS/$APP_NAME")"
+echo "▶ Compiling for Intel (x86_64)…"
+xcrun -sdk macosx swiftc \
+  -O -whole-module-optimization -parse-as-library \
+  -target "x86_64-apple-macos${MIN_MACOS}" -sdk "$SDK" \
+  $SOURCES -o "$BUILD/snapdesk-x86_64"
+
+echo "▶ Merging into a universal binary…"
+lipo -create "$BUILD/snapdesk-arm64" "$BUILD/snapdesk-x86_64" -output "$BIN"
+rm -f "$BUILD/snapdesk-arm64" "$BUILD/snapdesk-x86_64"
+
+echo "▶ Binary architectures: $(lipo -archs "$BIN")"
 
 # --- Assemble the bundle -----------------------------------------------------
 echo "▶ Assembling app bundle…"

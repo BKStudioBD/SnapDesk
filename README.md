@@ -101,7 +101,7 @@ Every shortcut is rebindable live in **Settings → Shortcuts** (click, press a 
 ## Install
 
 ### Requirements
-- **Apple Silicon** Mac (M1 or later — arm64 only)
+- Any Mac — **Apple Silicon or Intel** (universal binary)
 - **macOS 14.0 (Sonoma)** or later
 
 ### One-command install (easiest — no Gatekeeper warning)
