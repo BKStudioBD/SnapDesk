@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SnapDesk — capture · annotate · OCR · record · clean, for macOS</title>
+<meta name="description" content="One lightweight, fully native macOS menu-bar app: screenshots with annotation, on-device OCR, color picker, clipboard history, screen recording with a trim timeline, and a Mac cleaner. 100% on-device — no network.">
+<style>
+  :root{
+    --bg:#0b0e17; --card:#131826; --line:#232a3d; --text:#e8ecf5; --muted:#98a2b8;
+    --accent:#5b8cff; --accent2:#37c8b5; --code:#0f1420;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:radial-gradient(1200px 600px at 50% -10%,#1a2036 0%,var(--bg) 55%);color:var(--text);
+    -webkit-font-smoothing:antialiased}
+  a{color:var(--accent);text-decoration:none}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 22px}
+  header{text-align:center;padding:74px 0 30px}
+  .logo{width:74px;height:74px;border-radius:20px;display:inline-flex;align-items:center;justify-content:center;
+    background:linear-gradient(150deg,var(--accent),var(--accent2));font-size:38px;box-shadow:0 12px 40px rgba(91,140,255,.35)}
+  h1{font-size:44px;margin:18px 0 6px;letter-spacing:-.5px}
+  .tag{font-size:19px;color:var(--muted);max-width:640px;margin:0 auto}
+  .sub{font-size:14px;color:var(--muted);margin-top:12px}
+  .badges{margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+  .badge{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:4px 11px}
+  .cta{margin-top:26px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  .btn{display:inline-block;padding:12px 22px;border-radius:11px;font-weight:600;font-size:15px}
+  .btn.primary{background:linear-gradient(150deg,var(--accent),var(--accent2));color:#04121f}
+  .btn.ghost{border:1px solid var(--line);color:var(--text)}
+  section{padding:34px 0}
+  h2{font-size:14px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin:0 0 16px}
+  .install{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px}
+  .install p{margin:0 0 12px;color:var(--muted)}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:11px;padding:15px 16px;overflow-x:auto;margin:0}
+  code{font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#dfe7ff}
+  .hint{font-size:13px;color:var(--muted);margin-top:12px}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+  .feat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .feat h3{margin:0 0 4px;font-size:16px;display:flex;align-items:center;gap:9px}
+  .feat h3 .k{margin-left:auto;font:12px ui-monospace,monospace;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:2px 7px}
+  .feat p{margin:0;font-size:14px;color:var(--muted)}
+  .ico{font-size:19px}
+  .priv{display:flex;gap:12px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .priv .ico{font-size:24px}
+  footer{text-align:center;color:var(--muted);font-size:13px;padding:36px 0 60px;border-top:1px solid var(--line);margin-top:24px}
+  @media(max-width:680px){.grid{grid-template-columns:1fr}h1{font-size:34px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">📸</div>
+    <h1>SnapDesk</h1>
+    <p class="tag">One lightweight, fully native macOS menu-bar app — capture, annotate, OCR, color-pick, clipboard, screen-record and clean, all in one place.</p>
+    <p class="sub">Replaces Lightshot + TextSniper + CleanShot X + a clipboard manager + a color picker + a Mac cleaner.</p>
+    <div class="badges">
+      <span class="badge">Apple Silicon · macOS 14+</span>
+      <span class="badge">100% on-device · no network</span>
+      <span class="badge">No Electron · tiny binary</span>
+      <span class="badge">Open source</span>
+    </div>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/BKStudioBD/SnapDesk/releases/latest/download/SnapDesk.dmg">Download for macOS</a>
+      <a class="btn ghost" href="https://github.com/BKStudioBD/SnapDesk">View on GitHub</a>
+    </div>
+  </header>
+
+  <section>
+    <h2>Install in one command</h2>
+    <div class="install">
+      <p>Paste this into Terminal — it downloads, installs to Applications, clears the Gatekeeper flag, and launches. No drag, no warning.</p>
+      <pre><code>curl -fsSL https://raw.githubusercontent.com/BKStudioBD/SnapDesk/main/install.sh | bash</code></pre>
+      <p class="hint">Prefer manual? Grab the <a href="https://github.com/BKStudioBD/SnapDesk/releases/latest">DMG</a>, drag SnapDesk to Applications, and right-click → Open the first time.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Everything it does</h2>
+    <div class="grid">
+      <div class="feat"><h3><span class="ico">📸</span> Capture &amp; Annotate <span class="k">⌃1</span></h3><p>Drag a region or click a window to snap it, then mark up with arrows, boxes, blur, steps, text and spotlight. Copy, save or pin on top.</p></div>
+      <div class="feat"><h3><span class="ico">🔤</span> Grab Text (OCR) <span class="k">⌃2</span></h3><p>Drag over any text on screen — recognized on-device (Apple Vision) and copied instantly. Only the selected area dims.</p></div>
+      <div class="feat"><h3><span class="ico">🎨</span> Pick a Color <span class="k">⌃3</span></h3><p>Magnified eyedropper → copies HEX, RGB, RGBA, HSL, CSS, SwiftUI or NSColor. Keep-sampling mode + recent palette.</p></div>
+      <div class="feat"><h3><span class="ico">📋</span> Clipboard History <span class="k">⌃4</span></h3><p>Searchable history of text &amp; images. One click copies and pastes into the app you came from. Passwords never saved.</p></div>
+      <div class="feat"><h3><span class="ico">🎥</span> Record Screen <span class="k">⌃5</span></h3><p>Region or full screen, with audio, mic, webcam bubble, on-device captions and privacy blur. Trim timeline with mid-video cuts + export.</p></div>
+      <div class="feat"><h3><span class="ico">📜</span> Scrolling Capture <span class="k">⌃6</span></h3><p>Auto-scroll a long page hands-free — SnapDesk stitches it into one tall image and opens the result.</p></div>
+      <div class="feat"><h3><span class="ico">🧹</span> Cleaner</h3><p>One click frees inactive RAM and clears the junk you tick — caches, temp, logs, Trash — plus a deep app uninstaller that finds every leftover.</p></div>
+      <div class="feat"><h3><span class="ico">⚙️</span> Built for macOS</h3><p>Menu-bar only, rebindable shortcuts, launch at login, four icon styles, instant UI. Pure Swift on Apple frameworks — no dependencies.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="priv">
+      <span class="ico">🔒</span>
+      <div>
+        <h3 style="margin:0 0 4px;font-size:16px">Private by design</h3>
+        <p style="margin:0;color:var(--muted);font-size:14px">OCR, captions, image processing and cleaning all run on your Mac. SnapDesk has no network code — nothing is ever uploaded. Clipboard history ignores anything marked secret, so passwords from your password manager are never stored.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    SnapDesk · native macOS menu-bar utility ·
+    <a href="https://github.com/BKStudioBD/SnapDesk">GitHub</a> ·
+    <a href="https://github.com/BKStudioBD/SnapDesk/releases/latest">Releases</a>
+  </footer>
+
+</div>
+</body>
+</html>
