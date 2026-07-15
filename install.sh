@@ -32,8 +32,12 @@ DMG="${TMP}/${APP}.dmg"
 curl -fsSL "${DMG_URL}" -o "${DMG}"
 
 echo "==> Mounting..."
-MOUNT="$(hdiutil attach "${DMG}" -nobrowse -noverify -quiet | grep -o '/Volumes/.*' | head -1)"
-if [ -z "${MOUNT}" ] || [ ! -d "${MOUNT}/${APP}.app" ]; then
+# Mount into our own temp dir (not /Volumes) so a leftover/duplicate SnapDesk
+# volume can never cause a name collision or pick the wrong mount point.
+MOUNT="${TMP}/mnt"
+mkdir -p "${MOUNT}"
+hdiutil attach "${DMG}" -nobrowse -noverify -quiet -mountpoint "${MOUNT}"
+if [ ! -d "${MOUNT}/${APP}.app" ]; then
   echo "Error: could not mount the disk image." >&2
   exit 1
 fi
