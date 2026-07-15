@@ -44,6 +44,15 @@ openssl pkcs12 -export -inkey "$TMP/key.pem" -in "$TMP/cert.pem" \
 echo "▶ Importing into login keychain (codesign-accessible)…"
 security import "$TMP/id.p12" -k "$KEYCHAIN" -P snapdesk -T /usr/bin/codesign -A
 
-echo "✅ '$NAME' created. Now run ./build.sh — it will sign with this identity."
+# Mark the cert TRUSTED for code signing. Without this it isn't a "valid"
+# codesigning identity, macOS can't fully validate the app's designated
+# requirement, and it falls back to keying TCC grants (Screen Recording,
+# Accessibility) on the exact binary hash — which changes every rebuild, so
+# permissions reset constantly. Trusting the cert makes the identity valid →
+# the DR (identifier + this cert) is stable across rebuilds → grants persist.
+echo "▶ Trusting the certificate for code signing (so permissions persist)…"
+security add-trusted-cert -r trustRoot -p codeSign -k "$KEYCHAIN" "$TMP/cert.pem" 2>/dev/null || true
+
+echo "✅ '$NAME' created & trusted. Now run ./build.sh — it will sign with this identity."
 echo "   (The first build may pop a one-time 'codesign wants to use a key' dialog —"
 echo "    click Always Allow.)"

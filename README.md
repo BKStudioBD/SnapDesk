@@ -124,7 +124,9 @@ cd SnapDesk
 
 Screenshots and OCR need macOS **Screen Recording** permission. On first use SnapDesk opens the right Settings pane — **turn SnapDesk ON and it restarts itself automatically**; you don't need to quit or reopen anything.
 
-> **Why it may ask again:** because this build is self-signed (not Apple-notarized), macOS does **not** always keep the Screen Recording grant between launches — that's an Apple security policy for self-signed apps, not a SnapDesk bug. If it ever asks again, just toggle SnapDesk **ON** again and it restarts. SnapDesk installs itself to `/Applications` on first run so this happens as rarely as macOS allows. The only way to make the grant *permanently* stick (and remove the first-launch warning) is Apple **notarization** — see below.
+> **The grant sticks.** SnapDesk is signed with a stable certificate and installs itself to `/Applications` on first run, so the Screen Recording permission you give it **persists across launches and updates** — you grant it once.
+>
+> **Why macOS may still re-ask occasionally:** on macOS Sequoia (15) and Tahoe (26), Apple re-confirms Screen Recording for **every** app periodically (roughly monthly, and after some reboots/updates) — this hits notarized App Store apps too, and there's no way for any app to disable it (only a managed/MDM Mac can). So if it asks again once in a while, that's Apple's prompt, not a lost grant: just toggle SnapDesk **ON** and it restarts. Notarization removes the *first-launch* "unidentified developer" warning but does **not** remove this periodic prompt.
 >
 > Microphone / Speech permissions are only requested if you turn on those recording options.
 
