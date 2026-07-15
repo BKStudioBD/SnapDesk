@@ -110,4 +110,16 @@ enum InstallHelper {
             DispatchQueue.main.async { NSApp.terminate(nil) }
         }
     }
+
+    /// Relaunch THIS bundle (from wherever it currently runs) — used after a
+    /// permission grant, which macOS only honors on a fresh process.
+    @MainActor
+    static func relaunchSelf() {
+        let url = URL(fileURLWithPath: Bundle.main.bundlePath)
+        let cfg = NSWorkspace.OpenConfiguration()
+        cfg.createsNewApplicationInstance = true
+        NSWorkspace.shared.openApplication(at: url, configuration: cfg) { _, _ in
+            DispatchQueue.main.async { NSApp.terminate(nil) }
+        }
+    }
 }
