@@ -20,9 +20,11 @@ final class WelcomeWindowController: NSWindowController {
     required init?(coder: NSCoder) { fatalError() }
 
     func show() {
-        showWindow(nil)
-        window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        showWindow(nil)
+        window?.center()
+        window?.makeKeyAndOrderFront(nil)
+        window?.orderFrontRegardless()   // menu-bar (accessory) app: force it visible
     }
 }
 
