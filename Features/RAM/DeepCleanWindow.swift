@@ -299,7 +299,12 @@ private struct UninstallView: View {
             let files = AppUninstaller.relatedFiles(for: app)
             let sz = AppUninstaller.size(of: files)
             DispatchQueue.main.async {
-                related = files; checked = Set(files); relatedSize = sz; scanning = false
+                related = files
+                // Pre-check the app bundle + its clearly-owned user-Library
+                // leftovers; leave system-wide (/Library) matches UNCHECKED so a
+                // false positive is never trashed unless the user opts in.
+                checked = Set(files.filter { !$0.path.hasPrefix("/Library/") })
+                relatedSize = sz; scanning = false
             }
         }
     }

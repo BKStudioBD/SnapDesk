@@ -160,7 +160,11 @@ final class RecordingSession: NSObject {
             decorator?.stop()
             decorator = nil
             teardownWindows()
-            Notifier.error("Recording failed", error.localizedDescription)
+            // Route through the single-finish guard so a stop-during-await +
+            // this catch don't both fire onFinished/notify twice.
+            guard !finishedOnce else { return }
+            finishedOnce = true
+            if !cancelled { Notifier.error("Recording failed", error.localizedDescription) }
             onFinished?(nil)
         }
     }

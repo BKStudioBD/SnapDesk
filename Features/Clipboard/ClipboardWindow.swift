@@ -93,21 +93,23 @@ struct ClipboardHistoryView: View {
             case .pinned: if !item.pinned { return false }
             }
             if search.isEmpty { return true }
-            if case .text(let s) = item.kind { return s.localizedCaseInsensitiveContains(search) }
-            return false
+            // Search the (≤500-char, cached) preview, not the raw multi-KB
+            // string — keeps every keystroke off the slow path.
+            return item.preview.localizedCaseInsensitiveContains(search)
         }
         // Pinned float to the top, recency preserved within each group.
         return base.filter { $0.pinned } + base.filter { !$0.pinned }
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        let rows = filtered   // compute once per render (was evaluated twice)
+        return VStack(spacing: 0) {
             header
             searchBar
             filterChips
             Rectangle().fill(Color(nsColor: .separatorColor)).frame(height: 1)
 
-            if filtered.isEmpty {
+            if rows.isEmpty {
                 Spacer()
                 VStack(spacing: 8) {
                     Image(systemName: search.isEmpty ? "tray" : "magnifyingglass")
@@ -124,7 +126,7 @@ struct ClipboardHistoryView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(Array(filtered.enumerated()), id: \.element.id) { idx, item in
+                        ForEach(Array(rows.enumerated()), id: \.element.id) { idx, item in
                             ClipboardRow(item: item, index: idx + 1, manager: manager,
                                          settings: settings, onPaste: onPaste)
                             Rectangle().fill(Color(nsColor: .separatorColor))

@@ -27,6 +27,8 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
     private var needsResumeSync = false
     private var pauseOffset = CMTime.zero
     private var lastAppendedPTS: CMTime?
+    private var lastAdjustedPTS: CMTime?     // last PTS written (output timeline)
+    private var frameDuration = CMTime(value: 1, timescale: 60)
     /// Queue-confined: guards against finalizing twice (stop() racing
     /// didStopWithError would otherwise call finishWriting twice → crash).
     private var finalized = false
@@ -62,6 +64,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         config.showsCursor = showCursor
         config.pixelFormat = kCVPixelFormatType_32BGRA
         config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(max(15, fps)))
+        frameDuration = CMTime(value: 1, timescale: CMTimeScale(max(15, fps)))
         config.queueDepth = 8
         if captureAudio {
             config.capturesAudio = true
@@ -142,6 +145,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         self.sessionStarted = false
         self.paused = false
         self.needsResumeSync = false
+        self.lastAdjustedPTS = nil
         self.pauseOffset = .zero
         self.lastAppendedPTS = nil
         self.finalized = false
@@ -206,9 +210,10 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         micInput?.markAsFinished()
         let url = outputURL
         writer?.finishWriting { [weak self] in
-            let ok = self?.writer?.status == .completed
-            DispatchQueue.main.async { self?.onFinish?(ok ? url : nil) }
-            self?.cleanup()
+            guard let self else { return }
+            let ok = self.writer?.status == .completed
+            DispatchQueue.main.async { self.isRecording = false; self.onFinish?(ok ? url : nil) }
+            self.queue.async { self.cleanup() }   // teardown on the recorder queue, not the writer thread
         }
     }
 
@@ -247,20 +252,37 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
             // so the output timeline stays continuous.
             if needsResumeSync {
                 if let last = lastAppendedPTS {
-                    pauseOffset = CMTimeAdd(pauseOffset, CMTimeSubtract(pts, last))
+                    // Grow the offset by the paused gap MINUS one frame, so the
+                    // first post-resume frame lands exactly one frame after the
+                    // last — never a DUPLICATE PTS (which fails the writer and
+                    // kills the whole recording on any pause/resume).
+                    let gap = CMTimeSubtract(CMTimeSubtract(pts, last), frameDuration)
+                    if gap > .zero { pauseOffset = CMTimeAdd(pauseOffset, gap) }
                 }
                 needsResumeSync = false
             }
-            let adjusted = CMTimeSubtract(pts, pauseOffset)
+            var adjusted = CMTimeSubtract(pts, pauseOffset)
+            // Belt-and-suspenders: output PTS must be strictly increasing.
+            if let lastAdj = lastAdjustedPTS, adjusted <= lastAdj {
+                adjusted = CMTimeAdd(lastAdj, frameDuration)
+            }
             if !sessionStarted {
                 writer.startSession(atSourceTime: adjusted)
                 sessionStarted = true
             }
             if videoInput?.isReadyForMoreMediaData == true {
                 let needsGPU = !blurRectsPx.isEmpty || decorator != nil
-                let out = needsGPU ? (processed(pixelBuffer) ?? pixelBuffer) : pixelBuffer
-                adaptor?.append(out, withPresentationTime: adjusted)
+                // Privacy blur must FAIL CLOSED: if GPU processing fails, drop the
+                // frame rather than write the unblurred original.
+                if needsGPU, let out = processed(pixelBuffer) {
+                    adaptor?.append(out, withPresentationTime: adjusted)
+                } else if needsGPU {
+                    return   // couldn't blur → don't leak the raw frame
+                } else {
+                    adaptor?.append(pixelBuffer, withPresentationTime: adjusted)
+                }
                 lastAppendedPTS = pts
+                lastAdjustedPTS = adjusted
             }
         case .audio:
             // Same stale-offset guard as appendMic (see there).

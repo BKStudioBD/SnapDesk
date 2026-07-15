@@ -114,7 +114,8 @@ final class EditorView: NSView, NSTextFieldDelegate {
     private let frozenCG: CGImage
     /// Built lazily (only the active screen's loupe samples it) so multi-monitor
     /// captures don't allocate a full-res bitmap rep per display up-front.
-    private lazy var frozenRep = NSBitmapImageRep(cgImage: frozenCG)
+    // (color sampling reads a 1x1 crop of frozenCG on demand — no full-res
+    //  NSBitmapImageRep is kept, which would pin ~60 MB for the whole session.)
     private let scale: CGFloat
     private weak var settings: SettingsStore?
     private weak var session: CaptureEditor.Session?
@@ -179,6 +180,18 @@ final class EditorView: NSView, NSTextFieldDelegate {
     required init?(coder: NSCoder) { fatalError() }
 
     override var isFlipped: Bool { false }
+
+    /// Read one pixel from a CGImage without unpacking a full-resolution bitmap
+    /// rep (that would pin ~60 MB on a 5K capture for the whole editor session).
+    private static func pixelColor(_ img: CGImage, x: Int, y: Int) -> NSColor? {
+        var px: [UInt8] = [0, 0, 0, 0]
+        guard let ctx = CGContext(data: &px, width: 1, height: 1, bitsPerComponent: 8,
+                                  bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.draw(img, in: CGRect(x: -x, y: -(img.height - 1 - y), width: img.width, height: img.height))
+        return NSColor(srgbRed: CGFloat(px[0]) / 255, green: CGFloat(px[1]) / 255,
+                       blue: CGFloat(px[2]) / 255, alpha: 1)
+    }
     override var acceptsFirstResponder: Bool { true }
     // First click always lands (starts a drag / snaps a window) even if the
     // overlay isn't the active window yet — no dead "focus" click.
@@ -567,9 +580,9 @@ final class EditorView: NSView, NSTextFieldDelegate {
     }
 
     private func sampledHex() -> String {
-        let x = Int(min(max(mouseLoc.x * scale, 0), CGFloat(frozenRep.pixelsWide - 1)))
-        let y = Int(min(max((bounds.height - mouseLoc.y) * scale, 0), CGFloat(frozenRep.pixelsHigh - 1)))
-        guard let c = frozenRep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { return "#------" }
+        let x = Int(min(max(mouseLoc.x * scale, 0), CGFloat(frozenCG.width - 1)))
+        let y = Int(min(max((bounds.height - mouseLoc.y) * scale, 0), CGFloat(frozenCG.height - 1)))
+        guard let c = Self.pixelColor(frozenCG, x: x, y: y)?.usingColorSpace(.sRGB) else { return "#------" }
         return String(format: "#%02X%02X%02X", Int(c.redComponent * 255), Int(c.greenComponent * 255), Int(c.blueComponent * 255))
     }
 

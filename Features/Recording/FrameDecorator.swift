@@ -28,6 +28,7 @@ final class FrameDecorator: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
 
     private var monitors: [Any] = []
     private var camSession: AVCaptureSession?
+    private let camControlQueue = DispatchQueue(label: "com.snapdesk.camera.control")
 
     private let cursorImage: CIImage?
     private let cursorHotSpot: CGPoint
@@ -72,8 +73,10 @@ final class FrameDecorator: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     func stop() {
         monitors.forEach { NSEvent.removeMonitor($0) }
         monitors.removeAll()
-        camSession?.stopRunning()
-        camSession = nil
+        if let cam = camSession {
+            camControlQueue.async { cam.stopRunning() }   // off-main, ordered after start
+            camSession = nil
+        }
     }
 
     // MARK: - Event capture (main thread)
@@ -118,7 +121,7 @@ final class FrameDecorator: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         out.setSampleBufferDelegate(self, queue: DispatchQueue(label: "com.snapdesk.camera"))
         guard session.canAddOutput(out) else { return }
         session.addOutput(out)
-        DispatchQueue.global(qos: .userInitiated).async { session.startRunning() }
+        camControlQueue.async { session.startRunning() }
         camSession = session
     }
 

@@ -38,7 +38,23 @@ enum CaptureService {
         guard !pixelRect.isEmpty, let cropped = fullImage.cropping(to: pixelRect) else {
             throw CaptureError.cropFailed
         }
-        return cropped
+        // cropping() SHARES the entire full-display backing store — a small crop
+        // would pin ~59 MB on a 5K screen for as long as any caller holds it
+        // (blur overlay for minutes, OCR through multi-second Vision passes).
+        // Redraw into a right-sized buffer so only the crop's bytes survive.
+        return Self.detached(cropped) ?? cropped
+    }
+
+    /// Copy a CGImage into its own tightly-sized backing (drops the shared
+    /// full-frame buffer that `cropping(to:)` retains).
+    static func detached(_ img: CGImage) -> CGImage? {
+        guard let ctx = CGContext(data: nil, width: img.width, height: img.height,
+                                  bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue |
+                                              CGBitmapInfo.byteOrder32Little.rawValue) else { return nil }
+        ctx.draw(img, in: CGRect(x: 0, y: 0, width: img.width, height: img.height))
+        return ctx.makeImage()
     }
 
     /// Shareable-content cache: enumerating windows is an IPC round-trip, and

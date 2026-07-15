@@ -91,7 +91,10 @@ final class ClipboardManager: ObservableObject {
 
         if let string = pasteboard.string(forType: .string),
            !string.isEmpty {
-            ingest(.text(string))
+            // Cap in-memory text (~1 MB) — a select-all of a huge log would
+            // otherwise retain tens of MB per item in a "lightweight" app.
+            let capped = string.utf8.count > 1_048_576 ? String(string.prefix(1_048_576)) : string
+            ingest(.text(capped))
         } else if settings?.clipboardStoreImages != false,
                   let data = pasteboard.data(forType: .tiff) ?? pasteboard.data(forType: .png) {
             // Same image copied twice in a row → skip the duplicate row.

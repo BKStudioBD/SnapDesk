@@ -69,7 +69,7 @@ enum CacheCleaner {
             guard let items = try? fm.contentsOfDirectory(
                 at: dir, includingPropertiesForKeys: [.contentModificationDateKey]) else { continue }
             for item in items {
-                if kind != .trash, Self.newestMTime(item) > recentCutoff { continue }
+                if kind != .trash, Self.hasRecentFile(item, after: recentCutoff) { continue }
                 let sz = dirSize(item)
                 do { try fm.removeItem(at: item); freed += sz }
                 catch { /* protected — skip */ }
@@ -78,24 +78,24 @@ enum CacheCleaner {
         return freed
     }
 
-    /// Most-recent modification time anywhere inside `url` (the item itself if a
-    /// file). Bounded walk so a huge cache dir can't stall the pass.
-    private static func newestMTime(_ url: URL) -> Date {
+    /// True if ANY file inside `url` (or the item itself) was modified after
+    /// `cutoff`. Early-exits on the first hit — no arbitrary entry cap, so a
+    /// huge live cache (Chrome, Xcode) is correctly detected as in-use and
+    /// skipped (deleting it mid-write corrupts the app). Includes hidden files
+    /// (lock/WAL/tmp files are exactly what signal "in use").
+    private static func hasRecentFile(_ url: URL, after cutoff: Date) -> Bool {
         let fm = FileManager.default
-        var newest = (try? url.resourceValues(forKeys: [.contentModificationDateKey])
-            .contentModificationDate) ?? .distantPast
+        if let m = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+           m > cutoff { return true }
         var isDir: ObjCBool = false
-        guard fm.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else { return newest }
+        guard fm.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else { return false }
         guard let en = fm.enumerator(at: url, includingPropertiesForKeys: [.contentModificationDateKey],
-                                     options: [.skipsHiddenFiles]) else { return newest }
-        var seen = 0
+                                     options: []) else { return false }
         for case let f as URL in en {
             if let m = try? f.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
-               m > newest { newest = m }
-            seen += 1
-            if seen > 5000 { break }   // safety cap on very large trees
+               m > cutoff { return true }
         }
-        return newest
+        return false
     }
 
     /// Size every category on a background queue → main-thread callback.

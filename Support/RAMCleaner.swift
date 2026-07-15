@@ -5,6 +5,15 @@ import AppKit
 /// Temporarily allocates and touches large memory blocks, pressuring macOS to
 /// evict inactive/cached pages, then releases everything. Net effect: more
 /// free RAM for the apps you're about to use.
+/// Tiny lock-guarded bool shared across the pressure-handler queue and the
+/// allocation loop (avoids an unsynchronized cross-thread `var`).
+private final class AtomicFlag {
+    private let lock = NSLock()
+    private var value = false
+    func set() { lock.lock(); value = true; lock.unlock() }
+    func get() -> Bool { lock.lock(); defer { lock.unlock() }; return value }
+}
+
 enum RAMCleaner {
     private static var running = false
 
@@ -57,21 +66,25 @@ enum RAMCleaner {
             // Live-verified: free RAM rises and stays up after the pass.
             // World-class guardrail: bail the MOMENT the system reports
             // critical memory pressure — never contribute to a system stall.
-            var pressureCritical = false
-            let pressure = DispatchSource.makeMemoryPressureSource(eventMask: .critical,
+            // Race-free flag shared with the pressure handler.
+            let critical = AtomicFlag()
+            let pressure = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical],
                                                                    queue: .global(qos: .utility))
-            pressure.setEventHandler { pressureCritical = true }
+            pressure.setEventHandler { critical.set() }   // back off on warning, not just critical
             pressure.resume()
             defer { pressure.cancel() }
 
+            // Reserve + ceiling scale to the machine — a flat 512 MB / 80% is too
+            // aggressive on an 8 GB Mac (pushes other apps to swap → beachball).
+            let physical = ProcessInfo.processInfo.physicalMemory
+            let reserve = max(UInt64(768) * 1024 * 1024, UInt64(Double(physical) * 0.18))
+            let ceilingFrac = physical <= UInt64(9) * 1024 * 1024 * 1024 ? 0.45 : 0.7
             let chunkSize: vm_size_t = 256 * 1024 * 1024
             for _ in 0..<2 {
-                if pressureCritical { break }
-                let reserve: UInt64 = 512 * 1024 * 1024        // never squeeze past this
+                if critical.get() { break }
                 let reclaimable = reclaimableBytes()
                 guard reclaimable > reserve else { break }
-                let target = min(reclaimable - reserve,
-                                 UInt64(Double(ProcessInfo.processInfo.physicalMemory) * 0.8))
+                let target = min(reclaimable - reserve, UInt64(Double(physical) * ceilingFrac))
                 var regions: [vm_address_t] = []
                 var allocated: UInt64 = 0
                 while allocated < target {
@@ -79,7 +92,7 @@ enum RAMCleaner {
                     // dirty pages whose eviction costs compressor/swap — without
                     // this the loop can squeeze free RAM to ~0 (system-wide
                     // beachballs) before the once-per-pass check runs again.
-                    guard !pressureCritical, freeBytes() > reserve else { break }
+                    guard !critical.get(), freeBytes() > reserve else { break }
                     var addr: vm_address_t = 0
                     guard vm_allocate(mach_task_self_, &addr, chunkSize, VM_FLAGS_ANYWHERE) == KERN_SUCCESS
                     else { break }
