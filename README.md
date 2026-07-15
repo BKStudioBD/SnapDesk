@@ -103,9 +103,14 @@ Every shortcut is rebindable live in **Settings → Shortcuts** (click, press a 
 ### Requirements
 - **Apple Silicon** Mac (M1 or later — arm64 only)
 - **macOS 14.0 (Sonoma)** or later
-- Xcode command-line tools: `xcode-select --install` (one time)
 
-### Build & install (one command)
+### Download & install (easiest)
+
+1. Grab **SnapDesk.dmg** from the [latest release](https://github.com/BKStudioBD/SnapDesk/releases/latest).
+2. Open the DMG and **drag SnapDesk into Applications**.
+3. Open it from Applications — first launch, **right-click → Open** (the app is self-signed, so macOS shows an "unidentified developer" prompt once).
+
+### Build from source (one command)
 
 ```bash
 git clone https://github.com/BKStudioBD/SnapDesk.git
@@ -113,9 +118,15 @@ cd SnapDesk
 ./build.sh
 ```
 
-`./build.sh` compiles, signs and produces `build/SnapDesk.dmg` (drag-to-Applications). `./test.sh` type-checks every source file in seconds if you just want to verify the code.
+`./build.sh` compiles, signs and produces `build/SnapDesk.dmg`. `./test.sh` type-checks every source file in seconds. (Needs Xcode command-line tools: `xcode-select --install`.)
 
-On first use macOS asks for **Screen Recording** permission (System Settings → Privacy & Security) — approve SnapDesk and relaunch. Microphone/Speech permissions are only requested if you enable those recording options.
+### Granting Screen Recording (important)
+
+Screenshots and OCR need macOS **Screen Recording** permission. On first use SnapDesk opens the right Settings pane — **turn SnapDesk ON and it restarts itself automatically**; you don't need to quit or reopen anything.
+
+> **Why it may ask again:** because this build is self-signed (not Apple-notarized), macOS does **not** always keep the Screen Recording grant between launches — that's an Apple security policy for self-signed apps, not a SnapDesk bug. If it ever asks again, just toggle SnapDesk **ON** again and it restarts. SnapDesk installs itself to `/Applications` on first run so this happens as rarely as macOS allows. The only way to make the grant *permanently* stick (and remove the first-launch warning) is Apple **notarization** — see below.
+>
+> Microphone / Speech permissions are only requested if you turn on those recording options.
 
 > **Gatekeeper note:** a locally-built app opens with no warning. If you distribute the DMG to another Mac without Apple notarization, first launch needs right-click → **Open** (or `xattr -dr com.apple.quarantine /Applications/SnapDesk.app`). For zero-warning distribution, sign with a Developer ID and notarize:
 > ```bash
