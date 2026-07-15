@@ -16,29 +16,27 @@ import AppKit
 enum InstallHelper {
     private static let appsDir = "/Applications"
 
-    /// True if the running bundle is in a translocated / temporary location
-    /// where TCC permissions can never persist.
-    static var isTranslocated: Bool {
-        let path = Bundle.main.bundlePath
-        return path.contains("/AppTranslocation/")
-            || path.hasPrefix("/private/var/folders/")
-            || path.contains("/Volumes/")            // running straight from the DMG
-    }
-
-    /// True if the bundle already lives in /Applications.
+    /// True if the bundle already lives in /Applications. Anywhere else — a
+    /// translocated `…/AppTranslocation/…` path, the mounted DMG (`/Volumes/…`),
+    /// or Downloads — is a spot where TCC grants can't persist.
     static var isInApplications: Bool {
         Bundle.main.bundlePath.hasPrefix(appsDir + "/")
     }
 
-    /// Call once at launch. If the app is in a spot where permissions won't
-    /// stick, guide the user (or auto-move) BEFORE anything asks for a grant.
+    /// Call once at launch, BEFORE anything requests a permission.
+    /// - Returns: `true` to continue normal startup, `false` when we've begun
+    ///   relocating + relaunching (the caller must stop — a fresh instance from
+    ///   /Applications is taking over).
     @MainActor
-    static func ensureProperLocation() {
-        // Already installed correctly → just make sure it isn't quarantined
-        // (a quarantined /Applications copy can still translocate on first run).
+    static func ensureProperLocation() -> Bool {
+        // Already installed correctly → clear any leftover quarantine ONCE (only
+        // spawns xattr if the flag is actually present; a locally-built dev copy
+        // isn't quarantined, so this is a no-op there).
         if isInApplications {
-            stripQuarantine(at: Bundle.main.bundlePath)
-            return
+            if hasQuarantine(at: Bundle.main.bundlePath) {
+                stripQuarantine(at: Bundle.main.bundlePath)
+            }
+            return true
         }
         // Not in /Applications (translocated, on the DMG, or in Downloads) →
         // permissions will loop. Offer the fix.
@@ -55,27 +53,28 @@ enum InstallHelper {
         alert.addButton(withTitle: "Move to Applications")
         alert.addButton(withTitle: "Not now")
         NSApp.activate(ignoringOtherApps: true)
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        moveToApplicationsAndRelaunch()
+        guard alert.runModal() == .alertFirstButtonReturn else { return true }
+        return !moveToApplicationsAndRelaunch()   // moved → stop this instance
     }
 
     // MARK: - Move + relaunch
 
+    /// - Returns: `true` if the move started (caller should quit this instance).
     @MainActor
-    private static func moveToApplicationsAndRelaunch() {
+    private static func moveToApplicationsAndRelaunch() -> Bool {
         let fm = FileManager.default
         let src = URL(fileURLWithPath: Bundle.main.bundlePath)
         let dest = URL(fileURLWithPath: appsDir).appendingPathComponent(src.lastPathComponent)
 
         do {
             // Replace any older copy (e.g. a previous version already installed).
-            if fm.fileExists(atPath: dest.path) {
-                // Quit any copy running from there first, then remove it.
-                try? fm.removeItem(at: dest)
-            }
+            // Removing a running bundle is fine — the process keeps its open
+            // files; enforceSingleInstance in the new copy quits the old one.
+            if fm.fileExists(atPath: dest.path) { try? fm.removeItem(at: dest) }
             try fm.copyItem(at: src, to: dest)
             stripQuarantine(at: dest.path)
             relaunch(at: dest)
+            return true
         } catch {
             let a = NSAlert()
             a.messageText = "Couldn't move SnapDesk"
@@ -83,7 +82,13 @@ enum InstallHelper {
             a.runModal()
             // Fall back to just opening the Applications folder.
             NSWorkspace.shared.open(URL(fileURLWithPath: appsDir))
+            return false
         }
+    }
+
+    /// Is the quarantine attribute present? (Avoids spawning xattr every launch.)
+    private static func hasQuarantine(at path: String) -> Bool {
+        getxattr(path, "com.apple.quarantine", nil, 0, 0, 0) >= 0
     }
 
     /// Remove com.apple.quarantine so macOS stops translocating the bundle and

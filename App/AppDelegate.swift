@@ -7,8 +7,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // FIRST: if we're running from a temporary/translocated path (downloaded
         // app not yet in /Applications), TCC permissions will never stick and the
         // user gets an endless "allow again" loop. Offer to move + relaunch
-        // before anything requests a permission. (No-op once installed correctly.)
-        InstallHelper.ensureProperLocation()
+        // before anything requests a permission. false → a fresh /Applications
+        // instance is taking over, so this (temporary) one must stop now.
+        guard InstallHelper.ensureProperLocation() else { return }
 
         // Only one SnapDesk at a time: a freshly launched copy wins and quits any
         // older instances (e.g. one left running from a mounted DMG or a previous
