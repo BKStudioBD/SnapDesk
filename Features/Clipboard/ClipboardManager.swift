@@ -17,7 +17,7 @@ final class ClipboardManager: ObservableObject {
     func attach(settings: SettingsStore) { self.settings = settings }
 
     /// Privacy: never capture items that apps explicitly mark as secret or
-    /// throwaway. Password managers (1Password, Keychain, etc.) set
+    /// throwaway. Password managers and the system Keychain set
     /// `org.nspasteboard.ConcealedType`; "transient"/"auto-generated" mark data
     /// that should not be stored in history. Honoring these is the standard
     /// contract every responsible clipboard manager follows.

@@ -421,7 +421,7 @@ private struct ClipboardTab: View {
                 Toggle("Ignore passwords & secrets", isOn: $settings.ignoreSecrets)
                 Toggle("Ignore Universal Clipboard (Handoff)", isOn: $settings.ignoreUniversalClipboard)
             } footer: {
-                Text("When ON, items apps mark as concealed (1Password, Keychain, OTP) never enter the history. Keep this on for safety.")
+                Text("When ON, items apps mark as concealed (passwords, OTP codes, and other secrets) never enter the history. Keep this on for safety.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Ignored applications") {
