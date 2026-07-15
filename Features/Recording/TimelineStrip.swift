@@ -1,7 +1,7 @@
 import AppKit
 import AVFoundation
 
-/// Advanced trim timeline (Screen-Studio style): a filmstrip of the video where
+/// Advanced trim timeline: a filmstrip of the video where
 /// the user drags to select ANY range, cuts it (middle cuts included), adjusts
 /// the selection by its edge handles, and exports the kept parts as one video.
 ///

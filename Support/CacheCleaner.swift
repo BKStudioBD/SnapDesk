@@ -1,6 +1,6 @@
 import Foundation
 
-/// Clears disposable junk (CleanMyMac-style, per category) to reclaim disk.
+/// Clears disposable junk (per category) to reclaim disk.
 /// Only touches data that's designed to be disposable — caches, temp, logs —
 /// plus (opt-in) the user's Trash. In the sandboxed (Mac App Store) build this
 /// is limited to SnapDesk's own container; the direct build cleans user-wide.

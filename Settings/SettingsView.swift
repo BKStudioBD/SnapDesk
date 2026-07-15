@@ -337,7 +337,7 @@ private struct OCRTab: View {
                     Text("Inline — one line").tag(false)
                 }.pickerStyle(.radioGroup)
             } footer: {
-                Text("Inline joins everything into a single line (TextSniper-style); Outline preserves the on-screen layout.")
+                Text("Inline joins everything into a single line; Outline preserves the on-screen layout.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Recognition") {

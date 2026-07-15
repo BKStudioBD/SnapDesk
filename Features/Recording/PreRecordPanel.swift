@@ -1,6 +1,6 @@
 import AppKit
 
-/// CleanShot-style pre-record options bar. Appears right after the user picks
+/// Pre-record options bar. Appears right after the user picks
 /// the recording area: quick toggles (system audio · mic · camera · captions ·
 /// blur) + a big Record button — no trip to Settings needed. Toggles write
 /// straight to SettingsStore, so they persist. Return records, Esc cancels.

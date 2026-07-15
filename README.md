@@ -1,6 +1,6 @@
 # SnapDesk
 
-One lightweight, fully native macOS menu-bar app that replaces **Lightshot + TextSniper + CleanShot X + a clipboard manager + a color picker + a Mac cleaner**. Pure Swift on Apple frameworks — no Electron, no external dependencies, tiny binary, low memory, and **100% on-device: SnapDesk never touches the network.**
+One lightweight, fully native macOS menu-bar app that puts your whole capture workflow in the menu bar — **screenshots + annotation, on-device OCR, a color picker, clipboard history, screen recording with a trim timeline, and a Mac cleaner** — with nothing else to install. Pure Swift on Apple frameworks, no external dependencies, tiny binary, low memory, and **100% on-device: SnapDesk never touches the network.**
 
 Everything runs from a crisp menu-bar icon. No Dock icon, no main window.
 
@@ -22,7 +22,7 @@ Every shortcut is rebindable live in **Settings → Shortcuts** (click, press a 
 
 ### 📸 Capture & Annotate (⌃1)
 - Press ⌃1 → the whole screen dims instantly. Drag a region — a **magnifier loupe** follows the cursor for pixel-perfect edges and a live **W × H label** shows the size — **or just click any window** to snap to it exactly (hovering shows an outline hint). **F** selects the entire screen. **Esc** cancels.
-- The shot opens in an **in-place editor** (Lightshot-style) right where you captured, with 10 tools on a floating bar:
+- The shot opens in an **in-place editor** right where you captured, with 10 tools on a floating bar:
 
   | Key | Tool | Key | Tool |
   |---|---|---|---|
@@ -41,7 +41,7 @@ Every shortcut is rebindable live in **Settings → Shortcuts** (click, press a 
 ### 🔤 Grab Text — OCR (⌃2)
 - Drag over anything with text — app UIs, images, videos, PDFs — Apple **Vision** recognizes it entirely on-device and copies it.
 - **Recognition language** picker (English, Spanish, German, French, more).
-- **Copy style:** *Inline* (single line, TextSniper-style) or *Outline* (keeps line breaks).
+- **Copy style:** *Inline* (everything on a single line) or *Outline* (keeps line breaks).
 - Options: trim surrounding whitespace, **append to existing clipboard** instead of replacing, notification showing what was copied.
 
 ### 🎨 Color Picker (⌃3)
@@ -51,14 +51,14 @@ Every shortcut is rebindable live in **Settings → Shortcuts** (click, press a 
 - **Recent colors** palette lives in Settings — click any swatch to re-copy it later. Optional notification per pick.
 
 ### 📋 Clipboard History (⌃4)
-- Solid card list (CopyEm-style) with **All / Text / Images / Pinned** filters and live search.
+- Solid card list with **All / Text / Images / Pinned** filters and live search.
 - Click an item → copy. **Double-click → pastes straight into the app you were using.** Star to pin favorites to the top.
 - History size 20–500 items, store-images toggle, clear-all, optional clear-on-quit.
-- **Privacy built in:** anything a password manager marks concealed/transient (1Password, Keychain, browser passwords) **never enters the history.**
+- **Privacy built in:** anything a password manager marks concealed/transient **never enters the history** — your passwords are never stored.
 
 ### 🎥 Screen Recording (⌃5)
 - Drag a region, press **F** for full screen, or menu → **Record Full Screen…** (records the display your mouse is on).
-- A **pre-record options bar** (CleanShot-style) appears on the selection — toggle everything without opening Settings:
+- A **pre-record options bar** appears on the selection — toggle everything without opening Settings:
   - 🔊 **System audio** — record what the Mac plays
   - 🎙 **Microphone** — your voice, with input-device picker
   - 📷 **Webcam bubble** — camera overlay in the corner
@@ -83,7 +83,7 @@ Every shortcut is rebindable live in **Settings → Shortcuts** (click, press a 
   - **Empty Trash** (permanent — never pre-checked, marked red)
   
   One **Clean** click force-frees inactive memory *and* clears the ticked junk, then reports the total freed.
-- **Uninstall tab** — AppCleaner-style deep uninstaller:
+- **Uninstall tab** — deep uninstaller:
   1. Pick any installed app from the list.
   2. If it's running, SnapDesk **force-quits it first** (a running app can't be removed).
   3. It scans **25+ leftover locations** — Application Support, Caches, Preferences (+ByHost), Logs & crash reports, Containers & Group Containers, Saved App State, LaunchAgents/Daemons, WebKit data, Cookies, Services, PreferencePanes, and **vendor-nested folders** (finds `Google/Chrome`, `Microsoft/EdgeUpdater`-style data other uninstallers miss).
@@ -183,7 +183,7 @@ Then a one-minute manual smoke test: try each hotkey (⌃1–⌃6), copy a passw
 ## Security & privacy
 
 - **No network. Ever.** OCR, captions, capture, cleaning — 100% on-device. No analytics, no servers, no uploads.
-- **Secrets are never stored.** Clipboard history ignores concealed/transient pasteboard types (1Password / Keychain / browser passwords never enter history).
+- **Secrets are never stored.** Clipboard history ignores concealed/transient pasteboard types, so passwords marked secret by your password manager never enter history.
 - **Least privilege.** Screen Recording permission only when first needed; mic/speech only if you enable them. Carbon hotkeys avoid the broad Accessibility grant.
 - **Hardened Runtime** enabled when signing — notarization-ready.
 - **Destructive actions go to the Trash** (uninstaller, junk clean) — reversible; only "Empty Trash" is permanent and clearly marked.

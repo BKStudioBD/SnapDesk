@@ -1,7 +1,7 @@
 import AppKit
 
 /// A captured image "pinned" as a floating, always-on-top window on the desktop
-/// (CleanShot-style) — handy for reference while you work. Drag to move, scroll
+/// — handy for reference while you work. Drag to move, scroll
 /// or ⌘±/⌘0 to zoom, ⌘C to copy, Esc / double-click / ⌘W to close.
 final class PinWindow: NSWindowController {
     private static var pins: Set<PinWindow> = []

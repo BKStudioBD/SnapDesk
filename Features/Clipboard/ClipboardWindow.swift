@@ -200,7 +200,7 @@ private struct FilterChip: View {
     }
 }
 
-/// Solid, full-width list row (CopyEm-style): star · content · index.
+/// Solid, full-width list row: star · content · index.
 private struct ClipboardRow: View {
     let item: ClipboardItem
     let index: Int
@@ -211,7 +211,7 @@ private struct ClipboardRow: View {
     @State private var flash = false
     @State private var pasteInFlight = false
 
-    /// Single-click → copy + sound + flash. The window STAYS OPEN (CopyEm-style)
+    /// Single-click → copy + sound + flash. The window STAYS OPEN
     /// so several items can be copied in a row; close with Esc / the red dot.
     private func doCopy() {
         manager.copyToPasteboard(item)
@@ -248,7 +248,7 @@ private struct ClipboardRow: View {
                 .font(.system(size: 11)).monospacedDigit().foregroundStyle(.tertiary)
         }
         .padding(.horizontal, 14).padding(.vertical, 9)
-        .background(Color.accentColor.opacity(flash ? 0.35 : 0))   // CopyEm-style click flash (instant, no animation)
+        .background(Color.accentColor.opacity(flash ? 0.35 : 0))   // click flash (instant, no animation)
         .contentShape(Rectangle())
         // ONE click = copy + paste into the previous app (setting ON, default).
         // clickCount guard: the 2nd click of an accidental double must not

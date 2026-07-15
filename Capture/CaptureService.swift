@@ -63,7 +63,7 @@ enum CaptureService {
     @MainActor private static var cachedContent: (SCShareableContent, Date)?
 
     /// Captures one whole display at native pixel resolution. Used to "freeze"
-    /// the screen for the Lightshot-style in-place editor.
+    /// the screen for the in-place annotation editor.
     @MainActor
     static func captureScreen(_ screen: NSScreen) async throws -> CGImage {
         let scale = screen.backingScaleFactor
@@ -105,7 +105,7 @@ enum CaptureService {
     }
 
     /// On-screen normal-window rectangles in CoreGraphics global coords
-    /// (top-left origin). Used for Lightshot/CleanShot-style window snapping.
+    /// (top-left origin). Used for click-to-snap window selection.
     static func onScreenWindowRects() -> [CGRect] {
         guard let infos = CGWindowListCopyWindowInfo(
             [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return [] }

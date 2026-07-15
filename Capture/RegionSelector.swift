@@ -13,7 +13,7 @@ struct RegionSelection {
 /// Presents a dimmed full-screen overlay on every display and lets the user drag
 /// out a rectangle. Calls back with the selection, or `nil` if cancelled (Esc).
 enum RegionSelector {
-    /// Big centered overlay text + full-screen button (Screen-Studio style),
+    /// Big centered overlay text + full-screen button,
     /// shown until the user starts dragging. Nil → small bottom hint pill.
     struct CenterPrompt {
         let title: String
@@ -23,7 +23,7 @@ enum RegionSelector {
 
     /// How the overlay shades the screen while selecting.
     enum DimStyle {
-        /// Whole screen dims, dragged area punches bright (Lightshot).
+        /// Whole screen dims, the dragged area punches through bright.
         case full
         /// Screen stays untouched; ONLY the dragged area gets a dark tint (OCR).
         case selectionOnly
@@ -174,7 +174,7 @@ private final class SelectionView: NSView {
         NSColor.clear.set()
         dirtyRect.fill(using: .copy)
 
-        // Full-screen dim (Lightshot-style): the whole screen darkens…
+        // Full-screen dim: the whole screen darkens…
         // (.selectionOnly — OCR — leaves the screen untouched instead.)
         if dimStyle == .full {
             NSColor.snapDim.setFill()
@@ -237,7 +237,7 @@ private final class SelectionView: NSView {
         text.draw(at: CGPoint(x: box.minX + pad, y: box.minY + 5), withAttributes: attrs)
     }
 
-    /// Screen-Studio-style centered overlay: big title, subtitle, a full-screen
+    /// Centered overlay: big title, subtitle, a full-screen
     /// button and the Esc hint. Drawn only before the first drag.
     private func drawCenterPrompt() {
         guard let prompt else { return }

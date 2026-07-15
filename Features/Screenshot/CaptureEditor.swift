@@ -1,6 +1,6 @@
 import AppKit
 
-/// Lightshot-style in-place screenshot editor with a modern "glass" toolbar.
+/// In-place screenshot annotation editor with a modern "glass" toolbar.
 ///
 /// The screen is frozen up-front, a dimmed overlay shows it, the user drags out a
 /// selection (with a live magnifier loupe), then annotates directly on the overlay

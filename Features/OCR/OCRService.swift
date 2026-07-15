@@ -2,13 +2,13 @@ import Foundation
 @preconcurrency import Vision
 
 /// On-device OCR using Apple's Vision framework. Fast, private, no network,
-/// no third-party dependency (no Tesseract). Returns recognized text joined by
+/// no third-party dependency, no bundled OCR engine. Returns recognized text joined by
 /// newlines, ordered top-to-bottom.
 enum OCRService {
 
     /// - Parameters:
     ///   - keepLineBreaks: true = outline mode (preserve layout, newline per line);
-    ///     false = inline mode (join everything into one line, TextSniper-style).
+    ///     false = inline mode (join everything into one line).
     ///   - trim: trim leading/trailing whitespace from the result.
     static func recognizeText(in image: CGImage,
                               keepLineBreaks: Bool = true,

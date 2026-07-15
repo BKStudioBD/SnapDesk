@@ -115,7 +115,7 @@ final class SettingsStore: ObservableObject {
     /// Skip items apps mark concealed/transient (passwords, OTPs). ON by default.
     @Published var ignoreSecrets: Bool        { didSet { d.set(ignoreSecrets, forKey: "clip.ignoreSecrets") } }
     @Published var clearOnQuit: Bool          { didSet { d.set(clearOnQuit, forKey: "clip.clearquit") } }
-    // CopyEm-style additions:
+    // Clipboard history additions:
     @Published var rejectDuplicates: Bool     { didSet { d.set(rejectDuplicates, forKey: "clip.reject") } }
     @Published var lockPinned: Bool           { didSet { d.set(lockPinned, forKey: "clip.lockpin") } }
     /// 0 = never; otherwise auto-delete unpinned items older than N hours.

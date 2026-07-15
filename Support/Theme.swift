@@ -1,8 +1,8 @@
 import AppKit
 
 /// SnapDesk's shared overlay tint. A pure-black dim reads flat/harsh; this is
-/// a deep charcoal with a cool blue cast (the premium look CleanShot / Screen
-/// Studio use) — dark enough to focus the selection, soft enough to feel calm.
+/// a deep charcoal with a cool blue cast (a calm, premium look for
+/// overlays) — dark enough to focus the selection, soft enough to feel calm.
 extension NSColor {
     /// Base dim for full-screen overlays (selection, editor, scroll spotlight).
     static let snapDim = NSColor(srgbRed: 0.043, green: 0.055, blue: 0.106, alpha: 0.52)

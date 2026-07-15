@@ -151,7 +151,7 @@ final class AppCoordinator: NSObject {
         // Count captures so the editor's first-run hint can fade out after a few.
         let d = UserDefaults.standard
         d.set(d.integer(forKey: "editorHintCount") + 1, forKey: "editorHintCount")
-        // Lightshot-style: freeze every display, then show the in-place editor
+        // Freeze every display, then show the in-place editor
         // (select → annotate on the dimmed overlay → Copy/Save). Optional delay
         // first so the user can arrange windows.
         afterCaptureDelay { [weak self] in

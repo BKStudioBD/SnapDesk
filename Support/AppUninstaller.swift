@@ -1,6 +1,6 @@
 import AppKit
 
-/// AppCleaner-style uninstall: force-quits the app if it's running, then
+/// Deep uninstall: force-quits the app if it's running, then
 /// removes the app AND every leftover it owns (support files, caches, prefs,
 /// launch agents, containers, logs …). Everything goes to the Trash — fully
 /// reversible. (Direct build only; the sandboxed MAS build can't reach other

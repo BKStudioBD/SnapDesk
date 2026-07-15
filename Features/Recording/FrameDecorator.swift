@@ -3,7 +3,7 @@ import AVFoundation
 import CoreImage
 import ScreenCaptureKit
 
-/// Burns Screen-Studio-style effects into recording frames on the GPU:
+/// Burns presenter-style effects into recording frames on the GPU:
 /// boosted cursor, click-highlight rings, a keystroke banner, and a circular
 /// webcam bubble. Events are collected on the main thread; `decorate` runs on
 /// the recorder's queue reading a lock-protected snapshot.

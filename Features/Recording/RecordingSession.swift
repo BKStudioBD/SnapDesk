@@ -2,7 +2,7 @@ import AppKit
 import AVFoundation
 import ScreenCaptureKit
 
-/// One screen-recording run, CleanShot-style: 3-2-1 countdown over the region,
+/// One screen-recording run: a 3-2-1 countdown over the region,
 /// an accent border marking what's recorded, and a floating glass control bar
 /// (timer · pause/resume · stop · cancel). SnapDesk's own windows are excluded
 /// from the capture, so none of this chrome appears in the video.
@@ -107,7 +107,7 @@ final class RecordingSession: NSObject {
                 let ours = content.windows.filter { $0.owningApplication?.processID == pid }
                 filter = SCContentFilter(display: scDisplay, excludingWindows: ours)
             }
-            // Screen-Studio-style burned-in effects (cursor/clicks/keys/camera).
+            // Burned-in presenter effects (cursor/clicks/keys/camera).
             let wantsEffects = settings.recordCursorBoost || settings.recordClickHighlight
                 || settings.recordKeystrokes || (settings.recordCamera && cameraOK)
             if wantsEffects {

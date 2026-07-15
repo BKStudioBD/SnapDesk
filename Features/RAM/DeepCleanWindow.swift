@@ -39,7 +39,7 @@ private struct DeepCleanView: View {
     @State private var freeNow: UInt64 = 0
     @State private var busy = false
     @State private var resultText: String?
-    /// Junk categories the user ticked (CleanMyMac-style itemized clean).
+    /// Junk categories the user ticked (itemized, per-category clean).
     @State private var kinds: Set<CacheCleaner.Kind> =
         Set(CacheCleaner.Kind.allCases.filter(\.defaultOn))
     @State private var sizes: [CacheCleaner.Kind: UInt64] = [:]

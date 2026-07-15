@@ -2,7 +2,7 @@ import AppKit
 import AVKit
 
 /// Review window shown when a recording finishes: plays the video with a
-/// Screen-Studio-style trim TIMELINE below it — drag on the strip to select any
+/// a trim TIMELINE below it — drag on the strip to select any
 /// range (middle included), Cut it, adjust by the edge handles, Undo, then
 /// Export writes the kept parts as one file (in place). Playback skips cuts.
 final class RecordingPreviewWindow: NSWindowController, NSWindowDelegate {
