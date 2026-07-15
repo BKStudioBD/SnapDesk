@@ -12,6 +12,7 @@ import CoreImage
 /// happen on a private serial queue; control methods are main-thread.
 final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
     private var stream: SCStream?
+    private var streamConfig: SCStreamConfiguration?
     private var writer: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
     private var audioInput: AVAssetWriterInput?
@@ -29,6 +30,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
     private var lastAppendedPTS: CMTime?
     private var lastAdjustedPTS: CMTime?     // last PTS written (output timeline)
     private var frameDuration = CMTime(value: 1, timescale: 60)
+    private var fps = 60
     /// Queue-confined: guards against finalizing twice (stop() racing
     /// didStopWithError would otherwise call finishWriting twice → crash).
     private var finalized = false
@@ -64,7 +66,9 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         config.showsCursor = showCursor
         config.pixelFormat = kCVPixelFormatType_32BGRA
         config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(max(15, fps)))
+        streamConfig = config
         frameDuration = CMTime(value: 1, timescale: CMTimeScale(max(15, fps)))
+        self.fps = max(15, fps)
         config.queueDepth = 8
         if captureAudio {
             config.capturesAudio = true
@@ -166,8 +170,27 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         self.stream = stream
     }
 
-    func pause()  { queue.async { self.paused = true } }
-    func resume() { queue.async { self.paused = false; self.needsResumeSync = true } }
+    func pause()  {
+        queue.async {
+            self.paused = true
+            // Stop ScreenCaptureKit compositing at full fps while paused — it was
+            // delivering frames we just dropped, burning battery for nothing.
+            if let cfg = self.streamConfig {
+                cfg.minimumFrameInterval = CMTime(value: 2, timescale: 1)   // ~1 frame / 2 s
+                self.stream?.updateConfiguration(cfg) { _ in }
+            }
+        }
+    }
+    func resume() {
+        queue.async {
+            self.paused = false
+            self.needsResumeSync = true
+            if let cfg = self.streamConfig {
+                cfg.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(max(15, self.fps)))
+                self.stream?.updateConfiguration(cfg) { _ in }
+            }
+        }
+    }
 
     func stop() {
         guard isRecording else { return }

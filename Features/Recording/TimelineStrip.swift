@@ -19,7 +19,14 @@ final class TimelineStripView: NSView {
             window?.invalidateCursorRects(for: self)   // handle zones moved
         }
     }
-    var playhead: Double = 0 { didSet { needsDisplay = true } }
+    var playhead: Double = 0 {
+        didSet {
+            // Player time observers fire many times per second; skip the redraw
+            // unless the playhead actually moved a whole pixel on this strip.
+            guard Int(x(for: playhead).rounded()) != Int(x(for: oldValue).rounded()) else { return }
+            needsDisplay = true
+        }
+    }
 
     var onSeek: ((Double) -> Void)?
     var onSelectionChanged: ((ClosedRange<Double>?) -> Void)?

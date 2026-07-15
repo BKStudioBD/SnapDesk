@@ -122,6 +122,11 @@ private struct GeneralTab: View {
 
 private struct RecordingTab: View {
     @EnvironmentObject var settings: SettingsStore
+    // Cached once — MicCapture.devices() is an AVCaptureDevice hardware scan and
+    // DriveUpload.isAvailable is disk IO; evaluating them in the body would run
+    // on every re-render while Settings is open.
+    @State private var micDevices: [AVCaptureDevice] = []
+    @State private var driveAvailable = false
     var body: some View {
         Form {
             Section("Video") {
@@ -164,7 +169,7 @@ private struct RecordingTab: View {
                 if settings.recordMic {
                     Picker("Microphone", selection: $settings.micDeviceID) {
                         Text("System default").tag("")
-                        ForEach(MicCapture.devices(), id: \.uniqueID) { d in
+                        ForEach(micDevices, id: \.uniqueID) { d in
                             Text(d.localizedName).tag(d.uniqueID)
                         }
                     }
@@ -180,13 +185,13 @@ private struct RecordingTab: View {
                 Toggle(isOn: $settings.uploadToDrive) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Auto-upload to Google Drive")
-                        Text(DriveUpload.isAvailable
+                        Text(driveAvailable
                              ? "Copies finished recordings into My Drive → SnapDesk Recordings; the Google Drive app syncs them."
                              : "Google Drive app not detected — install/sign in to Google Drive first.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                .disabled(!DriveUpload.isAvailable && !settings.uploadToDrive)
+                .disabled(!driveAvailable && !settings.uploadToDrive)
                 HStack {
                     Text("Save videos to")
                     Spacer()
@@ -203,6 +208,10 @@ private struct RecordingTab: View {
             }
         }
         .glassForm()
+        .onAppear {
+            micDevices = MicCapture.devices()
+            driveAvailable = DriveUpload.isAvailable
+        }
     }
 
     /// "~/Movies/Recordings" style short path for display.

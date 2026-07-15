@@ -34,11 +34,10 @@ private struct WelcomeView: View {
 
     @State private var screenOK = false
     @State private var axOK = false
-    // Re-check permission status every couple of seconds WHILE the window is
-    // open. Connected on appear, cancelled on disappear — no forever-firing
-    // timer after close (the controller is cached, so the view lingers).
-    private let tick = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
-    @State private var polling = false
+    // Re-check permission status only WHILE the window is open. A real Timer
+    // created onAppear and invalidated onDisappear → zero wakeups after close
+    // (the controller is cached, so a persistent publisher would fire forever).
+    @State private var pollTimer: Timer?
 
     var body: some View {
         VStack(spacing: 16) {
@@ -86,9 +85,13 @@ private struct WelcomeView: View {
         }
         .padding(20)
         .frame(width: 460)
-        .onAppear { polling = true; refresh() }
-        .onDisappear { polling = false }
-        .onReceive(tick) { _ in if polling { refresh() } }
+        .onAppear {
+            refresh()
+            let t = Timer(timeInterval: 1.5, repeats: true) { _ in refresh() }
+            RunLoop.main.add(t, forMode: .common)
+            pollTimer = t
+        }
+        .onDisappear { pollTimer?.invalidate(); pollTimer = nil }
     }
 
     private func feature(_ icon: String, _ title: String, _ detail: String, _ key: String) -> some View {

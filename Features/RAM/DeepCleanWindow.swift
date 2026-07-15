@@ -173,6 +173,8 @@ private struct UninstallView: View {
     @State private var busy = false
     @State private var scanning = false
     @State private var result: String?
+    @State private var scanToken = 0          // guards stale scan completions
+    @State private var chosenRunning = false  // cached; NSRunningApplication IO off the view body
 
     var body: some View {
         VStack(spacing: 0) {
@@ -231,7 +233,7 @@ private struct UninstallView: View {
                 }.buttonStyle(.borderless)
                 Image(nsImage: app.icon).resizable().frame(width: 26, height: 26)
                 Text(app.name).font(.headline).lineLimit(1)
-                if AppUninstaller.isRunning(app) {
+                if chosenRunning {
                     Text("running — will be force-quit")
                         .font(.caption2).padding(.horizontal, 6).padding(.vertical, 2)
                         .background(Capsule().fill(Color.orange.opacity(0.25)))
@@ -295,10 +297,17 @@ private struct UninstallView: View {
 
     private func choose(_ app: AppUninstaller.App) {
         chosen = app; result = nil; related = []; checked = []; relatedSize = 0; scanning = true
+        chosenRunning = AppUninstaller.isRunning(app)
+        scanToken += 1
+        let token = scanToken
         DispatchQueue.global(qos: .utility).async {
             let files = AppUninstaller.relatedFiles(for: app)
             let sz = AppUninstaller.size(of: files)
             DispatchQueue.main.async {
+                // A slower earlier scan (app A) must NOT overwrite a newer
+                // selection (app B) — else Uninstall would trash A's files under
+                // B's name. Apply only if this is still the latest scan.
+                guard token == scanToken, chosen?.id == app.id else { return }
                 related = files
                 // Pre-check the app bundle + its clearly-owned user-Library
                 // leftovers; leave system-wide (/Library) matches UNCHECKED so a
@@ -310,10 +319,12 @@ private struct UninstallView: View {
     }
 
     private func recountSize() {
+        scanToken += 1
+        let token = scanToken
         let picked = related.filter { checked.contains($0) }
         DispatchQueue.global(qos: .utility).async {
             let sz = AppUninstaller.size(of: picked)
-            DispatchQueue.main.async { relatedSize = sz }
+            DispatchQueue.main.async { if token == scanToken { relatedSize = sz } }
         }
     }
 

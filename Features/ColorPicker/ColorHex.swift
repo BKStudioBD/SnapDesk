@@ -6,7 +6,7 @@ extension NSColor {
     func hexString(uppercase: Bool = true) -> String {
         // Force-reading .redComponent on a pattern/catalog color raises — fall
         // back to a neutral swatch instead of crashing.
-        guard let c = usingColorSpace(.sRGB) else { return uppercase ? "#000000" : "#000000" }
+        guard let c = usingColorSpace(.sRGB) else { return "#000000" }
         let r = Int((c.redComponent * 255).rounded())
         let g = Int((c.greenComponent * 255).rounded())
         let b = Int((c.blueComponent * 255).rounded())

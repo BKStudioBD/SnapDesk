@@ -29,15 +29,21 @@ struct ClipboardItem: Identifiable, Equatable {
         self.contentType = Self.makeContentType(kind)
     }
 
+    /// True if `s` has more than `n` characters, walking at most n+1 — a plain
+    /// `s.count > n` walks the WHOLE string (up to 1 MB here) just to compare.
+    private static func longer(_ s: String, than n: Int) -> Bool {
+        return s.index(s.startIndex, offsetBy: n + 1, limitedBy: s.endIndex) != nil
+    }
+
     private static func makePreview(_ kind: Kind) -> String {
         switch kind {
         case .text(let s):
-            let trimmed = s.count > 2000
+            let trimmed = longer(s, than: 2000)
                 ? String(s.prefix(2000)).trimmingCharacters(in: .whitespacesAndNewlines)
                 : s.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty { return "(whitespace)" }
             // Rows only show 2-3 lines; never hand SwiftUI a multi-MB string.
-            return trimmed.count > 500 ? String(trimmed.prefix(500)) + "…" : trimmed
+            return longer(trimmed, than: 500) ? String(trimmed.prefix(500)) + "…" : trimmed
         case .image:
             return "Image"
         }
@@ -61,7 +67,7 @@ extension ClipboardItem {
         case .image: return .image
         case .text(let s):
             // Cap the scan — classification only needs the head of the string.
-            let head = s.count > 4000 ? String(s.prefix(4000)) : s
+            let head = longer(s, than: 4000) ? String(s.prefix(4000)) : s
             let t = head.trimmingCharacters(in: .whitespacesAndNewlines)
             if Self.isHexColor(t) { return .color }
             if Self.isLink(t)     { return .link }

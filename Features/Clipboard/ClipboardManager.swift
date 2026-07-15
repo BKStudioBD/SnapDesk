@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import ImageIO
 
 /// Watches the system pasteboard and keeps a searchable, pinnable history.
 /// Text entries persist across launches; image entries are session-only.
@@ -101,10 +102,13 @@ final class ClipboardManager: ObservableObject {
             let hash = data.count ^ (data.prefix(4096).hashValue)
             if hash == lastImageHash, case .image = items.first?.kind { return }
             lastImageHash = hash
-            // Decompression-bomb guard: reject before decoding if the DECLARED
-            // pixel dimensions are absurd (a 20k×20k image would decode to GBs).
-            if let rep = NSBitmapImageRep.imageReps(with: data).first {
-                let w = rep.pixelsWide, h = rep.pixelsHigh
+            // Decompression-bomb guard: read the DECLARED pixel dimensions from
+            // the header only (CGImageSource — no decode, no main-thread bitmap
+            // materialization) and reject absurd sizes before the off-main decode.
+            if let src = CGImageSourceCreateWithData(data as CFData, nil),
+               let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any] {
+                let w = (props[kCGImagePropertyPixelWidth] as? Int) ?? 0
+                let h = (props[kCGImagePropertyPixelHeight] as? Int) ?? 0
                 if w <= 0 || h <= 0 || w > 30_000 || h > 30_000 || w * h > 60_000_000 { return }
             }
             // Decode + downscale + JPEG-compress OFF the main thread (was a

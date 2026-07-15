@@ -32,18 +32,27 @@ final class SettingsStore: ObservableObject {
 
     /// Called whenever any hotkey changes (set by AppCoordinator).
     var onHotkeysChanged: (() -> Void)?
+    /// When true, hotkey `didSet` skips the re-register callback — used to
+    /// batch a multi-key change (e.g. reset-to-defaults) into one re-register
+    /// instead of six.
+    private var suppressHotkeyCallback = false
     /// Called when the menu-bar icon style changes.
     var onMenuBarStyleChanged: (() -> Void)?
     /// Transient nav state — which Settings section to show (deep-links Help).
     @Published var selectedSection: String = "General"
 
     // MARK: Hotkeys (rebindable)
-    @Published var screenshotHotkey: Hotkey { didSet { saveHotkey(screenshotHotkey, "hk.shot"); onHotkeysChanged?() } }
-    @Published var ocrHotkey: Hotkey        { didSet { saveHotkey(ocrHotkey, "hk.ocr"); onHotkeysChanged?() } }
-    @Published var colorHotkey: Hotkey      { didSet { saveHotkey(colorHotkey, "hk.color"); onHotkeysChanged?() } }
-    @Published var clipboardHotkey: Hotkey  { didSet { saveHotkey(clipboardHotkey, "hk.clip"); onHotkeysChanged?() } }
-    @Published var recordHotkey: Hotkey     { didSet { saveHotkey(recordHotkey, "hk.record"); onHotkeysChanged?() } }
-    @Published var scrollHotkey: Hotkey     { didSet { saveHotkey(scrollHotkey, "hk.scroll"); onHotkeysChanged?() } }
+    @Published var screenshotHotkey: Hotkey { didSet { saveHotkey(screenshotHotkey, "hk.shot"); fireHotkeysChanged() } }
+    @Published var ocrHotkey: Hotkey        { didSet { saveHotkey(ocrHotkey, "hk.ocr"); fireHotkeysChanged() } }
+    @Published var colorHotkey: Hotkey      { didSet { saveHotkey(colorHotkey, "hk.color"); fireHotkeysChanged() } }
+    @Published var clipboardHotkey: Hotkey  { didSet { saveHotkey(clipboardHotkey, "hk.clip"); fireHotkeysChanged() } }
+    @Published var recordHotkey: Hotkey     { didSet { saveHotkey(recordHotkey, "hk.record"); fireHotkeysChanged() } }
+    @Published var scrollHotkey: Hotkey     { didSet { saveHotkey(scrollHotkey, "hk.scroll"); fireHotkeysChanged() } }
+
+    private func fireHotkeysChanged() {
+        guard !suppressHotkeyCallback else { return }
+        onHotkeysChanged?()
+    }
 
     // MARK: Recording
     @Published var recordSystemAudio: Bool  { didSet { d.set(recordSystemAudio, forKey: "rec.audio") } }
@@ -260,12 +269,17 @@ final class SettingsStore: ObservableObject {
 
     func resetHotkeysToDefault() {
         let ctrl = UInt32(controlKey)
+        // Suppress the per-key re-register; fire ONE re-register at the end
+        // instead of six (each re-register rebuilds every Carbon hotkey).
+        suppressHotkeyCallback = true
         screenshotHotkey = Hotkey(keyCode: UInt32(kVK_ANSI_1), modifiers: ctrl)
         ocrHotkey        = Hotkey(keyCode: UInt32(kVK_ANSI_2), modifiers: ctrl)
         colorHotkey      = Hotkey(keyCode: UInt32(kVK_ANSI_3), modifiers: ctrl)
         clipboardHotkey  = Hotkey(keyCode: UInt32(kVK_ANSI_4), modifiers: ctrl)
         recordHotkey     = Hotkey(keyCode: UInt32(kVK_ANSI_5), modifiers: ctrl)
         scrollHotkey     = Hotkey(keyCode: UInt32(kVK_ANSI_6), modifiers: ctrl)
+        suppressHotkeyCallback = false
+        onHotkeysChanged?()
     }
 
     // MARK: Persistence helpers

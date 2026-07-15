@@ -21,7 +21,7 @@ enum MenuBarIcon {
             NSColor.black.setFill()
             switch style {
             case .snap:       drawSnap(in: rect)
-            case .viewfinder: drawViewfinder(in: rect, dot: true)
+            case .viewfinder: drawViewfinder(in: rect)
             case .camera:     drawCamera(in: rect)
             case .crosshair:  drawCrosshair(in: rect)
             }
@@ -60,14 +60,12 @@ enum MenuBarIcon {
         p.stroke()
     }
 
-    private static func drawViewfinder(in rect: NSRect, dot: Bool) {
+    private static func drawViewfinder(in rect: NSRect) {
         let inset = rect.insetBy(dx: 2, dy: 2)
         drawBrackets(in: inset, lineWidth: 1.6)
-        if dot {
-            let dotR = inset.width * 0.13
-            let d = NSRect(x: rect.midX - dotR, y: rect.midY - dotR, width: dotR * 2, height: dotR * 2)
-            NSBezierPath(ovalIn: d).fill()
-        }
+        let dotR = inset.width * 0.13
+        let d = NSRect(x: rect.midX - dotR, y: rect.midY - dotR, width: dotR * 2, height: dotR * 2)
+        NSBezierPath(ovalIn: d).fill()
     }
 
     private static func drawCamera(in rect: NSRect) {

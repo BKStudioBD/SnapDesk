@@ -22,7 +22,9 @@ enum RAMCleaner {
         var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.size / MemoryLayout<integer_t>.size)
         let kr = withUnsafeMutablePointer(to: &stats) {
             $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count)
+                let host = mach_host_self()
+                defer { mach_port_deallocate(mach_task_self_, host) }
+                return host_statistics64(host, HOST_VM_INFO64, $0, &count)
             }
         }
         return kr == KERN_SUCCESS ? stats : nil

@@ -8,6 +8,7 @@ final class PinWindow: NSWindowController {
     private let cg: CGImage
     private let playSoundOnCopy: Bool
     private let soundName: String
+    private let sourceScale: CGFloat
 
     /// Cascade origin so multiple pins don't stack exactly on top of each other.
     private static var cascade = 0
@@ -28,6 +29,7 @@ final class PinWindow: NSWindowController {
         // The SOURCE screen's scale — sizing by NSScreen.main halves/doubles
         // pins that came from a display with a different DPI.
         let scale = sourceScale ?? NSScreen.main?.backingScaleFactor ?? 2
+        self.sourceScale = scale
         var w = CGFloat(cg.width) / scale, h = CGFloat(cg.height) / scale
         // Fit a comfortable default size.
         let maxDim: CGFloat = 520
@@ -69,7 +71,7 @@ final class PinWindow: NSWindowController {
     required init?(coder: NSCoder) { fatalError() }
 
     private func copy() {
-        let s = NSScreen.main?.backingScaleFactor ?? 2
+        let s = sourceScale   // the display the shot came from (mixed-DPI safe)
         let pb = NSPasteboard.general; pb.clearContents()
         pb.writeObjects([NSImage(cgImage: cg,
             size: NSSize(width: CGFloat(cg.width) / s, height: CGFloat(cg.height) / s))])

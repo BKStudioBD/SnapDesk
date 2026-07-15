@@ -25,6 +25,10 @@ final class FrameDecorator: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     private var keyTime: CFTimeInterval = 0
     private var keyImage: CIImage?
     private var cameraBuffer: CVPixelBuffer?
+    /// The webcam-bubble circle mask depends only on the frame size — build it
+    /// once per recording, not on every frame (a CIFilter alloc per frame).
+    private var camMask: CIImage?
+    private var camMaskSize: CGSize = .zero
 
     private var monitors: [Any] = []
     private var camSession: AVCaptureSession?
@@ -213,13 +217,17 @@ final class FrameDecorator: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
                                                    y: -squared.extent.minY))
                 .transformed(by: CGAffineTransform(scaleX: s, y: s)
                     .concatenating(CGAffineTransform(translationX: ox, y: oy)))
-            let mask = CIFilter(name: "CIRadialGradient", parameters: [
-                "inputCenter": CIVector(x: ox + bubble / 2, y: oy + bubble / 2),
-                "inputRadius0": bubble / 2 - 2,
-                "inputRadius1": bubble / 2,
-                "inputColor0": CIColor(red: 1, green: 1, blue: 1, alpha: 1),
-                "inputColor1": CIColor(red: 1, green: 1, blue: 1, alpha: 0),
-            ])!.outputImage!
+            if camMask == nil || camMaskSize != bufferSize {
+                camMask = CIFilter(name: "CIRadialGradient", parameters: [
+                    "inputCenter": CIVector(x: ox + bubble / 2, y: oy + bubble / 2),
+                    "inputRadius0": bubble / 2 - 2,
+                    "inputRadius1": bubble / 2,
+                    "inputColor0": CIColor(red: 1, green: 1, blue: 1, alpha: 1),
+                    "inputColor1": CIColor(red: 1, green: 1, blue: 1, alpha: 0),
+                ])!.outputImage!
+                camMaskSize = bufferSize
+            }
+            let mask = camMask!
             let masked = moved.applyingFilter("CIBlendWithAlphaMask", parameters: [
                 kCIInputBackgroundImageKey: CIImage.empty(),
                 kCIInputMaskImageKey: mask,

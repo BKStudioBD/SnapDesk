@@ -29,8 +29,7 @@ struct Hotkey: Codable, Equatable {
         return (name.count == 1 ? name.lowercased() : "", m)
     }
 
-    static func keyName(_ code: UInt32) -> String {
-        let map: [UInt32: String] = [
+    private static let keyNameMap: [UInt32: String] = [
             UInt32(kVK_ANSI_0): "0", UInt32(kVK_ANSI_1): "1", UInt32(kVK_ANSI_2): "2",
             UInt32(kVK_ANSI_3): "3", UInt32(kVK_ANSI_4): "4", UInt32(kVK_ANSI_5): "5",
             UInt32(kVK_ANSI_6): "6", UInt32(kVK_ANSI_7): "7", UInt32(kVK_ANSI_8): "8",
@@ -60,8 +59,9 @@ struct Hotkey: Codable, Equatable {
             UInt32(kVK_F4): "F4", UInt32(kVK_F5): "F5", UInt32(kVK_F6): "F6",
             UInt32(kVK_F7): "F7", UInt32(kVK_F8): "F8", UInt32(kVK_F9): "F9",
             UInt32(kVK_F10): "F10", UInt32(kVK_F11): "F11", UInt32(kVK_F12): "F12",
-        ]
-        return map[code] ?? "Key\(code)"
+    ]
+    static func keyName(_ code: UInt32) -> String {
+        return keyNameMap[code] ?? "Key\(code)"
     }
 }
 
