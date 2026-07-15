@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Mac App Store build: App Sandbox ON. -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+
+    <!-- Save screenshots/recordings to folders the user picks (powerbox). -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+
+    <!-- Microphone track in recordings. -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+
+    <!-- Webcam bubble in recordings. -->
+    <key>com.apple.security.device.camera</key>
+    <true/>
+</dict>
+</plist>

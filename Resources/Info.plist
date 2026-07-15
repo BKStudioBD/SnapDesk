@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>SnapDesk</string>
+    <key>CFBundleDisplayName</key>
+    <string>SnapDesk</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.snapdesk.app</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+
+    <!-- Menu-bar app: hide the Dock icon and main window. -->
+    <key>LSUIElement</key>
+    <true/>
+
+    <!-- Screen recording / capture permission prompt text. -->
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>SnapDesk needs screen recording access to take screenshots and read text from the screen.</string>
+
+    <!-- Microphone: optional voice track in screen recordings. -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>SnapDesk records your voice when the microphone is enabled for screen recordings.</string>
+
+    <!-- Camera: optional webcam bubble in screen recordings. -->
+    <key>NSCameraUsageDescription</key>
+    <string>SnapDesk shows your webcam as a bubble in screen recordings when enabled.</string>
+
+    <!-- Speech recognition: on-device transcription for burned-in subtitles. -->
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>SnapDesk transcribes recordings on-device to add automatic subtitles.</string>
+
+    <key>NSHumanReadableCopyright</key>
+    <string>SnapDesk</string>
+</dict>
+</plist>

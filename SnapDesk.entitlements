@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      SnapDesk needs to read the whole screen (screenshots + OCR + color picker)
+      and write screenshots anywhere the user chooses. The App Sandbox blocks
+      ScreenCaptureKit's full-screen capture for distribution outside the App
+      Store, so the sandbox is left OFF here for a developer / direct-distribution
+      build. If you later ship via the Mac App Store, enable the sandbox and add
+      the user-selected read-write file entitlement.
+    -->
+    <key>com.apple.security.app-sandbox</key>
+    <false/>
+
+    <!-- Microphone access for the optional voice track (needed once the app is
+         signed with hardened runtime; harmless for local ad-hoc builds). -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+</dict>
+</plist>
