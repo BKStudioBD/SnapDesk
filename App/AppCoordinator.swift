@@ -28,7 +28,7 @@ final class AppCoordinator: NSObject {
         FolderAccess.restore(key: "shotdir")
         // Register SnapDesk in the Accessibility list WITHOUT a launch-time
         // dialog — we only prompt when the user actually triggers paste.
-        Accessibility.ensure(prompt: false)
+        Permissions.ensureAccessibility(prompt: false)
         clipboard.attach(settings: settings)
         clipboard.start()
         setupStatusItem()
@@ -146,7 +146,7 @@ final class AppCoordinator: NSObject {
 
     @objc func captureAndAnnotate() {
         guard !screenshotInFlight else { return }
-        guard ScreenRecording.ensure() else { return }
+        guard Permissions.ensureScreenRecording() else { return }
         screenshotInFlight = true
         // Count captures so the editor's first-run hint can fade out after a few.
         let d = UserDefaults.standard
@@ -181,7 +181,7 @@ final class AppCoordinator: NSObject {
     }
 
     @objc func ocrCapture() {
-        guard ScreenRecording.ensure() else { return }
+        guard Permissions.ensureScreenRecording() else { return }
         // OCR: no full-screen dim — only the dragged area tints dark.
         RegionSelector.selectRegion(dim: .selectionOnly) { [weak self] selection in
             guard let self, let selection else { return }
@@ -274,7 +274,7 @@ final class AppCoordinator: NSObject {
     @objc func recordScreen() {
         // Toggle: pressing the hotkey while recording stops & saves.
         if let session = recordingSession { session.stop(); return }
-        guard ScreenRecording.ensure() else { return }
+        guard Permissions.ensureScreenRecording() else { return }
         // Drag a region to record (Esc cancels, F or the button = full screen),
         // then show the pre-record options bar (audio/mic/camera/captions/blur).
         RegionSelector.selectRegion(prompt: .init(
@@ -387,7 +387,7 @@ final class AppCoordinator: NSObject {
             Task { @MainActor in ScrollCapture.finishActive() }
             return
         }
-        guard ScreenRecording.ensure() else { return }
+        guard Permissions.ensureScreenRecording() else { return }
         RegionSelector.selectRegion { [weak self] selection in
             guard let self, let selection else { return }
             Task { @MainActor in ScrollCapture.begin(selection: selection, settings: self.settings) }

@@ -18,8 +18,8 @@ enum Paster {
     private static var openedAccessibilityPane = false
 
     static func paste(to target: NSRunningApplication?, activate: Bool) {
-        let trusted = Accessibility.isTrusted
-        if !trusted { _ = Accessibility.ensure(prompt: true) }   // ask once, non-blocking
+        let trusted = Permissions.hasAccessibility
+        if !trusted { _ = Permissions.ensureAccessibility(prompt: true) }   // ask once, non-blocking
         let followUp = {
             if !trusted {
                 Notifier.info("Copied — allow paste once",

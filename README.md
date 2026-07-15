@@ -104,11 +104,21 @@ Every shortcut is rebindable live in **Settings → Shortcuts** (click, press a 
 - **Apple Silicon** Mac (M1 or later — arm64 only)
 - **macOS 14.0 (Sonoma)** or later
 
-### Download & install (easiest)
+### One-command install (easiest — no Gatekeeper warning)
 
-1. Grab **SnapDesk.dmg** from the [latest release](https://github.com/BKStudioBD/SnapDesk/releases/latest).
+Paste this into Terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/BKStudioBD/SnapDesk/main/install.sh | bash
+```
+
+It downloads the latest release, installs SnapDesk into `/Applications`, clears the quarantine flag so macOS opens it with **no "unidentified developer" warning**, and launches it. No drag, no right-click. (Clearing quarantine on your own machine for an app you chose to install is exactly what right-click → Open does — the script just automates it; it does not weaken Gatekeeper system-wide.)
+
+### Manual install (download the DMG)
+
+1. Download **SnapDesk.dmg** from the [latest release](https://github.com/BKStudioBD/SnapDesk/releases/latest).
 2. Open the DMG and **drag SnapDesk into Applications**.
-3. Open it from Applications — first launch, **right-click → Open** (the app is self-signed, so macOS shows an "unidentified developer" prompt once).
+3. First launch: **right-click → Open** once (the app is self-signed, so macOS shows an "unidentified developer" prompt the first time).
 
 ### Build from source (one command)
 

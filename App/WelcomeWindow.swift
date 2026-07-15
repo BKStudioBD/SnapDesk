@@ -1,8 +1,6 @@
 import AppKit
 import SwiftUI
 import Combine
-import CoreGraphics
-import ApplicationServices
 
 /// First-run welcome: explains what SnapDesk does, shows the shortcuts, and walks
 /// the user through the two permissions in one place. Reopen anytime from the menu.
@@ -123,30 +121,17 @@ private struct WelcomeView: View {
     }
 
     private func refresh() {
-        screenOK = CGPreflightScreenCaptureAccess()
-        axOK = AXIsProcessTrusted()
+        screenOK = Permissions.hasScreenRecording
+        axOK = Permissions.hasAccessibility
     }
 
-    private func grantScreen() {
-        CGRequestScreenCaptureAccess()
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
-            NSWorkspace.shared.open(url)
-        }
-    }
+    private func grantScreen() { Permissions.requestScreenRecording() }
 
     private func grantAX() {
-        _ = Accessibility.ensure(prompt: true)
-        Accessibility.openSettings()
+        _ = Permissions.ensureAccessibility(prompt: true)
+        Permissions.openAccessibilitySettings()
     }
 
-    /// Relaunch the app (the single-instance guard in the new copy quits us).
-    private func relaunch() {
-        // NSWorkspace (sandbox-safe); the new instance's single-instance guard
-        // quits this copy, and we also terminate as a fallback.
-        let cfg = NSWorkspace.OpenConfiguration()
-        cfg.createsNewApplicationInstance = true
-        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: cfg) { _, _ in
-            DispatchQueue.main.async { NSApp.terminate(nil) }
-        }
-    }
+    /// Relaunch the app so a fresh Screen Recording grant takes effect.
+    private func relaunch() { InstallHelper.relaunchSelf() }
 }
