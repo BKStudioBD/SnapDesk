@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # SnapDesk — build an Apple Silicon (arm64, M-series) .app, sign it, package a
-# .dmg, and (optionally) notarize it so it installs with NO Gatekeeper warning.
+# release ZIP, and (optionally) notarize it so it installs with NO warning.
 #
 # Run on a Mac with Xcode command-line tools installed (`xcode-select --install`).
 # No Xcode project required — this compiles the sources directly with swiftc.
@@ -23,7 +23,7 @@ MIN_MACOS="14.0"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 BUILD="$ROOT/build"
 APP="$BUILD/$APP_NAME.app"
-DMG="$BUILD/$APP_NAME.dmg"
+ZIP="$BUILD/$APP_NAME.zip"
 
 DEV_ID="${DEV_ID:-}"                 # Developer ID Application identity, or empty for ad-hoc
 NOTARY_PROFILE="${NOTARY_PROFILE:-}" # notarytool keychain profile name, or empty to skip
@@ -113,27 +113,25 @@ else
 fi
 codesign --verify --strict --verbose=2 "$APP"
 
-# --- Build the DMG (optional: ./build.sh --dmg) ------------------------------
-# Day-to-day testing does NOT need a DMG — it just clutters build/ with extra
+# --- Build the release ZIP (optional: ./build.sh --zip) ----------------------
+# Day-to-day testing does NOT need one — it just clutters build/ with extra
 # copies. Only build one when explicitly asked (for distribution).
-if [[ " $* " == *" --dmg "* ]]; then
-  echo "▶ Building DMG…"
-  DMG_ROOT="$BUILD/dmgroot"
-  mkdir -p "$DMG_ROOT"
-  cp -R "$APP" "$DMG_ROOT/"
-  ln -s /Applications "$DMG_ROOT/Applications"
-  hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_ROOT" -ov -format UDZO "$DMG"
-  rm -rf "$DMG_ROOT"   # don't leave a second app copy lying around in build/
+if [[ " $* " == *" --zip "* ]]; then
+  echo "▶ Building release ZIP…"
+  # ditto preserves the code signature exactly (zip(1) can subtly break
+  # signed bundles).
+  ditto -c -k --keepParent "$APP" "$ZIP"
 
   if [ -n "$DEV_ID" ] && [ -n "$NOTARY_PROFILE" ]; then
     echo "▶ Notarizing (this can take a few minutes)…"
-    xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
+    xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
     echo "▶ Stapling ticket…"
-    xcrun stapler staple "$DMG"
     xcrun stapler staple "$APP"
-    echo "✅ Notarized DMG ready — installs with no warning."
+    # Re-zip so the stapled ticket ships inside the archive.
+    ditto -c -k --keepParent "$APP" "$ZIP"
+    echo "✅ Notarized ZIP ready — installs with no warning."
   else
-    echo "ℹ️  DMG built without Apple notarization (fine for your own Mac)."
+    echo "ℹ️  ZIP built without Apple notarization (fine for your own Mac)."
   fi
 fi
 
@@ -154,5 +152,5 @@ fi
 
 echo ""
 echo "✅ Done. Tested app: /Applications/$APP_NAME.app"
-[[ " $* " == *" --dmg "* ]] && echo "   DMG: $DMG"
+[[ " $* " == *" --zip "* ]] && echo "   ZIP: $ZIP"
 echo "   (build/ holds only the freshly compiled .app; ./build.sh updates the installed copy in place.)"

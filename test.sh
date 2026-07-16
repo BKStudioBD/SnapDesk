@@ -5,7 +5,7 @@
 # Runs the full Swift compiler front-end (type-checking, name resolution, and
 # API validation) over every source file WITHOUT codegen or linking. This is the
 # fastest reliable way to verify the app compiles cleanly: it catches essentially
-# every error that matters in a few seconds, with no .app or .dmg produced.
+# every error that matters in a few seconds, with no .app or archive produced.
 #
 # Run on a Mac with command-line tools: ./test.sh
 #
@@ -24,4 +24,4 @@ xcrun -sdk macosx swiftc \
   -sdk "$SDK" \
   $SOURCES
 
-echo "✅ All sources type-check cleanly. Now run ./build.sh to produce the .dmg."
+echo "✅ All sources type-check cleanly. Now run ./build.sh to build and install the app."

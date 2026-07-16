@@ -114,10 +114,10 @@ curl -fsSL https://raw.githubusercontent.com/BKStudioBD/SnapDesk/main/install.sh
 
 It downloads the latest release, installs SnapDesk into `/Applications`, clears the quarantine flag so macOS opens it with **no "unidentified developer" warning**, and launches it. No drag, no right-click. (Clearing quarantine on your own machine for an app you chose to install is exactly what right-click → Open does — the script just automates it; it does not weaken Gatekeeper system-wide.)
 
-### Manual install (download the DMG)
+### Manual install (download the ZIP)
 
-1. Download **SnapDesk.dmg** from the [latest release](https://github.com/BKStudioBD/SnapDesk/releases/latest).
-2. Open the DMG and **drag SnapDesk into Applications**.
+1. Download **SnapDesk.zip** from the [latest release](https://github.com/BKStudioBD/SnapDesk/releases/latest).
+2. Double-click the ZIP (Safari unzips automatically) and **move SnapDesk to Applications**.
 3. First launch: **right-click → Open** once (the app is self-signed, so macOS shows an "unidentified developer" prompt the first time).
 
 ### Build from source (one command)
@@ -128,7 +128,7 @@ cd SnapDesk
 ./build.sh
 ```
 
-`./build.sh` compiles, signs and produces `build/SnapDesk.dmg`. `./test.sh` type-checks every source file in seconds. (Needs Xcode command-line tools: `xcode-select --install`.)
+`./build.sh` compiles, signs and installs the app (`--zip` adds a release archive). `./test.sh` type-checks every source file in seconds. (Needs Xcode command-line tools: `xcode-select --install`.)
 
 ### Granting Screen Recording (important)
 
@@ -140,7 +140,7 @@ Screenshots and OCR need macOS **Screen Recording** permission. On first use Sna
 >
 > Microphone / Speech permissions are only requested if you turn on those recording options.
 
-> **Gatekeeper note:** a locally-built app opens with no warning. If you distribute the DMG to another Mac without Apple notarization, first launch needs right-click → **Open** (or `xattr -dr com.apple.quarantine /Applications/SnapDesk.app`). For zero-warning distribution, sign with a Developer ID and notarize:
+> **Gatekeeper note:** a locally-built app opens with no warning. If you distribute the app to another Mac without Apple notarization, first launch needs right-click → **Open** (or `xattr -dr com.apple.quarantine /Applications/SnapDesk.app`). For zero-warning distribution, sign with a Developer ID and notarize:
 > ```bash
 > DEV_ID="Developer ID Application: Your Name (TEAMID)" \
 > NOTARY_PROFILE="your-notary-profile" ./build.sh

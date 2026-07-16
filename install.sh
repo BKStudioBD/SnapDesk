@@ -4,7 +4,7 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/BKStudioBD/SnapDesk/main/install.sh | bash
 #
-# Downloads the latest release DMG, installs SnapDesk into /Applications, and
+# Downloads the latest release ZIP, installs SnapDesk into /Applications, and
 # removes the quarantine flag so macOS opens it with NO Gatekeeper warning and
 # NO right-click-Open dance. (Stripping quarantine on your OWN machine for an
 # app you chose to install is exactly what right-click -> Open does; this just
@@ -14,31 +14,27 @@ set -euo pipefail
 
 REPO="BKStudioBD/SnapDesk"
 APP="SnapDesk"
-DMG_URL="https://github.com/${REPO}/releases/latest/download/${APP}.dmg"
+ZIP_URL="https://github.com/${REPO}/releases/latest/download/${APP}.zip"
 DEST="/Applications/${APP}.app"
 
-# Declared up front so the EXIT trap can reference them safely under `set -u`.
+# Declared up front so the EXIT trap can reference it safely under `set -u`.
 TMP=""
-MOUNT=""
 cleanup() {
-  [ -n "${MOUNT}" ] && hdiutil detach "${MOUNT}" -quiet 2>/dev/null || true
   [ -n "${TMP}" ] && rm -rf "${TMP}"
 }
 trap cleanup EXIT
 
 echo "==> Downloading ${APP}..."
 TMP="$(mktemp -d)"
-DMG="${TMP}/${APP}.dmg"
-curl -fsSL "${DMG_URL}" -o "${DMG}"
+ZIP="${TMP}/${APP}.zip"
+curl -fsSL "${ZIP_URL}" -o "${ZIP}"
 
-echo "==> Mounting..."
-# Mount into our own temp dir (not /Volumes) so a leftover/duplicate SnapDesk
-# volume can never cause a name collision or pick the wrong mount point.
-MOUNT="${TMP}/mnt"
-mkdir -p "${MOUNT}"
-hdiutil attach "${DMG}" -nobrowse -noverify -quiet -mountpoint "${MOUNT}"
-if [ ! -d "${MOUNT}/${APP}.app" ]; then
-  echo "Error: could not mount the disk image." >&2
+echo "==> Unpacking..."
+# ditto preserves the code signature and resource forks exactly (unzip can
+# subtly break signed .app bundles).
+ditto -x -k "${ZIP}" "${TMP}/unpacked"
+if [ ! -d "${TMP}/unpacked/${APP}.app" ]; then
+  echo "Error: could not unpack the download." >&2
   exit 1
 fi
 
@@ -49,7 +45,7 @@ sleep 1
 
 echo "==> Installing to /Applications..."
 rm -rf "${DEST}"
-cp -R "${MOUNT}/${APP}.app" "${DEST}"
+cp -R "${TMP}/unpacked/${APP}.app" "${DEST}"
 
 echo "==> Clearing the Gatekeeper quarantine flag..."
 xattr -dr com.apple.quarantine "${DEST}" 2>/dev/null || true
