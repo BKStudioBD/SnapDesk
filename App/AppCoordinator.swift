@@ -182,9 +182,9 @@ final class AppCoordinator: NSObject {
 
     @objc func ocrCapture() {
         guard Permissions.ensureScreenRecording() else { return }
-        // OCR: exact same selection experience as Capture & Annotate —
-        // full-screen dim, the dragged area punches through bright.
-        RegionSelector.selectRegion { [weak self] selection in
+        // OCR: no full-screen dim — only the dragged area tints dark, and a
+        // drawn "+" replaces the cursor while selecting.
+        RegionSelector.selectRegion(dim: .selectionOnly) { [weak self] selection in
             guard let self, let selection else { return }
             Task { @MainActor in
                 do {

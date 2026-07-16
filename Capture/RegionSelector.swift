@@ -92,6 +92,15 @@ enum RegionSelector {
             let target = windows.first { NSMouseInRect(mouse, $0.frame, false) } ?? windows.first
             target?.makeKeyAndOrderFront(nil)
             installMonitors()
+            // selectionOnly (OCR): the screen stays live, so instead of hoping
+            // the system crosshair wins over the active app's arrow, HIDE the
+            // real cursor and draw our own "+" at the pointer. Nothing can
+            // override a drawn cursor. (The window server auto-balances the
+            // hide if the process dies; finish() shows it on every exit path.)
+            if dim == .selectionOnly {
+                CGDisplayHideCursor(CGMainDisplayID())
+                updatePointer(at: mouse)
+            }
         }
 
         /// The selection is driven by EVENT MONITORS, not per-window mouse
@@ -100,7 +109,10 @@ enum RegionSelector {
         /// is pixel-alpha based) — with monitors the very first click after the
         /// hotkey ALWAYS starts the drag, no matter which window macOS picked.
         private func installMonitors() {
-            let mask: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseDragged, .leftMouseUp]
+            var mask: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseDragged, .leftMouseUp]
+            // The drawn "+" needs pointer tracking; other modes keep the
+            // system cursor, so no move events for them.
+            if dim == .selectionOnly { mask.insert(.mouseMoved) }
             // Normal path: the event reached one of our overlay windows. Swallow
             // it (return nil) — the view no longer handles mouse events itself.
             if let m = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] e in
@@ -134,15 +146,34 @@ enum RegionSelector {
                       let view = win.contentView as? SelectionView else { return }
                 activeView = view
                 view.beginDrag(at: viewPoint(screenPoint, in: win))
+                updatePointer(at: screenPoint)
             case .leftMouseDragged:
                 guard let view = activeView, let win = view.window else { return }
                 view.updateDrag(to: viewPoint(screenPoint, in: win))
+                updatePointer(at: screenPoint)
             case .leftMouseUp:
                 guard let view = activeView, let win = view.window else { return }
                 activeView = nil
                 view.endDrag(at: viewPoint(screenPoint, in: win))
+                updatePointer(at: screenPoint)
+            case .mouseMoved:
+                updatePointer(at: screenPoint)
             default:
                 break
+            }
+        }
+
+        /// Move the drawn "+" to the overlay under the pointer (selectionOnly
+        /// mode only — other modes keep the system cursor).
+        private func updatePointer(at screenPoint: NSPoint) {
+            guard dim == .selectionOnly else { return }
+            for win in windows {
+                guard let view = win.contentView as? SelectionView else { continue }
+                if NSMouseInRect(screenPoint, win.frame, false) {
+                    view.setPointer(viewPoint(screenPoint, in: win))
+                } else {
+                    view.setPointer(nil)
+                }
             }
         }
 
@@ -171,6 +202,7 @@ enum RegionSelector {
             activeView = nil
             windows.forEach { $0.orderOut(nil) }
             windows.removeAll()
+            if dim == .selectionOnly { CGDisplayShowCursor(CGMainDisplayID()) }
 
             if let screen, let rect, rect.width > 2, rect.height > 2 {
                 completion(RegionSelection(screen: screen, rectInScreenPoints: rect))
@@ -274,6 +306,36 @@ private final class SelectionView: NSView {
         }
     }
 
+    // MARK: Self-drawn "+" pointer (selectionOnly / OCR)
+
+    /// Pointer position (view coords). The real cursor is hidden in
+    /// selectionOnly mode, so this small drawn "+" IS the pointer — no app
+    /// or OS state can override our own drawing.
+    private var pointerPos: NSPoint?
+    private static let crossArm: CGFloat = 11
+
+    func setPointer(_ p: NSPoint?) {
+        guard pointerPos != p else { return }
+        // Invalidate just the small cross area (old + new) — runs per move.
+        let r = Self.crossArm + 3
+        for pos in [pointerPos, p].compactMap({ $0 }) {
+            setNeedsDisplay(NSRect(x: pos.x - r, y: pos.y - r, width: r * 2, height: r * 2))
+        }
+        pointerPos = p
+    }
+
+    /// Cursor-sized "+": dark halo + white core, visible on any background.
+    private func drawPointerCross() {
+        guard let p = pointerPos else { return }
+        let arm = Self.crossArm
+        NSColor.black.withAlphaComponent(0.6).setFill()
+        NSRect(x: p.x - 1.5, y: p.y - arm - 1, width: 3, height: (arm + 1) * 2).fill(using: .sourceOver)
+        NSRect(x: p.x - arm - 1, y: p.y - 1.5, width: (arm + 1) * 2, height: 3).fill(using: .sourceOver)
+        NSColor.white.withAlphaComponent(0.95).setFill()
+        NSRect(x: p.x - 0.5, y: p.y - arm, width: 1, height: arm * 2).fill(using: .sourceOver)
+        NSRect(x: p.x - arm, y: p.y - 0.5, width: arm * 2, height: 1).fill(using: .sourceOver)
+    }
+
 
     override var wantsUpdateLayer: Bool { false }
 
@@ -306,6 +368,7 @@ private final class SelectionView: NSView {
             if startPoint == nil {
                 if prompt != nil { drawCenterPrompt() } else { drawHint() }
             }
+            drawPointerCross()
             return
         }
 
@@ -341,6 +404,8 @@ private final class SelectionView: NSView {
         NSColor.black.withAlphaComponent(0.7).setFill()
         NSBezierPath(roundedRect: bg, xRadius: 3, yRadius: 3).fill()
         label.draw(at: CGPoint(x: bg.minX + 5, y: bg.minY + 2), withAttributes: attrs)
+
+        drawPointerCross()
     }
 
     private func drawHint() {
