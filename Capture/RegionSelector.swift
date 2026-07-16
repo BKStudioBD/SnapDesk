@@ -92,13 +92,6 @@ enum RegionSelector {
             let target = windows.first { NSMouseInRect(mouse, $0.frame, false) } ?? windows.first
             target?.makeKeyAndOrderFront(nil)
             installMonitors()
-            // HIDE the real cursor and draw our own "+" in the overlay instead.
-            // NSCursor from a background app loses to the active app, so the
-            // arrow could linger — a drawn crosshair can't be overridden by
-            // anyone. (Window-server balances the hide if we die; finish()
-            // shows it again on every normal path.)
-            CGDisplayHideCursor(CGMainDisplayID())
-            updatePointer(at: mouse)
         }
 
         /// The selection is driven by EVENT MONITORS, not per-window mouse
@@ -107,8 +100,7 @@ enum RegionSelector {
         /// is pixel-alpha based) — with monitors the very first click after the
         /// hotkey ALWAYS starts the drag, no matter which window macOS picked.
         private func installMonitors() {
-            let mask: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseDragged,
-                                               .leftMouseUp, .mouseMoved]
+            let mask: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseDragged, .leftMouseUp]
             // Normal path: the event reached one of our overlay windows. Swallow
             // it (return nil) — the view no longer handles mouse events itself.
             if let m = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] e in
@@ -142,32 +134,15 @@ enum RegionSelector {
                       let view = win.contentView as? SelectionView else { return }
                 activeView = view
                 view.beginDrag(at: viewPoint(screenPoint, in: win))
-                updatePointer(at: screenPoint)
             case .leftMouseDragged:
                 guard let view = activeView, let win = view.window else { return }
                 view.updateDrag(to: viewPoint(screenPoint, in: win))
-                updatePointer(at: screenPoint)
             case .leftMouseUp:
                 guard let view = activeView, let win = view.window else { return }
                 activeView = nil
                 view.endDrag(at: viewPoint(screenPoint, in: win))
-                updatePointer(at: screenPoint)
-            case .mouseMoved:
-                updatePointer(at: screenPoint)
             default:
                 break
-            }
-        }
-
-        /// Move the drawn "+" to the overlay under the pointer (clear the rest).
-        private func updatePointer(at screenPoint: NSPoint) {
-            for win in windows {
-                guard let view = win.contentView as? SelectionView else { continue }
-                if NSMouseInRect(screenPoint, win.frame, false) {
-                    view.setPointer(viewPoint(screenPoint, in: win))
-                } else {
-                    view.setPointer(nil)
-                }
             }
         }
 
@@ -196,7 +171,6 @@ enum RegionSelector {
             activeView = nil
             windows.forEach { $0.orderOut(nil) }
             windows.removeAll()
-            CGDisplayShowCursor(CGMainDisplayID())   // hand the cursor back
 
             if let screen, let rect, rect.width > 2, rect.height > 2 {
                 completion(RegionSelection(screen: screen, rectInScreenPoints: rect))
@@ -300,33 +274,6 @@ private final class SelectionView: NSView {
         }
     }
 
-    /// Pointer position (view coords) for the self-drawn "+" — the real cursor
-    /// is hidden while the overlay is up, so this is the ONLY pointer the user
-    /// sees. Drawn by us = impossible for another app to override.
-    private var pointerPos: NSPoint?
-
-    func setPointer(_ p: NSPoint?) {
-        guard pointerPos != p else { return }
-        // Invalidate only the old and new line strips, not the whole screen —
-        // this runs on every mouse move.
-        for pos in [pointerPos, p].compactMap({ $0 }) {
-            setNeedsDisplay(NSRect(x: pos.x - 3, y: 0, width: 6, height: bounds.height))
-            setNeedsDisplay(NSRect(x: 0, y: pos.y - 3, width: bounds.width, height: 6))
-        }
-        pointerPos = p
-    }
-
-    /// Full-screen "+" guide lines through the pointer: dark halo + white core,
-    /// visible on any background.
-    private func drawPointerCross() {
-        guard let p = pointerPos else { return }
-        NSColor.black.withAlphaComponent(0.5).setFill()
-        NSRect(x: p.x - 1.25, y: 0, width: 2.5, height: bounds.height).fill(using: .sourceOver)
-        NSRect(x: 0, y: p.y - 1.25, width: bounds.width, height: 2.5).fill(using: .sourceOver)
-        NSColor.white.withAlphaComponent(0.95).setFill()
-        NSRect(x: p.x - 0.5, y: 0, width: 1, height: bounds.height).fill(using: .sourceOver)
-        NSRect(x: 0, y: p.y - 0.5, width: bounds.width, height: 1).fill(using: .sourceOver)
-    }
 
     override var wantsUpdateLayer: Bool { false }
 
@@ -359,7 +306,6 @@ private final class SelectionView: NSView {
             if startPoint == nil {
                 if prompt != nil { drawCenterPrompt() } else { drawHint() }
             }
-            drawPointerCross()
             return
         }
 
@@ -395,8 +341,6 @@ private final class SelectionView: NSView {
         NSColor.black.withAlphaComponent(0.7).setFill()
         NSBezierPath(roundedRect: bg, xRadius: 3, yRadius: 3).fill()
         label.draw(at: CGPoint(x: bg.minX + 5, y: bg.minY + 2), withAttributes: attrs)
-
-        drawPointerCross()
     }
 
     private func drawHint() {
