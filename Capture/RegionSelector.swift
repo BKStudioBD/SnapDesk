@@ -32,8 +32,12 @@ enum RegionSelector {
     // Holds the overlay windows alive for the duration of the selection.
     private static var session: Session?
 
+    /// - Parameter drawnCross: hide the real cursor and draw a system-style
+    ///   "+" at the pointer instead (event-monitor driven, can't be overridden
+    ///   by the active app). Used by OCR and screen recording.
     static func selectRegion(prompt: CenterPrompt? = nil,
                              dim: DimStyle = .full,
+                             drawnCross: Bool = false,
                              completion: @escaping (RegionSelection?) -> Void) {
         // Re-trigger while an overlay is already up → tear the stale one down
         // and start fresh. Silently swallowing the hotkey here left users with
@@ -48,7 +52,7 @@ enum RegionSelector {
             session = nil
             stale.cancel()
         }
-        session = Session(prompt: prompt, dim: dim, completion: { result in
+        session = Session(prompt: prompt, dim: dim, drawnCross: drawnCross, completion: { result in
             session = nil
             completion(result)
         })
@@ -61,14 +65,17 @@ enum RegionSelector {
         private let completion: (RegionSelection?) -> Void
         private let prompt: CenterPrompt?
         private let dim: DimStyle
+        private let drawnCross: Bool
         private var windows: [SelectionWindow] = []
         private var monitors: [Any] = []
         /// The view currently receiving a drag (set on the first mouseDown).
         private weak var activeView: SelectionView?
 
-        init(prompt: CenterPrompt?, dim: DimStyle, completion: @escaping (RegionSelection?) -> Void) {
+        init(prompt: CenterPrompt?, dim: DimStyle, drawnCross: Bool,
+             completion: @escaping (RegionSelection?) -> Void) {
             self.prompt = prompt
             self.dim = dim
+            self.drawnCross = drawnCross
             self.completion = completion
         }
 
@@ -92,12 +99,12 @@ enum RegionSelector {
             let target = windows.first { NSMouseInRect(mouse, $0.frame, false) } ?? windows.first
             target?.makeKeyAndOrderFront(nil)
             installMonitors()
-            // selectionOnly (OCR): the screen stays live, so instead of hoping
-            // the system crosshair wins over the active app's arrow, HIDE the
-            // real cursor and draw our own "+" at the pointer. Nothing can
-            // override a drawn cursor. (The window server auto-balances the
-            // hide if the process dies; finish() shows it on every exit path.)
-            if dim == .selectionOnly {
+            // drawnCross (OCR + record): instead of hoping the system crosshair
+            // wins over the active app's arrow, HIDE the real cursor and draw
+            // our own "+" at the pointer. Nothing can override a drawn cursor.
+            // (The window server auto-balances the hide if the process dies;
+            // finish() shows it on every exit path.)
+            if drawnCross {
                 CGDisplayHideCursor(CGMainDisplayID())
                 updatePointer(at: mouse)
             }
@@ -112,7 +119,7 @@ enum RegionSelector {
             var mask: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseDragged, .leftMouseUp]
             // The drawn "+" needs pointer tracking; other modes keep the
             // system cursor, so no move events for them.
-            if dim == .selectionOnly { mask.insert(.mouseMoved) }
+            if drawnCross { mask.insert(.mouseMoved) }
             // Normal path: the event reached one of our overlay windows. Swallow
             // it (return nil) — the view no longer handles mouse events itself.
             if let m = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] e in
@@ -163,10 +170,10 @@ enum RegionSelector {
             }
         }
 
-        /// Move the drawn "+" to the overlay under the pointer (selectionOnly
+        /// Move the drawn "+" to the overlay under the pointer (drawnCross
         /// mode only — other modes keep the system cursor).
         private func updatePointer(at screenPoint: NSPoint) {
-            guard dim == .selectionOnly else { return }
+            guard drawnCross else { return }
             for win in windows {
                 guard let view = win.contentView as? SelectionView else { continue }
                 if NSMouseInRect(screenPoint, win.frame, false) {
@@ -202,7 +209,7 @@ enum RegionSelector {
             activeView = nil
             windows.forEach { $0.orderOut(nil) }
             windows.removeAll()
-            if dim == .selectionOnly { CGDisplayShowCursor(CGMainDisplayID()) }
+            if drawnCross { CGDisplayShowCursor(CGMainDisplayID()) }
 
             if let screen, let rect, rect.width > 2, rect.height > 2 {
                 completion(RegionSelection(screen: screen, rectInScreenPoints: rect))
@@ -312,7 +319,7 @@ private final class SelectionView: NSView {
     /// selectionOnly mode, so this small drawn "+" IS the pointer — no app
     /// or OS state can override our own drawing.
     private var pointerPos: NSPoint?
-    private static let crossArm: CGFloat = 11
+    private static let crossArm: CGFloat = 10
 
     func setPointer(_ p: NSPoint?) {
         guard pointerPos != p else { return }
@@ -324,14 +331,15 @@ private final class SelectionView: NSView {
         pointerPos = p
     }
 
-    /// Cursor-sized "+": dark halo + white core, visible on any background.
+    /// System-crosshair look: thin black "+" with a white outline (exactly the
+    /// NSCursor.crosshair appearance the screenshot flow shows).
     private func drawPointerCross() {
         guard let p = pointerPos else { return }
         let arm = Self.crossArm
-        NSColor.black.withAlphaComponent(0.6).setFill()
+        NSColor.white.withAlphaComponent(0.9).setFill()
         NSRect(x: p.x - 1.5, y: p.y - arm - 1, width: 3, height: (arm + 1) * 2).fill(using: .sourceOver)
         NSRect(x: p.x - arm - 1, y: p.y - 1.5, width: (arm + 1) * 2, height: 3).fill(using: .sourceOver)
-        NSColor.white.withAlphaComponent(0.95).setFill()
+        NSColor.black.setFill()
         NSRect(x: p.x - 0.5, y: p.y - arm, width: 1, height: arm * 2).fill(using: .sourceOver)
         NSRect(x: p.x - arm, y: p.y - 0.5, width: arm * 2, height: 1).fill(using: .sourceOver)
     }
