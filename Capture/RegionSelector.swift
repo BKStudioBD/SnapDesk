@@ -92,6 +92,10 @@ enum RegionSelector {
             let target = windows.first { NSMouseInRect(mouse, $0.frame, false) } ?? windows.first
             target?.makeKeyAndOrderFront(nil)
             installMonitors()
+            // Crosshair INSTANTLY — not when cursor rects decide to kick in
+            // (they need a key window + a mouse move; users read the arrow
+            // cursor as "the hotkey didn't work").
+            assertCursor(at: mouse)
         }
 
         /// The selection is driven by EVENT MONITORS, not per-window mouse
@@ -100,7 +104,8 @@ enum RegionSelector {
         /// is pixel-alpha based) — with monitors the very first click after the
         /// hotkey ALWAYS starts the drag, no matter which window macOS picked.
         private func installMonitors() {
-            let mask: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseDragged, .leftMouseUp]
+            let mask: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseDragged,
+                                               .leftMouseUp, .mouseMoved]
             // Normal path: the event reached one of our overlay windows. Swallow
             // it (return nil) — the view no longer handles mouse events itself.
             if let m = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] e in
@@ -134,15 +139,36 @@ enum RegionSelector {
                       let view = win.contentView as? SelectionView else { return }
                 activeView = view
                 view.beginDrag(at: viewPoint(screenPoint, in: win))
+                assertCursor(at: screenPoint)
             case .leftMouseDragged:
                 guard let view = activeView, let win = view.window else { return }
                 view.updateDrag(to: viewPoint(screenPoint, in: win))
+                assertCursor(at: screenPoint)
             case .leftMouseUp:
                 guard let view = activeView, let win = view.window else { return }
                 activeView = nil
                 view.endDrag(at: viewPoint(screenPoint, in: win))
+                assertCursor(at: screenPoint)
+            case .mouseMoved:
+                // Re-assert on every move: another app (or a late cursor-rect
+                // pass) can steal the cursor back — the "+" must never flicker
+                // away while the overlay is up.
+                assertCursor(at: screenPoint)
             default:
                 break
+            }
+        }
+
+        /// Force the selection cursor ("+"), or the hand over the full-screen
+        /// button. Direct NSCursor.set — no dependence on key windows or
+        /// cursor-rect timing.
+        private func assertCursor(at screenPoint: NSPoint) {
+            if let win = windows.first(where: { NSMouseInRect(screenPoint, $0.frame, false) }),
+               let view = win.contentView as? SelectionView,
+               view.wantsHandCursor(at: viewPoint(screenPoint, in: win)) {
+                NSCursor.pointingHand.set()
+            } else {
+                NSCursor.crosshair.set()
             }
         }
 
@@ -171,6 +197,7 @@ enum RegionSelector {
             activeView = nil
             windows.forEach { $0.orderOut(nil) }
             windows.removeAll()
+            NSCursor.arrow.set()   // hand the cursor back
 
             if let screen, let rect, rect.width > 2, rect.height > 2 {
                 completion(RegionSelection(screen: screen, rectInScreenPoints: rect))
@@ -272,6 +299,13 @@ private final class SelectionView: NSView {
         if prompt != nil, startPoint == nil, currentRect.width <= 0, buttonRect != .zero {
             addCursorRect(buttonRect, cursor: .pointingHand)
         }
+    }
+
+    /// True while the center prompt is up and `p` is over its button — the
+    /// Session's cursor enforcement shows the hand there instead of the "+".
+    func wantsHandCursor(at p: NSPoint) -> Bool {
+        prompt != nil && startPoint == nil && currentRect.width <= 0
+            && buttonRect != .zero && buttonRect.contains(p)
     }
 
     override var wantsUpdateLayer: Bool { false }
