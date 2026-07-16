@@ -281,7 +281,8 @@ private final class SelectionView: NSView {
 
 
 
-    override var wantsUpdateLayer: Bool { false }
+    // Renders via draw(_:) — the .copy clear there is load-bearing; do not
+    // switch this view to updateLayer.
 
     override func draw(_ dirtyRect: NSRect) {
         // Reset the dirty area to fully transparent FIRST — without this, moving
@@ -419,10 +420,14 @@ private final class SelectionView: NSView {
 
     func updateDrag(to p: NSPoint) {
         guard let start = startPoint else { return }
+        let old = currentRect
         currentRect = CGRect(x: min(start.x, p.x), y: min(start.y, p.y),
                              width: abs(p.x - start.x), height: abs(p.y - start.y))
             .intersection(bounds)   // clamp to this screen
-        needsDisplay = true
+        // Invalidate only around old ∪ new (covers grow AND shrink re-dim) plus
+        // margin for the border overhang and the size label — full-screen
+        // invalidation redrew the entire display every mouse move.
+        setNeedsDisplay(old.union(currentRect).insetBy(dx: -90, dy: -32))
     }
 
     func endDrag(at p: NSPoint) {
@@ -440,6 +445,11 @@ private final class SelectionView: NSView {
         onFinish?(rect)
     }
 
+    // Fallback + beep suppression: the Session's local keyDown monitor
+    // normally consumes Esc/F before dispatch, so this fires only if that
+    // monitor failed to install. It must also stay to swallow every OTHER
+    // key — without the override, stray keypresses while the overlay is up
+    // reach noResponderFor(_:) and trigger the system beep.
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 { // Esc
             onCancel?()

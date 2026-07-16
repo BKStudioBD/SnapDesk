@@ -90,10 +90,10 @@ final class RecordingSession: NSObject {
         var decorator: FrameDecorator?
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-            let displayID = selection.screen.displayID
             // NO first-display fallback: recording the wrong monitor is worse
             // than failing with a clear error (display just disconnected).
-            guard let scDisplay = content.displays.first(where: { $0.displayID == displayID })
+            guard let displayID = selection.screen.displayID,
+                  let scDisplay = content.displays.first(where: { $0.displayID == displayID })
             else { throw ScreenRecorder.RecorderError.setup }
             // Exclude SnapDesk APP-WIDE (not a window snapshot) so windows opened
             // DURING the recording — capture editor, clipboard, pins — never
@@ -117,7 +117,7 @@ final class RecordingSession: NSObject {
                     keystrokes: settings.recordKeystrokes,
                     camera: settings.recordCamera && cameraOK)
                 let deco = FrameDecorator(config: cfg,
-                                          displayID: selection.screen.displayID,
+                                          displayID: displayID,
                                           sourceRect: selection.rectInScreenPoints,
                                           scale: selection.screen.backingScaleFactor)
                 deco.start()

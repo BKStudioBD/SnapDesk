@@ -42,12 +42,19 @@ enum CaptureService {
         // would pin ~59 MB on a 5K screen for as long as any caller holds it
         // (blur overlay for minutes, OCR through multi-second Vision passes).
         // Redraw into a right-sized buffer so only the crop's bytes survive.
-        return Self.detached(cropped) ?? cropped
+        // Near-full-frame crops (F-key full screen) share no meaningful excess —
+        // skip the copy entirely. Real crops redraw OFF the main actor so a big
+        // region never blocks the UI.
+        if pixelRect.width * pixelRect.height >= 0.95 * bounds.width * bounds.height {
+            return cropped
+        }
+        let copy = await Task.detached(priority: .userInitiated) { detached(cropped) }.value
+        return copy ?? cropped
     }
 
     /// Copy a CGImage into its own tightly-sized backing (drops the shared
     /// full-frame buffer that `cropping(to:)` retains).
-    static func detached(_ img: CGImage) -> CGImage? {
+    private static func detached(_ img: CGImage) -> CGImage? {
         guard let ctx = CGContext(data: nil, width: img.width, height: img.height,
                                   bitsPerComponent: 8, bytesPerRow: 0,
                                   space: CGColorSpaceCreateDeviceRGB(),
@@ -67,7 +74,8 @@ enum CaptureService {
     @MainActor
     static func captureScreen(_ screen: NSScreen) async throws -> CGImage {
         let scale = screen.backingScaleFactor
-        let displayID = screen.displayID
+        // Stale NSScreen (display just reconfigured) → fail, never guess.
+        guard let displayID = screen.displayID else { throw CaptureError.displayNotFound }
 
         let content: SCShareableContent
         if let (c, at) = cachedContent, Date().timeIntervalSince(at) < 2 {
@@ -131,9 +139,13 @@ enum CaptureService {
 }
 
 extension NSScreen {
-    /// The CoreGraphics display ID backing this screen.
-    var displayID: CGDirectDisplayID {
+    /// The CoreGraphics display ID backing this screen, or nil when
+    /// deviceDescription no longer carries NSScreenNumber (stale NSScreen
+    /// across a display reconfiguration). Deliberately NO CGMainDisplayID()
+    /// fallback — capturing the wrong monitor and cropping it with another
+    /// screen's rect delivers wrong content silently.
+    var displayID: CGDirectDisplayID? {
         (deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?
-            .uint32Value ?? CGMainDisplayID()
+            .uint32Value
     }
 }

@@ -143,6 +143,7 @@ final class AppCoordinator: NSObject {
     /// True while a freeze-capture is queued/in flight — spamming ⌃1 must not
     /// launch five full multi-display captures.
     private var screenshotInFlight = false
+    private var ocrInFlight = false
 
     @objc func captureAndAnnotate() {
         guard !screenshotInFlight else { return }
@@ -181,11 +182,16 @@ final class AppCoordinator: NSObject {
     }
 
     @objc func ocrCapture() {
+        // One OCR at a time — overlapping tasks race on the clipboard and the
+        // slower, OLDER selection can overwrite the newer result.
+        guard !ocrInFlight else { return }
         guard Permissions.ensureScreenRecording() else { return }
         // OCR: no full-screen dim — only the dragged area tints dark.
         RegionSelector.selectRegion(dim: .selectionOnly) { [weak self] selection in
             guard let self, let selection else { return }
+            self.ocrInFlight = true
             Task { @MainActor in
+                defer { self.ocrInFlight = false }
                 do {
                     let image = try await CaptureService.capture(selection)
                     let text = try await OCRService.recognizeText(
