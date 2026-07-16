@@ -80,7 +80,16 @@ enum CaptureService {
 
         // NO first-display fallback — capturing the wrong monitor and cropping
         // it with the right monitor's rect delivers wrong content silently.
-        guard let scDisplay = content.displays.first(where: { $0.displayID == displayID }) else {
+        // Display missing from a ≤2s-old cache right after plugging/unplugging a
+        // monitor? Refetch once before failing — the cache is stale, not the display.
+        var scDisplay = content.displays.first(where: { $0.displayID == displayID })
+        if scDisplay == nil {
+            let fresh = try await SCShareableContent.excludingDesktopWindows(
+                false, onScreenWindowsOnly: false)
+            cachedContent = (fresh, Date())
+            scDisplay = fresh.displays.first(where: { $0.displayID == displayID })
+        }
+        guard let scDisplay else {
             throw CaptureError.displayNotFound
         }
 

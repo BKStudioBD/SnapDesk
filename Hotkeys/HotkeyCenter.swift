@@ -145,7 +145,10 @@ final class HotkeyCenter {
                               EventParamType(typeEventHotKeyID), nil,
                               MemoryLayout<EventHotKeyID>.size, nil, &hkID)
             let center = Unmanaged<HotkeyCenter>.fromOpaque(userData).takeUnretainedValue()
-            DispatchQueue.main.async { center.handle(id: hkID.id) }
+            // .common modes: GCD main-queue blocks do NOT drain while a menu is
+            // open (event-tracking mode) — a hotkey pressed with the status-bar
+            // menu up was silently deferred until the menu closed.
+            RunLoop.main.perform(inModes: [.common]) { center.handle(id: hkID.id) }
             return noErr
         }, 1, &spec, selfPtr, &eventHandler)
     }

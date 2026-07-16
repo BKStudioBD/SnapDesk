@@ -30,6 +30,16 @@ enum Permissions {
     static var hasScreenRecording: Bool { CGPreflightScreenCaptureAccess() }
     static var hasAccessibility: Bool { AXIsProcessTrusted() }
 
+    /// Whether Screen Recording was already granted when THIS process started.
+    /// A grant that appears later is only honored by a NEW process — capture
+    /// still fails in this one, so `ensureScreenRecording` must keep steering
+    /// toward a relaunch instead of letting a doomed capture run.
+    private static let grantAtLaunch: Bool = CGPreflightScreenCaptureAccess()
+
+    /// Call once at app startup so `grantAtLaunch` is evaluated before any
+    /// grant can change (static lets are lazy).
+    static func primeLaunchState() { _ = grantAtLaunch }
+
     // MARK: - Screen Recording
 
     /// True if capture is allowed right now. If not, requests it, opens the
@@ -38,7 +48,15 @@ enum Permissions {
     /// abort the current capture when this returns false.
     @discardableResult
     static func ensureScreenRecording() -> Bool {
-        if hasScreenRecording { return true }
+        if hasScreenRecording {
+            if grantAtLaunch { return true }
+            // Granted AFTER this process launched: preflight says yes but the
+            // capture engine still runs on the launch-time (denied) state —
+            // any capture now fails confusingly. Offer the relaunch instead.
+            // (All callers are main-thread hotkey/menu paths.)
+            MainActor.assumeIsolated { promptRestartForFreshGrant() }
+            return false
+        }
         CGRequestScreenCaptureAccess()            // registers SnapDesk / prompts
         guideThenRelaunch(
             title: "Turn on Screen Recording for SnapDesk",
@@ -92,12 +110,35 @@ enum Permissions {
     // MARK: - Shared: guide the user, then auto-relaunch on grant
 
     private static var watching = false
+    /// Re-entrancy guard: hotkey presses drain on the main queue even while a
+    /// modal alert runs, so without this each press STACKED another identical
+    /// alert (all hotkeys then look dead until every one is dismissed LIFO).
+    private static var alertUp = false
+
+    /// "Permission is on but this process predates the grant" → restart offer.
+    @MainActor
+    private static func promptRestartForFreshGrant() {
+        guard !alertUp else { return }
+        alertUp = true
+        defer { alertUp = false }
+        let a = NSAlert()
+        a.messageText = "Restart SnapDesk to finish"
+        a.informativeText = "Screen Recording is now enabled — SnapDesk just needs a quick restart for it to take effect."
+        a.addButton(withTitle: "Restart SnapDesk")
+        a.addButton(withTitle: "Later")
+        NSApp.activate(ignoringOtherApps: true)
+        a.window.orderFrontRegardless()
+        if a.runModal() == .alertFirstButtonReturn { InstallHelper.relaunchSelf() }
+    }
 
     /// Show a one-time alert, open the Settings pane, then poll for the grant
     /// and relaunch the moment it flips on (Screen Recording only — the grant
     /// needs a fresh process to be honored). Safe to call repeatedly.
     private static func guideThenRelaunch(title: String, body: String, pane: String,
                                           isGranted: @escaping () -> Bool) {
+        guard !alertUp else { return }
+        alertUp = true
+        defer { alertUp = false }
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = body
@@ -105,6 +146,10 @@ enum Permissions {
         alert.addButton(withTitle: "Open Settings")
         alert.addButton(withTitle: "Later")
         NSApp.activate(ignoringOtherApps: true)
+        // Activation can be denied for an accessory app — force the alert
+        // visible anyway (it used to open BEHIND a full-screen frontmost app,
+        // making the hotkey look dead while a hidden modal blocked everything).
+        alert.window.orderFrontRegardless()
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         openPane(pane)
         watchForGrant(isGranted: isGranted)
@@ -120,11 +165,15 @@ enum Permissions {
             }
             guard isGranted() else { return }
             t.invalidate(); watching = false
+            guard !alertUp else { return }   // another permission alert is already up
+            alertUp = true
+            defer { alertUp = false }
             let a = NSAlert()
             a.messageText = "Permission enabled"
             a.informativeText = "SnapDesk will restart now so it can start working."
             a.addButton(withTitle: "Restart SnapDesk")
             NSApp.activate(ignoringOtherApps: true)
+            a.window.orderFrontRegardless()
             a.runModal()
             InstallHelper.relaunchSelf()
         }

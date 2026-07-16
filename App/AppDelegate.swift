@@ -11,6 +11,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // instance is taking over, so this (temporary) one must stop now.
         guard InstallHelper.ensureProperLocation() else { return }
 
+        // Record whether Screen Recording was granted BEFORE anything can
+        // change it — a grant that arrives later needs a relaunch to work,
+        // and ensureScreenRecording() uses this snapshot to know that.
+        Permissions.primeLaunchState()
+
         // Only one SnapDesk at a time: a freshly launched copy wins and quits any
         // older instances (e.g. one left running from a mounted DMG or a previous
         // build). Prevents duplicate menu-bar icons.

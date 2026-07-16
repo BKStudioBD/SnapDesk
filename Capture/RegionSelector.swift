@@ -35,8 +35,19 @@ enum RegionSelector {
     static func selectRegion(prompt: CenterPrompt? = nil,
                              dim: DimStyle = .full,
                              completion: @escaping (RegionSelection?) -> Void) {
-        // Only one selection at a time.
-        guard session == nil else { completion(nil); return }
+        // Re-trigger while an overlay is already up → tear the stale one down
+        // and start fresh. Silently swallowing the hotkey here left users with
+        // a "sometimes it just doesn't work" dead press when an (invisible,
+        // selection-only) overlay was still alive from a previous attempt.
+        dispatchPrecondition(condition: .onQueue(.main))
+        // Never open a capture overlay above a modal alert (e.g. the permission
+        // "Restart SnapDesk" dialog) — the screen-level overlay would cover the
+        // alert and eat every click while the modal session ignores them.
+        guard NSApp.modalWindow == nil else { completion(nil); return }
+        if let stale = session {
+            session = nil
+            stale.cancel()
+        }
         session = Session(prompt: prompt, dim: dim, completion: { result in
             session = nil
             completion(result)
@@ -66,11 +77,21 @@ enum RegionSelector {
                 }
                 window.onCancel = { [weak self] in self?.finish(screen: nil, rect: nil) }
                 window.onFull = { [weak self] in self?.finishFullScreen() }
-                window.makeKeyAndOrderFront(nil)
+                window.orderFrontRegardless()
                 windows.append(window)
             }
-            NSApp.activate(ignoringOtherApps: true)
+            // Make key the overlay on the screen the mouse is on — NOT the last
+            // one ordered (crosshair cursor rects and Esc only work in the key
+            // window). Non-activating panel: key without stealing app focus, and
+            // immune to macOS's cooperative-activation denial (which used to
+            // leave NO key window → dead Esc, no crosshair → "hotkey did nothing").
+            let mouse = NSEvent.mouseLocation
+            let target = windows.first { NSMouseInRect(mouse, $0.frame, false) } ?? windows.first
+            target?.makeKeyAndOrderFront(nil)
         }
+
+        /// Tear down the overlays and report "no selection" (stale-session reset).
+        func cancel() { finish(screen: nil, rect: nil) }
 
         /// F pressed → select the ENTIRE screen the mouse is currently on.
         private func finishFullScreen() {
@@ -98,7 +119,11 @@ enum RegionSelector {
 
 // MARK: - Overlay window
 
-private final class SelectionWindow: NSWindow {
+// NSPanel + .nonactivatingPanel: becomes key WITHOUT activating SnapDesk —
+// an accessory app's NSApp.activate() can be silently denied by macOS 14+
+// (no recent user interaction), which left a plain NSWindow overlay with no
+// key window at all: no crosshair, dead Esc, "the hotkey did nothing".
+private final class SelectionWindow: NSPanel {
     var onFinish: ((CGRect) -> Void)?
     var onCancel: (() -> Void)?
     var onFull: (() -> Void)?
@@ -108,13 +133,15 @@ private final class SelectionWindow: NSWindow {
     init(screen: NSScreen, prompt: RegionSelector.CenterPrompt?,
          dim: RegionSelector.DimStyle = .full) {
         self.screenRef = screen
-        super.init(contentRect: screen.frame, styleMask: .borderless,
+        super.init(contentRect: screen.frame,
+                   styleMask: [.borderless, .nonactivatingPanel],
                    backing: .buffered, defer: false)
         isOpaque = false
         backgroundColor = .clear
         level = .screenSaver
         ignoresMouseEvents = false
         hasShadow = false
+        hidesOnDeactivate = false        // NSPanel default is true — overlay must survive
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
 
         let view = SelectionView(frame: screen.frame)
@@ -133,6 +160,10 @@ private final class SelectionWindow: NSWindow {
         view.onCancel = { [weak self] in self?.onCancel?() }
         view.onFull = { [weak self] in self?.onFull?() }
         contentView = view
+        // Without this the WINDOW is first responder and Esc/F pressed before
+        // the first click are silently discarded (the invisible OCR overlay
+        // then stays up eating clicks — "sometimes it just doesn't work").
+        makeFirstResponder(view)
     }
 
     override var canBecomeKey: Bool { true }
@@ -157,6 +188,20 @@ private final class SelectionView: NSView {
     // and isn't the active window yet — no "click once to focus" dead click.
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
+    // Multi-display: cursor rects (crosshair) and Esc only live in the KEY
+    // window. Follow the mouse — whichever screen's overlay it enters grabs
+    // key (cheap for a non-activating panel, no app focus change).
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds,
+                                       options: [.mouseEnteredAndExited, .activeAlways],
+                                       owner: self, userInfo: nil))
+    }
+    override func mouseEntered(with event: NSEvent) {
+        if window?.isKeyWindow == false { window?.makeKey() }
+    }
+
     override func resetCursorRects() {
         addCursorRect(bounds, cursor: .crosshair)
         // Over the full-screen button: clickable hand, not the drag crosshair.
@@ -178,6 +223,16 @@ private final class SelectionView: NSView {
         // (.selectionOnly — OCR — leaves the screen untouched instead.)
         if dimStyle == .full {
             NSColor.snapDim.setFill()
+            bounds.fill(using: .sourceOver)
+        } else {
+            // The window server routes clicks THROUGH fully transparent pixels
+            // of a borderless window — an all-clear overlay shows the crosshair
+            // but the mouseDown lands in the app underneath and the drag never
+            // starts. A ~1% fill is invisible yet makes every pixel hit-testable.
+            // FLOOR: must stay ≥ 0.01 — alpha quantizes to an 8-bit byte and
+            // anything that rounds to 0/255 silently becomes click-through again
+            // (0.001 fails, 0.015 ≈ 4/255 verified working).
+            NSColor.black.withAlphaComponent(0.015).setFill()
             bounds.fill(using: .sourceOver)
         }
 

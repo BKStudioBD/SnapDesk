@@ -194,8 +194,13 @@ final class AppCoordinator: NSObject {
                         trim: self.settings.ocrTrimWhitespace,
                         languages: self.settings.ocrRecognitionLanguages,
                         autoDetectLanguage: self.settings.ocrAutoDetect)
-                    if text.isEmpty {
+                    // Whitespace-only counts as a miss too (with trim off, Vision
+                    // fragments can join to pure whitespace — "copied nothing").
+                    if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         // Always tell the user — a silent miss looks like a broken app.
+                        // Beep as well: the notification can be suppressed (denied /
+                        // Focus), and a fully silent miss reads as a dead hotkey.
+                        NSSound.beep()
                         Notifier.info("No text found", "Try a tighter selection around the text.")
                     } else {
                         // Append mode adds to existing clipboard text instead of replacing.
@@ -205,7 +210,15 @@ final class AppCoordinator: NSObject {
                             out = existing + "\n" + text
                         }
                         NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(out, forType: .string)
+                        if !NSPasteboard.general.setString(out, forType: .string) {
+                            // Rare pasteboard-server hiccup: retry once, then be honest
+                            // instead of showing "Text copied" for a failed copy.
+                            NSPasteboard.general.clearContents()
+                            guard NSPasteboard.general.setString(out, forType: .string) else {
+                                Notifier.error("Copy failed", "Couldn't write to the clipboard — try again.")
+                                return
+                            }
+                        }
                         if self.settings.ocrNotify {
                             Notifier.info("Text copied", text.prefix(80) + (text.count > 80 ? "…" : ""))
                         }
