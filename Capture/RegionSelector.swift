@@ -62,6 +62,9 @@ enum RegionSelector {
         private let prompt: CenterPrompt?
         private let dim: DimStyle
         private var windows: [SelectionWindow] = []
+        private var monitors: [Any] = []
+        /// The view currently receiving a drag (set on the first mouseDown).
+        private weak var activeView: SelectionView?
 
         init(prompt: CenterPrompt?, dim: DimStyle, completion: @escaping (RegionSelection?) -> Void) {
             self.prompt = prompt
@@ -88,6 +91,64 @@ enum RegionSelector {
             let mouse = NSEvent.mouseLocation
             let target = windows.first { NSMouseInRect(mouse, $0.frame, false) } ?? windows.first
             target?.makeKeyAndOrderFront(nil)
+            installMonitors()
+        }
+
+        /// The selection is driven by EVENT MONITORS, not per-window mouse
+        /// routing. The window server can route a click through/past a freshly
+        /// ordered transparent overlay (registration takes a beat; hit-testing
+        /// is pixel-alpha based) — with monitors the very first click after the
+        /// hotkey ALWAYS starts the drag, no matter which window macOS picked.
+        private func installMonitors() {
+            let mask: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseDragged, .leftMouseUp]
+            // Normal path: the event reached one of our overlay windows. Swallow
+            // it (return nil) — the view no longer handles mouse events itself.
+            if let m = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] e in
+                guard let self, let w = e.window as? SelectionWindow else { return e }
+                self.route(e, at: w.convertPoint(toScreen: e.locationInWindow))
+                return nil
+            }) { monitors.append(m) }
+            // Rescue path: macOS routed the click to ANOTHER app (pass-through).
+            // Can't consume it, but the selection still tracks perfectly.
+            if let m = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] e in
+                // With no window attached, locationInWindow IS screen coordinates.
+                self?.route(e, at: e.window == nil ? e.locationInWindow : NSEvent.mouseLocation)
+            }) { monitors.append(m) }
+            // Esc / F from ANY of our windows, even if the overlay lost key.
+            if let m = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { [weak self] e in
+                guard let self else { return e }
+                if e.keyCode == 53 { self.finish(screen: nil, rect: nil); return nil }
+                if e.charactersIgnoringModifiers?.lowercased() == "f" {
+                    self.finishFullScreen(); return nil
+                }
+                return e
+            }) { monitors.append(m) }
+        }
+
+        /// Feed a mouse event (screen coordinates) to the right overlay view.
+        private func route(_ e: NSEvent, at screenPoint: NSPoint) {
+            switch e.type {
+            case .leftMouseDown:
+                guard activeView == nil,   // one drag at a time (local+global can't double-fire, but be safe)
+                      let win = windows.first(where: { NSMouseInRect(screenPoint, $0.frame, false) }),
+                      let view = win.contentView as? SelectionView else { return }
+                activeView = view
+                view.beginDrag(at: viewPoint(screenPoint, in: win))
+            case .leftMouseDragged:
+                guard let view = activeView, let win = view.window else { return }
+                view.updateDrag(to: viewPoint(screenPoint, in: win))
+            case .leftMouseUp:
+                guard let view = activeView, let win = view.window else { return }
+                activeView = nil
+                view.endDrag(at: viewPoint(screenPoint, in: win))
+            default:
+                break
+            }
+        }
+
+        private func viewPoint(_ screenPoint: NSPoint, in window: NSWindow) -> NSPoint {
+            let winPoint = window.convertPoint(fromScreen: screenPoint)
+            return window.contentView?.convert(winPoint, from: nil) ?? winPoint
         }
 
         /// Tear down the overlays and report "no selection" (stale-session reset).
@@ -104,7 +165,10 @@ enum RegionSelector {
         }
 
         private func finish(screen: NSScreen?, rect: CGRect?) {
-            // Tear down every overlay.
+            // Tear down the monitors first, then every overlay.
+            monitors.forEach(NSEvent.removeMonitor)
+            monitors.removeAll()
+            activeView = nil
             windows.forEach { $0.orderOut(nil) }
             windows.removeAll()
 
@@ -330,8 +394,11 @@ private final class SelectionView: NSView {
              NSColor(white: 0.6, alpha: 1), y: buttonRect.minY - 42)
     }
 
-    override func mouseDown(with event: NSEvent) {
-        let p = convert(event.locationInWindow, from: nil)
+    // Mouse input arrives from the Session's event monitors (NOT AppKit window
+    // routing — see installMonitors) so the first click always registers, even
+    // when the window server hasn't hit-tested the fresh overlay yet.
+
+    func beginDrag(at p: NSPoint) {
         // Center prompt up + click on the button → record the whole screen.
         if prompt != nil, startPoint == nil, currentRect.width <= 0, buttonRect.contains(p) {
             onFull?()
@@ -343,15 +410,16 @@ private final class SelectionView: NSView {
         needsDisplay = true
     }
 
-    override func mouseDragged(with event: NSEvent) {
+    func updateDrag(to p: NSPoint) {
         guard let start = startPoint else { return }
-        let p = convert(event.locationInWindow, from: nil)
         currentRect = CGRect(x: min(start.x, p.x), y: min(start.y, p.y),
                              width: abs(p.x - start.x), height: abs(p.y - start.y))
+            .intersection(bounds)   // clamp to this screen
         needsDisplay = true
     }
 
-    override func mouseUp(with event: NSEvent) {
+    func endDrag(at p: NSPoint) {
+        updateDrag(to: p)
         let rect = currentRect
         startPoint = nil
         currentRect = .zero
