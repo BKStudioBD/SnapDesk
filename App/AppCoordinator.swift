@@ -182,9 +182,8 @@ final class AppCoordinator: NSObject {
 
     @objc func ocrCapture() {
         guard Permissions.ensureScreenRecording() else { return }
-        // OCR: no full-screen dim — only the dragged area tints dark, and a
-        // drawn "+" replaces the cursor while selecting.
-        RegionSelector.selectRegion(dim: .selectionOnly, drawnCross: true) { [weak self] selection in
+        // OCR: no full-screen dim — only the dragged area tints dark.
+        RegionSelector.selectRegion(dim: .selectionOnly) { [weak self] selection in
             guard let self, let selection else { return }
             Task { @MainActor in
                 do {
@@ -294,8 +293,7 @@ final class AppCoordinator: NSObject {
         RegionSelector.selectRegion(prompt: .init(
             title: "Click and drag",
             subtitle: "to select recording area",
-            buttonTitle: "Create a full screen recording"),
-            drawnCross: true) { [weak self] selection in
+            buttonTitle: "Create a full screen recording")) { [weak self] selection in
             guard let selection else { return }
             self?.presentPreRecord(selection: selection)
         }
