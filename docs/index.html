@@ -18,8 +18,10 @@
   a{color:var(--accent);text-decoration:none}
   .wrap{max-width:1000px;margin:0 auto;padding:0 22px}
   header{text-align:center;padding:74px 0 30px}
+  /* The app's own mark and palette, so the site and the icon in the Dock match. */
   .logo{width:74px;height:74px;border-radius:20px;display:inline-flex;align-items:center;justify-content:center;
-    background:linear-gradient(150deg,var(--accent),var(--accent2));font-size:38px;box-shadow:0 12px 40px rgba(91,140,255,.35)}
+    background:linear-gradient(180deg,#7774EA,#A66BE5);box-shadow:0 12px 40px rgba(133,110,232,.4)}
+  .logo svg{width:46px;height:46px;display:block}
   h1{font-size:44px;margin:18px 0 6px;letter-spacing:-.5px}
   .tag{font-size:19px;color:var(--muted);max-width:640px;margin:0 auto}
   .sub{font-size:14px;color:var(--muted);margin-top:12px}
@@ -52,7 +54,17 @@
 <div class="wrap">
 
   <header>
-    <div class="logo">📸</div>
+    <div class="logo">
+      <svg viewBox="0 0 100 100" role="img" aria-label="SnapDesk">
+        <path d="M42.03 19.84 L50.00 16.00 L57.97 19.84 M68.61 24.96 L76.58 28.80 L78.55 37.43 M81.18 48.94 L83.15 57.57 L77.63 64.49 M70.27 73.71 L64.75 80.63 L55.90 80.63 M44.10 80.63 L35.25 80.63 L29.73 73.71 M22.37 64.49 L16.85 57.57 L18.82 48.94 M21.45 37.43 L23.42 28.80 L31.39 24.96"
+              fill="none" stroke="#fff" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="50" cy="50" r="13" fill="#fff"/>
+        <path d="M50 50 L50 38.7 A11.3 11.3 0 0 1 61.3 50 Z" fill="#0091FF"/>
+        <path d="M50 50 L61.3 50 A11.3 11.3 0 0 1 50 61.3 Z" fill="#FF543E"/>
+        <path d="M50 50 L50 61.3 A11.3 11.3 0 0 1 38.7 50 Z" fill="#FFD300"/>
+        <path d="M50 50 L38.7 50 A11.3 11.3 0 0 1 50 38.7 Z" fill="#3ACD6C"/>
+      </svg>
+    </div>
     <h1>SnapDesk</h1>
     <p class="tag">One lightweight, fully native macOS menu-bar app — capture, annotate, OCR, color-pick, clipboard, screen-record and clean, all in one place.</p>
     <p class="sub">Screenshots, OCR, color picking, clipboard history and screen recording — one native app, nothing else to install.</p>

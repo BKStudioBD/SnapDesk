@@ -120,12 +120,14 @@ enum MenuBarIcon {
 
     private static func drawBrackets(in rect: NSRect) {
         let unit = rect.width
-        // Seven brackets divide the ring into shorter edges than four did, so the
-        // stroke is a touch thinner and the arms take a bigger share of each edge
-        // — at a real 18pt menu-bar size the old weights merged into a blob.
-        bracketsPath(in: rect.insetBy(dx: unit * 0.06, dy: unit * 0.06),
-                     lineWidth: unit * 0.075,
-                     armRatio: 0.38).stroke()
+        // Seven brackets divide the ring into much shorter edges than four did,
+        // so both the stroke and the arms have to come DOWN: at the old weights
+        // the round caps met in the middle of every edge and the mark rasterised
+        // as a solid ring at a real 18pt menu-bar size — checked on the proof
+        // sheet ./make-icon.sh writes.
+        bracketsPath(in: rect.insetBy(dx: unit * 0.05, dy: unit * 0.05),
+                     lineWidth: unit * 0.066,
+                     armRatio: 0.30).stroke()
     }
 
     private static func drawCentre(in rect: NSRect) {
