@@ -63,7 +63,7 @@ struct SettingsView: View {
 enum SettingsSection: String, CaseIterable, Identifiable {
     case general = "General", shortcuts = "Shortcuts", screenshot = "Screenshot"
     case recording = "Recording"
-    case ocr = "OCR", color = "Color", clipboard = "Clipboard", help = "Help", about = "About"
+    case ocr = "OCR", color = "Color Picker", clipboard = "Clipboard", help = "Help", about = "About"
     var id: String { rawValue }
     var icon: String {
         switch self {
@@ -706,7 +706,7 @@ private struct HelpTab: View {
                 row("Copy as", "Right-click → Copy as: strip line breaks, trim lines, case changes, slug, URL-decode, pretty-print JSON. The stored item is never rewritten — only what you paste this once.")
                 row("More", "Right-click for Copy / Paste / Star / Delete.")
             }
-            Section("Color  (\(settings.colorHotkey.displayString))") {
+            Section("Color Picker  (\(settings.colorHotkey.displayString))") {
                 row("Pick", "Magnified eyedropper; copies in your chosen format.")
                 row("Formats", "HEX or RGB — Settings → Color.")
                 row("Recent", "Settings → Color keeps the last 16 picks — click a swatch to copy it again.")

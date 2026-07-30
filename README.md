@@ -96,7 +96,7 @@ A dark four-tab window for getting disk and memory back. Nothing is removed with
 ### 🧰 Everything else
 - **Welcome & Setup window** — first-run tour + permission checklist; reopen any time from Settings → General → *Setup*.
 - **A menu bar you can read at a glance** — the six capture actions, then the Cleaner and Settings. Shortcuts, the update check and the setup window all live inside Settings rather than crowding the menu.
-- **Settings dashboard** — grouped sidebar (General / Shortcuts / Capture: Screenshot·Recording·OCR·Color / Data: Clipboard / About: Help·About), every feature fully configurable.
+- **Settings dashboard** — grouped sidebar (General / Shortcuts / Capture: Screenshot·Recording·OCR·Color Picker / Data: Clipboard / About: Help·About), every feature fully configurable.
 - **Built-in Help** — all shortcuts and per-feature guides inside the app.
 - **Launch at login**; two custom feedback sounds — a rising pair when content comes IN (capture, copy, save), its falling mirror when it goes OUT (paste) — each with a test button, or silent mode.
 - **Single-instance guard** — launching a second copy just focuses the first.
