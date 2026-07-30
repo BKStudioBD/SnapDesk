@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// One line in the Clean tab: a named pile of disposable files, the folders it
@@ -234,8 +235,10 @@ enum CacheCleaner {
         let fm = FileManager.default
         let cutoff = Date().addingTimeInterval(-recentWindow)
         var freed: UInt64 = 0
+        let runningIDs = category.isTrash ? [] : runningBundleIDs()
         for item in removableItems(in: category) {
             if !category.isTrash, wasTouched(item, after: cutoff) { continue }
+            if !category.isTrash, isOwnedByRunningApp(item, runningIDs: runningIDs) { continue }
             let bytes = size(ofItemAt: item)
             do {
                 // Emptying the Trash is the ONE permanent delete in SnapDesk,
@@ -263,7 +266,9 @@ enum CacheCleaner {
     private static let recentWindow: TimeInterval = 600
 
     /// The children of a category's directories that may be removed.
-    private static func removableItems(in category: CacheCategory) -> [URL] {
+    /// Internal, not private, so the tests can pin the invariant this whole
+    /// feature rests on: what comes back is the CONTENTS, never the directory.
+    static func removableItems(in category: CacheCategory) -> [URL] {
         let fm = FileManager.default
         var out: [URL] = []
         for directory in category.paths {
@@ -302,7 +307,13 @@ enum CacheCleaner {
     /// logical size, so the figure matches what the disk gets back.
     static func size(ofItemAt url: URL) -> UInt64 {
         let fm = FileManager.default
-        let keys: Set<URLResourceKey> = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey]
+        // `fileIdentifier` comes along so a block referenced from several places
+        // is counted once. pnpm hard-links every package from its store into
+        // each project's node_modules, and APFS clones do the same for copies —
+        // summed naively, twelve projects reported ~5 GB that emptying the Trash
+        // would never give back.
+        let keys: Set<URLResourceKey> = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey,
+                                         .fileIdentifierKey]
         func allocated(_ url: URL) -> UInt64 {
             let values = try? url.resourceValues(forKeys: keys)
             return UInt64(values?.totalFileAllocatedSize ?? values?.fileAllocatedSize ?? 0)
@@ -314,7 +325,27 @@ enum CacheCleaner {
                                          options: [], errorHandler: { _, _ in true })
         else { return 0 }
         var total: UInt64 = 0
-        for case let file as URL in walker { total += allocated(file) }
+        var counted = Set<UInt64>()
+        for case let file as URL in walker {
+            if let id = (try? file.resourceValues(forKeys: [.fileIdentifierKey]))?.fileIdentifier,
+               !counted.insert(id).inserted { continue }
+            total += allocated(file)
+        }
         return total
+    }
+
+    /// Whether this cache directory belongs to an app that is running right now.
+    ///
+    /// Modification time says nothing about open file descriptors: a Chromium
+    /// app can go eleven minutes without writing its disk cache while holding
+    /// every one of those files open, and pulling the directory out from under
+    /// it means broken images and cache errors until it is relaunched.
+    static func isOwnedByRunningApp(_ url: URL, runningIDs: Set<String>) -> Bool {
+        runningIDs.contains(url.lastPathComponent.lowercased())
+    }
+
+    /// Bundle ids of everything running, lowercased — read once per pass.
+    static func runningBundleIDs() -> Set<String> {
+        Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier).map { $0.lowercased() })
     }
 }

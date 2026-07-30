@@ -9,8 +9,16 @@ import AVFoundation
 /// prompt) is involved: the input is a synthetic buffer.
 struct MicSampleBufferConversion {
     /// 48 kHz mono Int16 interleaved — exactly what the production path targets.
-    private let target = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 48_000,
-                                       channels: 1, interleaved: true)!
+    ///
+    /// Computed and throwing rather than a force-unwrapped stored property: a
+    /// trap in a stored property fires while the SUITE is being built, so the
+    /// whole suite reports as a crash instead of one failing test.
+    private var target: AVAudioFormat {
+        get throws {
+            try #require(AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 48_000,
+                                       channels: 1, interleaved: true))
+        }
+    }
 
     /// A tone in the same shape an input-node tap delivers, converted the same way.
     private func processedBuffer(frames: AVAudioFrameCount = 1024) throws -> AVAudioPCMBuffer {
@@ -21,6 +29,7 @@ struct MicSampleBufferConversion {
             let samples = try #require(source.floatChannelData)[channel]
             for i in 0..<Int(frames) { samples[i] = sinf(Float(i) * 0.05) * 0.5 }
         }
+        let target = try self.target
         let converter = try #require(AVAudioConverter(from: tapFormat, to: target))
         let out = try #require(AVAudioPCMBuffer(pcmFormat: target, frameCapacity: frames + 64))
         var fed = false

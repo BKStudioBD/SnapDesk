@@ -140,10 +140,11 @@ struct OCREscalationTests {
         #expect(trimmed.isEmpty == false)
     }
 
-    @Test("Vision's newest installed model is selected, not a pinned old one")
-    func usesTheNewestRevision() {
-        // Pinning Revision3 forever would leave accuracy on the table on a newer
-        // macOS; asking for one that isn't installed throws.
+    @Test("The recognizer reports the languages this Mac can actually read")
+    func offersInstalledLanguages() {
+        // Named for what it checks. It used to claim to prove the newest Vision
+        // revision was selected — which it never asserted, so a hard-pinned
+        // Revision3 (exactly the regression it was guarding) kept it green.
         let languages = OCRService.supportedLanguages()
         #expect(languages.isEmpty == false, "the recognizer should offer languages")
         #expect(languages.contains { $0.hasPrefix("en") }, "got: \(languages)")

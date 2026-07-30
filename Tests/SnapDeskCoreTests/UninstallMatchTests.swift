@@ -21,7 +21,7 @@ struct UninstallMatchTests {
         // Removing Chrome must not take Chrome Canary's data with it.
         #expect(!UninstallMatch.matchesBundleID("com.google.Chromecanary.plist",
                                                 bundleID: "com.google.Chrome"))
-        #expect(!UninstallMatch.matchesBundleID("com.google.Chrome2", bundleID: "com.google.Chrome"))
+        #expect(UninstallMatch.matchesBundleID("com.google.Chrome2", bundleID: "com.google.Chrome") == false)
     }
 
     @Test("Case doesn't matter — the file system's does not either")
@@ -31,7 +31,7 @@ struct UninstallMatchTests {
 
     @Test("An app with no bundle id matches nothing by id")
     func emptyBundleIDMatchesNothing() {
-        #expect(!UninstallMatch.matchesBundleID("anything.plist", bundleID: ""))
+        #expect(UninstallMatch.matchesBundleID("anything.plist", bundleID: "") == false)
     }
 
     // MARK: - Name
@@ -46,31 +46,31 @@ struct UninstallMatchTests {
     @Test("A name that is only part of a longer word does not match")
     func respectsWordBoundaries() {
         // The bug this pins: uninstalling "Snap" swept up every SnapDesk file.
-        #expect(!UninstallMatch.matchesName("SnapDeskCache", appName: "Snap"))
-        #expect(!UninstallMatch.matchesName("Slackware", appName: "Slack"))
+        #expect(UninstallMatch.matchesName("SnapDeskCache", appName: "Snap") == false)
+        #expect(UninstallMatch.matchesName("Slackware", appName: "Slack") == false)
     }
 
     @Test("Short names are too weak a signal to use")
     func ignoresShortNames() {
         // "Arc" would otherwise claim every folder with "arc" in it.
-        #expect(!UninstallMatch.matchesName("Arc", appName: "Arc"))
-        #expect(!UninstallMatch.matchesName("search-arc.db", appName: "Arc"))
+        #expect(UninstallMatch.matchesName("Arc", appName: "Arc") == false)
+        #expect(UninstallMatch.matchesName("search-arc.db", appName: "Arc") == false)
     }
 
     @Test("A reverse-DNS filename is never matched by name")
     func neverMatchesBundleIDsByName() {
         // A third-party app called "Music" must not claim Apple's preferences.
-        #expect(!UninstallMatch.matchesName("com.apple.Music.plist", appName: "Music"))
-        #expect(!UninstallMatch.matchesName("com.apple.Notes.savedState", appName: "Notes"))
+        #expect(UninstallMatch.matchesName("com.apple.Music.plist", appName: "Music") == false)
+        #expect(UninstallMatch.matchesName("com.apple.Notes.savedState", appName: "Notes") == false)
     }
 
     @Test("What counts as a reverse-DNS filename")
     func bundleIDShape() {
         #expect(UninstallMatch.looksLikeBundleID("com.apple.Music.plist"))
         #expect(UninstallMatch.looksLikeBundleID("org.mozilla.firefox"))
-        #expect(!UninstallMatch.looksLikeBundleID("Music.plist"))
-        #expect(!UninstallMatch.looksLikeBundleID("my.app"))
-        #expect(!UninstallMatch.looksLikeBundleID("com..Music"))
+        #expect(UninstallMatch.looksLikeBundleID("Music.plist") == false)
+        #expect(UninstallMatch.looksLikeBundleID("my.app") == false)
+        #expect(UninstallMatch.looksLikeBundleID("com..Music") == false)
     }
 
     // MARK: - Vendor folders
@@ -90,13 +90,13 @@ struct UninstallMatchTests {
         #expect(UninstallMatch.vendorChildMatches(vendor: "Google", child: "Chrome", tokens: tokens))
         // Google/GoogleUpdater is shared with Drive and Earth: it matches only
         // the same word the vendor folder did, so it stays.
-        #expect(!UninstallMatch.vendorChildMatches(vendor: "Google", child: "GoogleUpdater", tokens: tokens))
-        #expect(!UninstallMatch.vendorChildMatches(vendor: "Google", child: "DriveFS", tokens: tokens))
+        #expect(UninstallMatch.vendorChildMatches(vendor: "Google", child: "GoogleUpdater", tokens: tokens) == false)
+        #expect(UninstallMatch.vendorChildMatches(vendor: "Google", child: "DriveFS", tokens: tokens) == false)
     }
 
     @Test("A folder that isn't the vendor's is not searched at all")
     func unrelatedVendorFolderIsSkipped() {
         let tokens = UninstallMatch.tokens(appName: "Google Chrome", bundleID: "com.google.Chrome")
-        #expect(!UninstallMatch.vendorChildMatches(vendor: "Adobe", child: "Chrome", tokens: tokens))
+        #expect(UninstallMatch.vendorChildMatches(vendor: "Adobe", child: "Chrome", tokens: tokens) == false)
     }
 }

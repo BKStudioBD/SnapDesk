@@ -250,8 +250,12 @@ struct ClipboardHistoryView: View {
         .sheet(item: $sheet) { sheetContent($0) }
         // A selection must never survive as invisible state: rows the person can no
         // longer see would still be merged by the next ⌘⇧M.
-        .onChange(of: search) { selection.prune(to: filtered.map(\.id)) }
-        .onChange(of: filter) { selection.prune(to: filtered.map(\.id)) }
+        // The keyboard cursor has to follow the list it points into. Only the
+        // multi-selection was pruned, so after ↓↓↓ and a search that narrows to
+        // one row, `selected` still pointed at row 3: nothing was highlighted
+        // and ↵ did nothing.
+        .onChange(of: search) { selection.prune(to: filtered.map(\.id)); selected = 0 }
+        .onChange(of: filter) { selection.prune(to: filtered.map(\.id)); selected = 0 }
     }
 
     // MARK: - Multi-selection
@@ -475,15 +479,23 @@ struct ClipboardHistoryView: View {
     }
 
     private var filterChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(ClipboardRows.Filter.allCases) { f in
-                    FilterChip(title: f.rawValue, icon: f.icon, active: filter == f) { filter = f }
-                }
-            }
-            .padding(.horizontal, 16)
+        // Six chips are wider than the window's 400pt floor, and a hidden
+        // scrollbar meant the last chip and a half — Pinned among them — simply
+        // weren't there, with no cue that anything was off-screen. Fit them when
+        // they fit; scroll visibly when they don't.
+        ViewThatFits(in: .horizontal) {
+            chipRow.padding(.horizontal, 16)
+            ScrollView(.horizontal) { chipRow.padding(.horizontal, 16) }
         }
         .padding(.bottom, 8)
+    }
+
+    private var chipRow: some View {
+        HStack(spacing: 6) {
+            ForEach(ClipboardRows.Filter.allCases) { f in
+                FilterChip(title: f.rawValue, icon: f.icon, active: filter == f) { filter = f }
+            }
+        }
     }
 }
 

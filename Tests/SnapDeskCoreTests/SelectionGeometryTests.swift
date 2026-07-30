@@ -98,7 +98,7 @@ struct SelectionGeometryTests {
         let pointerZone = CGRect(x: 700 - 64, y: 400 - 64, width: 128, height: 128)
         let layout = SelectionGeometry.readout(size: chip, selection: selection,
                                                container: screen, avoiding: pointerZone)
-        #expect(!layout.frame.intersects(pointerZone))
+        #expect(layout.frame.intersects(pointerZone) == false)
         #expect(layout.frame.minY == selection.maxY + SelectionGeometry.readoutGap)
     }
 

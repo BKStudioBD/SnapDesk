@@ -41,29 +41,31 @@ struct HotkeyDisplay {
 /// What the shortcut recorder will and won't accept. A global hotkey with a weak
 /// modifier eats ordinary typing system-wide, so these are guard rails, not taste.
 struct HotkeyRecording {
-    private func event(_ key: Int, _ flags: NSEvent.ModifierFlags) -> NSEvent {
-        NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags,
-                         timestamp: 0, windowNumber: 0, context: nil,
-                         characters: "x", charactersIgnoringModifiers: "x",
-                         isARepeat: false, keyCode: UInt16(key))!
+    /// `keyEvent` really can return nil; a `!` here traps the run instead of
+    /// failing this one test.
+    private func event(_ key: Int, _ flags: NSEvent.ModifierFlags) throws -> NSEvent {
+        try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags,
+                                      timestamp: 0, windowNumber: 0, context: nil,
+                                      characters: "x", charactersIgnoringModifiers: "x",
+                                      isARepeat: false, keyCode: UInt16(key)))
     }
 
     @Test("Combos without a ⌘/⌃/⌥ modifier are refused", .tags(.regression),
           arguments: [NSEvent.ModifierFlags(), .shift, .capsLock])
-    func refusesWeakModifiers(_ flags: NSEvent.ModifierFlags) {
+    func refusesWeakModifiers(_ flags: NSEvent.ModifierFlags) throws {
         // Shift-only would swallow every capital letter the user types.
-        #expect(Hotkey(event: event(kVK_ANSI_S, flags)) == nil)
+        #expect(Hotkey(event: try event(kVK_ANSI_S, flags)) == nil)
     }
 
     @Test("A real modifier is accepted, with or without Shift alongside it",
           arguments: [NSEvent.ModifierFlags.command, .control, .option,
                       [.command, .shift], [.control, .option]])
-    func acceptsRealModifiers(_ flags: NSEvent.ModifierFlags) {
-        #expect(Hotkey(event: event(kVK_ANSI_S, flags)) != nil)
+    func acceptsRealModifiers(_ flags: NSEvent.ModifierFlags) throws {
+        #expect(Hotkey(event: try event(kVK_ANSI_S, flags)) != nil)
     }
 
     @Test func capturesTheKeyCodeAndModifiers() throws {
-        let hk = try #require(Hotkey(event: event(kVK_ANSI_S, [.command, .shift])))
+        let hk = try #require(Hotkey(event: try event(kVK_ANSI_S, [.command, .shift])))
         #expect(hk.keyCode == UInt32(kVK_ANSI_S))
         #expect(hk.modifiers & UInt32(cmdKey) != 0)
         #expect(hk.modifiers & UInt32(shiftKey) != 0)

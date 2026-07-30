@@ -71,8 +71,13 @@ final class PinWindow: NSWindowController {
     private func copy() {
         let s = sourceScale   // the display the shot came from (mixed-DPI safe)
         let pb = NSPasteboard.general; pb.clearContents()
-        pb.writeObjects([NSImage(cgImage: cg,
-            size: NSSize(width: CGFloat(cg.width) / s, height: CGFloat(cg.height) / s))])
+        // clearContents() has already run, so an unchecked failure would wipe
+        // the clipboard and still say "Copied".
+        guard pb.writeObjects([NSImage(cgImage: cg,
+            size: NSSize(width: CGFloat(cg.width) / s, height: CGFloat(cg.height) / s))]) else {
+            Notifier.error("Copy failed", "Couldn't write the pinned image to the clipboard.")
+            return
+        }
         if playSoundOnCopy { Sounds.playIn() }
         Notifier.info("Copied", "Pinned image copied.")
     }

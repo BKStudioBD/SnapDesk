@@ -776,7 +776,15 @@ final class EditorView: NSView, NSTextFieldDelegate {
         if [2, 4, 7].contains(handle) { maxX = p.x }
         if [0, 1, 2].contains(handle) { minY = p.y }
         if [5, 6, 7].contains(handle) { maxY = p.y }
-        selection = AnnotationRenderer.rect(CGPoint(x: minX, y: minY), CGPoint(x: maxX, y: maxY)).intersection(bounds)
+        let resized = AnnotationRenderer.rect(CGPoint(x: minX, y: minY),
+                                              CGPoint(x: maxX, y: maxY)).intersection(bounds)
+        // Dragged clean off the display, `intersection` returns CGRect.null,
+        // whose maxX/minY are infinite: the toolbars fly off to infinity and
+        // disappear, compositing returns nil so Copy/Save/Pin quietly stop
+        // working, and the annotations are only recoverable by pressing Esc.
+        // Keep the last good rect instead, the way CropBox does.
+        guard !resized.isNull, resized.width >= 8, resized.height >= 8 else { return }
+        selection = resized
     }
 
     // MARK: - Floating glass bars
@@ -1161,7 +1169,15 @@ final class EditorView: NSView, NSTextFieldDelegate {
         commitCropIfPending()
         guard let cg = compositeCG() else { return }
         let img = NSImage(cgImage: cg, size: selection.size)
-        let pb = NSPasteboard.general; pb.clearContents(); pb.writeObjects([img])
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        // `finish()` releases the frozen bitmap and every annotation, so saying
+        // "Copied" without checking meant the only copy of the work could be
+        // gone while the toast claimed otherwise.
+        guard pb.writeObjects([img]) else {
+            Notifier.error("Copy failed", "Couldn't write the screenshot to the clipboard.")
+            return
+        }
         if let s = settings, s.autoSaveEnabled { autoSave(cg, settings: s) }
         Notifier.info("Copied", "Screenshot copied to clipboard.")
         playFeedback()
@@ -1234,17 +1250,25 @@ final class EditorView: NSView, NSTextFieldDelegate {
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
         panel.nameFieldStringValue = "SnapDesk \(f.string(from: Date())).\(fmt == .png ? "png" : "jpg")"
         panel.begin { [weak self] resp in
-            if resp == .OK, let url = panel.url, let data = AnnotationRenderer.encode(cg, format: fmt, quality: q) {
-                do {
-                    try data.write(to: url, options: .atomic)
-                    self?.playFeedback()
-                    self?.session?.finish()
-                } catch {
-                    Notifier.error("Save failed", error.localizedDescription)
-                    self?.session?.showOverlays()
-                }
-            } else {
+            guard resp == .OK, let url = panel.url else {
                 self?.session?.showOverlays()   // cancelled → bring the editor back
+                return
+            }
+            // A failed encode used to land in the SAME branch as "the user
+            // pressed Cancel": no file written, no message, the editor simply
+            // reappearing as though nothing had been asked for.
+            guard let data = AnnotationRenderer.encode(cg, format: fmt, quality: q) else {
+                Notifier.error("Save failed", "Couldn't encode that image.")
+                self?.session?.showOverlays()
+                return
+            }
+            do {
+                try data.write(to: url, options: .atomic)
+                self?.playFeedback()
+                self?.session?.finish()
+            } catch {
+                Notifier.error("Save failed", error.localizedDescription)
+                self?.session?.showOverlays()
             }
         }
     }
@@ -1254,7 +1278,13 @@ final class EditorView: NSView, NSTextFieldDelegate {
         commitCropIfPending()
         guard let cg = compositeCG(), let nice = AnnotationRenderer.beautify(cg) else { return }
         let pb = NSPasteboard.general; pb.clearContents()
-        pb.writeObjects([NSImage(cgImage: nice, size: NSSize(width: nice.width, height: nice.height))])
+        // Same reason as Copy: `finish()` throws the work away, so the toast
+        // must not claim a copy that didn't happen.
+        guard pb.writeObjects([NSImage(cgImage: nice,
+                                       size: NSSize(width: nice.width, height: nice.height))]) else {
+            Notifier.error("Copy failed", "Couldn't write the screenshot to the clipboard.")
+            return
+        }
         Notifier.info("Beautified", "Padded gradient screenshot copied to clipboard.")
         playFeedback()
         session?.finish()

@@ -25,13 +25,18 @@ struct CropBoxTests {
         #expect(box.rect.width < image.width && box.rect.height < image.height)
     }
 
-    @Test("Each way of aiming the box marks it touched", arguments: ["handle", "move", "draw"])
-    func aimingMarksItDragged(_ gesture: String) {
+    /// Typed, not stringly: with a `default:` arm a typo in an argument silently
+    /// re-ran the `draw` case and the test stayed green while one of the three
+    /// gestures went unexercised.
+    enum AimGesture: CaseIterable { case handle, move, draw }
+
+    @Test("Each way of aiming the box marks it touched", arguments: AimGesture.allCases)
+    func aimingMarksItDragged(_ gesture: AimGesture) {
         var box = CropBox(limit: image)
         switch gesture {
-        case "handle": box.drag(handle: 0, to: CGPoint(x: 10, y: 10))
-        case "move":   box.move(by: CGSize(width: 5, height: 0))
-        default:       box.draw(from: CGPoint(x: 100, y: 100), to: CGPoint(x: 300, y: 250))
+        case .handle: box.drag(handle: 0, to: CGPoint(x: 10, y: 10))
+        case .move:   box.move(by: CGSize(width: 5, height: 0))
+        case .draw:   box.draw(from: CGPoint(x: 100, y: 100), to: CGPoint(x: 300, y: 250))
         }
         #expect(box.wasDragged, "gesture: \(gesture)")
     }

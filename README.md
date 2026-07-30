@@ -184,7 +184,7 @@ Support/     Permissions, paster, notifier, sounds, diagnostics
 ./test-tools.sh  # headless render test of every annotation tool → PNGs
 ```
 
-`./test.sh` type-checks every source **and runs the unit suite**: `swift test` — Swift Testing, **219 tests in 31 suites, about a second**. It needs no microphone, no screen recording and no permission of any kind, and it never writes to the real pasteboard.
+`./test.sh` type-checks every source **and runs the unit suite**: `swift test` — Swift Testing, **232 tests in 33 suites, about a second**. It needs no microphone, no screen recording and no permission of any kind, and it never writes to the real pasteboard.
 
 What it pins down, chosen so every bug that actually shipped stays fixed:
 
@@ -194,6 +194,8 @@ What it pins down, chosen so every bug that actually shipped stays fixed:
 | Pasteboard text | trailing-newline trim (a paste lands where the caret is), byte-accurate size cap |
 | Persist snapshot | clear-on-quit writes **no** unpinned plaintext, pinned survive the cap, aggregate byte budget |
 | Hex | parse/format round-trip, malformed input refused, channel order not reversed |
+| Colour formats | HEX and rgb() describe the same colour, lowercase honoured, a pattern colour falls back instead of trapping |
+| Cleaner safety | a clean offers the CONTENTS and never the directory itself, exclusions hold, a running app's cache is skipped, a match stops the descent, symlinks aren't followed, and neither a tool's home under ~ nor an ambiguous `build` is ever pre-ticked |
 | Hotkeys | glyph order, menu equivalents, JSON round-trip, Shift-only combos refused |
 | OCR escalation | wide thin strips (over 40:1), tiny text, 1× captures, blank frames read empty, reading order |
 | OCR layout | table → TSV on a real grid, **prose never turned into tabs**, code mode keeps identifiers |

@@ -30,7 +30,7 @@ struct CacheCatalogTests {
         #expect(other.excluding.contains("Google"))
         #expect(other.excluding.contains("com.spotify.client"))
         #expect(other.excluding.contains("Homebrew"))
-        #expect(!other.excluding.isEmpty)
+        #expect(other.excluding.isEmpty == false)
     }
 
     @Test("Nothing outside the home directory it was given")
@@ -104,7 +104,7 @@ struct CacheInUseTests {
         try Data("stale".utf8).write(to: directory.appending(path: "old.bin"))
 
         // Cutoff in the future: everything on disk is older than it.
-        #expect(!CacheCleaner.wasTouched(directory, after: Date().addingTimeInterval(3600)))
+        #expect(CacheCleaner.wasTouched(directory, after: Date().addingTimeInterval(3600)) == false)
     }
 }
 
@@ -141,9 +141,9 @@ struct JunkRulesTests {
     func skipsDotDirectories() {
         // ~/.nvm and ~/.npm hold gigabytes that belong to the Clean tab, not
         // here — and descending into them would attribute them to "a project".
-        #expect(!JunkRules.shouldDescend(into: ".nvm"))
-        #expect(!JunkRules.shouldDescend(into: ".npm"))
-        #expect(!JunkRules.shouldDescend(into: ".git"))
+        #expect(JunkRules.shouldDescend(into: ".nvm") == false)
+        #expect(JunkRules.shouldDescend(into: ".npm") == false)
+        #expect(JunkRules.shouldDescend(into: ".git") == false)
     }
 
     @Test("A dot-named junk folder is still FOUND — the name rule is asked first")
@@ -152,13 +152,13 @@ struct JunkRulesTests {
         // which is exactly the bug this pins.
         #expect(JunkRules.kind(for: ".build") != nil)
         #expect(JunkRules.kind(for: ".venv") != nil)
-        #expect(!JunkRules.shouldDescend(into: ".build"))
+        #expect(JunkRules.shouldDescend(into: ".build") == false)
     }
 
     @Test("Library and Applications belong to the other tabs")
     func skipsSystemFolders() {
-        #expect(!JunkRules.shouldDescend(into: "Library"))
-        #expect(!JunkRules.shouldDescend(into: "Applications"))
+        #expect(JunkRules.shouldDescend(into: "Library") == false)
+        #expect(JunkRules.shouldDescend(into: "Applications") == false)
         #expect(JunkRules.shouldDescend(into: "Dev"))
         #expect(JunkRules.shouldDescend(into: "Documents"))
     }

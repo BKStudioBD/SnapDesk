@@ -157,7 +157,12 @@ enum ProjectJunkScanner {
     @discardableResult
     static func trash(_ items: [JunkItem]) -> UInt64 {
         var freed: UInt64 = 0
-        for item in items {
+        // The scan can take the better part of a minute, and a build started
+        // during it writes into a folder that was already listed and ticked.
+        // Same ten-minute rule the cache sweep uses: something written that
+        // recently is in use, whatever the list said when it was drawn.
+        let cutoff = Date().addingTimeInterval(-600)
+        for item in items where !CacheCleaner.wasTouched(item.url, after: cutoff) {
             do {
                 try FileManager.default.trashItem(at: item.url, resultingItemURL: nil)
                 freed += item.size

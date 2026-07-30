@@ -351,6 +351,10 @@ private struct HotkeyRow: View {
 
 private struct ScreenshotTab: View {
     @EnvironmentObject var settings: SettingsStore
+    /// Local while the colour panel is being dragged; written to the store once
+    /// the drag settles.
+    @State private var defaultColor: Color = .red
+    @State private var colorWrite: Task<Void, Never>?
     private let tools: [(Int, String)] = [
         (0, "Arrow"), (1, "Rectangle"), (2, "Ellipse"), (3, "Line"),
         (4, "Pen"), (5, "Highlighter"), (6, "Blur"), (7, "Step"), (8, "Text"), (9, "Spotlight"),
@@ -366,9 +370,26 @@ private struct ScreenshotTab: View {
                     Slider(value: $settings.defaultLineWidth, in: 1...14)
                     Text("\(Int(settings.defaultLineWidth))").monospacedDigit().foregroundStyle(.secondary)
                 }
-                ColorPicker("Default color", selection: Binding(
-                    get: { Color(hex: settings.defaultAnnotationColorHex) },
-                    set: { settings.defaultAnnotationColorHex = NSColor($0).hexString() }))
+                // The live drag stays local. Bound straight to the store, every
+                // frame of a drag in the colour panel wrote UserDefaults and
+                // fired objectWillChange, re-rendering the whole Settings
+                // window — sidebar included — while the pointer moved.
+                ColorPicker("Default color", selection: $defaultColor)
+                    .onAppear { defaultColor = Color(hex: settings.defaultAnnotationColorHex) }
+                    .onChange(of: defaultColor) {
+                        // Debounced: the store's didSet writes UserDefaults and
+                        // publishes, so an undebounced write re-rendered the
+                        // whole window on every frame of the drag.
+                        colorWrite?.cancel()
+                        colorWrite = Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(250))
+                            guard !Task.isCancelled else { return }
+                            let hex = NSColor(defaultColor).hexString()
+                            if hex != settings.defaultAnnotationColorHex {
+                                settings.defaultAnnotationColorHex = hex
+                            }
+                        }
+                    }
             }
             Section("Saving") {
                 Picker("Format", selection: $settings.saveFormat) {
@@ -750,7 +771,12 @@ private struct HelpTab: View {
     }
     private func row(_ k: String, _ v: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Text(k).font(.callout.weight(.semibold)).frame(width: 70, alignment: .leading)
+            // minWidth, not a fixed 70: "Control bar", "Custom words" and
+            // "Table mode" all wrapped onto two lines against a single-line
+            // value, and a fixed point width ignores the system text size.
+            Text(k).font(.callout.weight(.semibold))
+                .frame(minWidth: 96, alignment: .leading)
+                .fixedSize(horizontal: true, vertical: false)
             Text(v).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -764,7 +790,10 @@ private struct AboutTab: View {
             Image(systemName: "viewfinder")
                 .font(.system(size: 46)).foregroundStyle(.tint)
             Text("SnapDesk").font(.title.bold())
-            Text("Version 1.1").foregroundStyle(.secondary)
+            // Read from the bundle, like the Updates section does — a hardcoded
+            // string here goes stale on the next version bump and disagrees
+            // with what the updater reports.
+            Text("Version \(Updater.currentVersion)").foregroundStyle(.secondary)
             Text("Capture · Annotate · OCR · Color · Clipboard\nOne lightweight, on-device menu-bar app.")
                 .multilineTextAlignment(.center).font(.callout).foregroundStyle(.secondary)
             Text("No network. Everything stays on your Mac.")

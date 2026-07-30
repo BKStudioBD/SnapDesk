@@ -116,7 +116,11 @@ final class ClipboardManager: ObservableObject {
             // (CJK, emoji) could still keep ~4 MB.
             ingest(.text(ClipboardItem.normalizedForStorage(Self.cappedByBytes(string, 1_048_576))))
         } else if settings?.clipboardStoreImages != false,
-                  let data = pasteboard.data(forType: .tiff) ?? pasteboard.data(forType: .png) {
+                  // PNG first: it is the compressed flavour, so a huge canvas
+                  // costs megabytes here instead of the hundreds that an
+                  // uncompressed TIFF materialises on the main thread — only to
+                  // be thrown away by the size guard below.
+                  let data = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff) {
             // Same image copied twice in a row → skip the duplicate row. Hash
             // the WHOLE buffer: two different screenshots of the same window are
             // the same byte length and share a header + first pixel row, so a
@@ -180,8 +184,16 @@ final class ClipboardManager: ObservableObject {
     /// row thumbnail. ~100-300 KB per item instead of tens of MB.
     private static func compressed(_ image: NSImage) -> ClipboardItem.Kind? {
         guard let full = downscaled(image, maxPx: 1600),
-              let data = full.representation(using: .jpeg, properties: [.compressionFactor: 0.85]),
               let thumbRep = downscaled(image, maxPx: 320) else { return nil }
+        // JPEG has no alpha channel, so a transparent logo came back with every
+        // transparent pixel solid BLACK — while the row's thumbnail, built from
+        // the un-encoded bitmap, still looked right. PNG for anything carrying
+        // transparency; JPEG stays the default because most copies are photos
+        // and screenshots, where it is a fraction of the size.
+        guard let data = full.hasAlpha
+                ? full.representation(using: .png, properties: [:])
+                : full.representation(using: .jpeg, properties: [.compressionFactor: 0.85])
+        else { return nil }
         return .image(data: data, thumb: Self.image(from: thumbRep))
     }
 
@@ -315,7 +327,14 @@ final class ClipboardManager: ObservableObject {
                 pasteboard.setString(out, forType: .URL)
             }
         case .image(let data, _):
-            if let img = NSImage(data: data) { pasteboard.writeObjects([img]) }
+            // `clearContents()` has already run, so a write that fails leaves
+            // the pasteboard EMPTY — whatever the person had is gone and the
+            // next ⌘V pastes nothing. Say so rather than wiping in silence.
+            guard let img = NSImage(data: data), pasteboard.writeObjects([img]) else {
+                Notifier.error("Copy failed", "That image couldn't be read.")
+                lastChangeCount = pasteboard.changeCount
+                return
+            }
         }
         // Claim the change so the monitor doesn't read our own write back and
         // file it as a fresh copy.

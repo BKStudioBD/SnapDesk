@@ -64,15 +64,23 @@ enum CaptureService {
     static func looksBlank(_ img: CGImage) -> Bool {
         let side = 16
         var pixels = [UInt8](repeating: 0, count: side * side * 4)
-        guard let ctx = pixels.withUnsafeMutableBytes({ buf -> CGContext? in
-            CGContext(data: buf.baseAddress, width: side, height: side,
-                      bitsPerComponent: 8, bytesPerRow: side * 4,
-                      space: CGColorSpaceCreateDeviceRGB(),
-                      bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue |
-                                  CGBitmapInfo.byteOrder32Little.rawValue)
-        }) else { return false }
-        ctx.interpolationQuality = .low
-        ctx.draw(img, in: CGRect(x: 0, y: 0, width: side, height: side))
+        // The context is used INSIDE the closure. `withUnsafeMutableBytes` only
+        // guarantees the pointer for the duration of that call, so a context
+        // built inside and drawn into afterwards writes through a pointer whose
+        // guarantee has expired — and this buffer is then read to decide whether
+        // a capture came back empty.
+        let drawn = pixels.withUnsafeMutableBytes { buf -> Bool in
+            guard let ctx = CGContext(data: buf.baseAddress, width: side, height: side,
+                                      bitsPerComponent: 8, bytesPerRow: side * 4,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue |
+                                                  CGBitmapInfo.byteOrder32Little.rawValue)
+            else { return false }
+            ctx.interpolationQuality = .low
+            ctx.draw(img, in: CGRect(x: 0, y: 0, width: side, height: side))
+            return true
+        }
+        guard drawn else { return false }
         var lo = 255, hi = 0
         for i in stride(from: 0, to: pixels.count, by: 4) {
             // Buffer is BGRA (byteOrder32Little + premultipliedFirst): the three

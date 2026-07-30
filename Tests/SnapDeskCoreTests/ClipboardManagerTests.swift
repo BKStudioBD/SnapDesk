@@ -156,10 +156,12 @@ struct PersistSnapshotTests {
     }
 
     @Test("A single huge item is capped so one paste can't bloat the plist")
-    func capsGiantItems() {
+    func capsGiantItems() throws {
         let huge = String(repeating: "x", count: 1_000_000)
         let out = ClipboardManager.persistSnapshot([text(huge)], cap: 100, pinnedOnly: false)
-        let stored = try! #require(out.first).text
+        // `try!` here turned a recoverable expectation failure into a trap that
+        // took the whole run down with it.
+        let stored = try #require(out.first).text
         #expect(stored.utf8.count <= 524_288)
     }
 

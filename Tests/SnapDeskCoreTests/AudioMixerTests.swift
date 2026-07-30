@@ -180,9 +180,12 @@ struct AudioMixerTests {
                 "got \(tail.chunks[10].samples[0]) — flushing first keeps the end of the sentence")
     }
 
+    /// Parameterised rather than looped inside one test: each spacing gets its
+    /// own identity, so the 1025 case can be re-run alone instead of being
+    /// buried under a failure flood from 1023.
     @Test("Consecutive buffers of ONE source butt together instead of summing into each other",
-          .tags(.regression))
-    func splicesConsecutiveBuffersOfOneSource() throws {
+          .tags(.regression), arguments: [1023, 1025])
+    func splicesConsecutiveBuffersOfOneSource(_ spacing: Int) throws {
         // Placement came purely from each buffer's PTS and the write was an
         // unconditional `+=`. Correct for two DIFFERENT sources; for two buffers of
         // the SAME source it meant that a PTS spacing disagreeing with the frame
@@ -194,20 +197,18 @@ struct AudioMixerTests {
         //
         // Both directions below feed contiguous DC, so ANY doubled or zeroed sample
         // shows up as a value that is not the one-source level.
-        for spacing in [1023, 1025] {
-            let mixer = AudioMixer()
-            let sink = Sink()
-            sink.attach(to: mixer)
-            for i in 0..<12 {
-                mixer.append(try buffer(0.25), from: .microphone,
-                             at: time(frame: i * spacing))
-            }
-            #expect(sink.chunks.count >= 8, "spacing \(spacing)")
-            for (chunkIndex, chunk) in sink.chunks.enumerated() {
-                for (sampleIndex, value) in chunk.samples.enumerated() {
-                    #expect(abs(value - oneSource) < 0.001,
-                            "spacing \(spacing), chunk \(chunkIndex) sample \(sampleIndex) is \(value)")
-                }
+        let mixer = AudioMixer()
+        let sink = Sink()
+        sink.attach(to: mixer)
+        for i in 0..<12 {
+            mixer.append(try buffer(0.25), from: .microphone,
+                         at: time(frame: i * spacing))
+        }
+        #expect(sink.chunks.count >= 8, "spacing \(spacing)")
+        for (chunkIndex, chunk) in sink.chunks.enumerated() {
+            for (sampleIndex, value) in chunk.samples.enumerated() {
+                #expect(abs(value - oneSource) < 0.001,
+                        "spacing \(spacing), chunk \(chunkIndex) sample \(sampleIndex) is \(value)")
             }
         }
     }
