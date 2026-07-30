@@ -42,52 +42,61 @@ struct DashboardTab: View {
     private var sample: SystemSample { monitor.sample }
 
     var body: some View {
-        VStack(spacing: 14) {
-            CleanerCard {
-                HStack(spacing: 20) {
-                    HealthRing(score: sample.health)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("System health").font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(CleanerTheme.text)
-                        Text(verdict).font(.system(size: 12)).foregroundStyle(CleanerTheme.muted)
-                            .fixedSize(horizontal: false, vertical: true)
-                        if let result {
-                            Text(result).font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(CleanerTheme.accent)
-                        }
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(spacing: 14) {
+                    health
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 12),
+                                        GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                        StatTile(symbol: "cpu", title: "Processor",
+                                 value: "\(Int((sample.cpuBusy * 100).rounded()))%",
+                                 detail: "busy", fill: sample.cpuBusy)
+                        StatTile(symbol: "memorychip", title: "Memory",
+                                 value: SystemStats.format(sample.memoryUsed),
+                                 detail: "of \(SystemStats.format(sample.memoryTotal)) used",
+                                 fill: fraction(sample.memoryUsed, sample.memoryTotal))
+                        StatTile(symbol: "internaldrive", title: "Disk",
+                                 value: SystemStats.format(sample.diskFree),
+                                 detail: "free of \(SystemStats.format(sample.diskTotal))",
+                                 fill: 1 - fraction(sample.diskFree, sample.diskTotal))
+                        StatTile(symbol: "network", title: "Network",
+                                 value: "↓ \(SystemStats.format(sample.networkIn))/s",
+                                 detail: "↑ \(SystemStats.format(sample.networkOut))/s", fill: nil)
                     }
-                    Spacer(minLength: 0)
                 }
                 .padding(16)
             }
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 2), spacing: 12) {
-                StatTile(symbol: "cpu", title: "Processor",
-                         value: "\(Int((sample.cpuBusy * 100).rounded()))%",
-                         detail: "busy", fill: sample.cpuBusy)
-                StatTile(symbol: "memorychip", title: "Memory",
-                         value: SystemStats.format(sample.memoryUsed),
-                         detail: "of \(SystemStats.format(sample.memoryTotal)) used",
-                         fill: fraction(sample.memoryUsed, sample.memoryTotal))
-                StatTile(symbol: "internaldrive", title: "Disk",
-                         value: SystemStats.format(sample.diskFree),
-                         detail: "free of \(SystemStats.format(sample.diskTotal))",
-                         fill: 1 - fraction(sample.diskFree, sample.diskTotal))
-                StatTile(symbol: "network", title: "Network",
-                         value: "↓ \(SystemStats.format(sample.networkIn))/s",
-                         detail: "↑ \(SystemStats.format(sample.networkOut))/s", fill: nil)
-            }
-
-            Spacer(minLength: 0)
-
-            CleanerActionBar(summary: "\(SystemStats.format(sample.memoryFree)) memory free right now",
-                             title: "Free up memory", isEnabled: true, isBusy: isCleaning) {
+            CleanerActionBar(summary: result ?? "\(SystemStats.format(sample.memoryFree)) memory free right now",
+                             title: "Free Up Memory", isEnabled: true, isBusy: isCleaning) {
                 Task { await freeMemory() }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 12))
         }
-        .padding(16)
         .task { await monitor.run() }
+    }
+
+    private var health: some View {
+        GroupBox {
+            HStack(spacing: 18) {
+                Gauge(value: Double(sample.health), in: 0...100) {
+                    Text("Health")
+                } currentValueLabel: {
+                    Text("\(sample.health)").monospacedDigit()
+                }
+                .gaugeStyle(.accessoryCircularCapacity)
+                .tint(cleanerScoreColor(sample.health))
+                .accessibilityLabel("System health \(sample.health) out of 100")
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("System health").fontWeight(.semibold)
+                    Text(verdict)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(6)
+        }
     }
 
     private var verdict: String {
@@ -114,30 +123,6 @@ struct DashboardTab: View {
     }
 }
 
-/// The score, drawn as a ring and written as a number — the ring alone would be
-/// colour carrying meaning.
-private struct HealthRing: View {
-    let score: Int
-
-    var body: some View {
-        ZStack {
-            Circle().stroke(CleanerTheme.line, lineWidth: 8)
-            Circle()
-                .trim(from: 0, to: CGFloat(score) / 100)
-                .stroke(CleanerTheme.gauge(score), style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-            VStack(spacing: 0) {
-                Text("\(score)").font(.system(size: 24, weight: .semibold)).monospacedDigit()
-                    .foregroundStyle(CleanerTheme.text)
-                Text("/100").font(.system(size: 10)).foregroundStyle(CleanerTheme.muted)
-            }
-        }
-        .frame(width: 84, height: 84)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("System health \(score) out of 100")
-    }
-}
-
 private struct StatTile: View {
     let symbol: String
     let title: String
@@ -147,29 +132,28 @@ private struct StatTile: View {
     let fill: Double?
 
     var body: some View {
-        CleanerCard {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Image(systemName: symbol).font(.system(size: 11)).foregroundStyle(CleanerTheme.muted)
-                    Text(title.uppercased()).font(.system(size: 10, weight: .semibold)).kerning(0.5)
-                        .foregroundStyle(CleanerTheme.muted)
-                }
-                Text(value).font(.system(size: 18, weight: .semibold)).monospacedDigit()
-                    .foregroundStyle(CleanerTheme.text)
-                    .lineLimit(1).minimumScaleFactor(0.7)
-                Text(detail).font(.system(size: 11)).foregroundStyle(CleanerTheme.muted).lineLimit(1)
+        GroupBox {
+            VStack(alignment: .leading, spacing: 5) {
+                Label(title, systemImage: symbol)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 if let fill {
-                    GeometryReader { geometry in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(CleanerTheme.line)
-                            Capsule().fill(CleanerTheme.gauge(Int((1 - fill) * 100)))
-                                .frame(width: geometry.size.width * CGFloat(min(1, max(0, fill))))
-                        }
-                    }
-                    .frame(height: 4)
+                    ProgressView(value: min(1, max(0, fill)))
+                        .tint(cleanerScoreColor(Int((1 - fill) * 100)))
+                        .labelsHidden()
                 }
             }
-            .padding(14)
+            .padding(4)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityElement(children: .combine)

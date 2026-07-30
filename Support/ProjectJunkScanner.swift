@@ -149,4 +149,10 @@ enum ProjectJunkScanner {
         }
         return freed
     }
+
+    /// Same work, off the main actor: a `node_modules` tree is tens of thousands
+    /// of files, and moving it froze the window until it finished.
+    static func trashInBackground(_ items: [JunkItem]) async -> UInt64 {
+        await BackgroundWork.run { trash(items) }
+    }
 }

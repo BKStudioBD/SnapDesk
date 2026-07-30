@@ -86,7 +86,7 @@ Every shortcut is rebindable live in **Settings → Shortcuts** (click, press a 
 
 
 ### 🧹 Cleaner (menu bar → *Cleaner…*)
-A dark four-tab window for getting disk and memory back. Nothing is removed without being **listed, sized and ticked** first, and everything goes to the **Trash** — with one exception the UI names out loud (emptying the Trash itself).
+A four-tab window for getting disk and memory back, built from the same system controls as the rest of the app and following your Mac's light or dark appearance. Nothing is removed without being **listed, sized and ticked** first, and everything goes to the **Trash** — with one exception the UI names out loud (emptying the Trash itself).
 
 - **Dashboard** — live processor, memory, disk and network readings with a 0–100 health score, and a **Free up memory** button. The memory pass targets *reclaimable* pages (inactive, purgeable, speculative) via `vm_allocate`, backs off the instant macOS reports memory pressure, and scales its reserve to the size of the Mac.
 - **Clean** — caches grouped into **Developer** (Xcode DerivedData, iOS DeviceSupport, SwiftPM, npm/yarn/pnpm, Homebrew, pip), **Browsers** (Chrome, Safari, Firefox, Arc), **Apps** (Spotify, Slack, Discord) and **System** (everything else in `~/Library/Caches`, temp, logs, Trash). Tick a whole group from its header, or the lot from *Select all*; the button says exactly how much it will free. Anything written in the **last ten minutes is skipped** — `unlink` succeeds on a file another app still has open, and a cache deleted mid-write is a corrupted app, not a cleaned one.
@@ -169,7 +169,7 @@ Features/
   OCR/         Vision text recognition
   Clipboard/   Pasteboard monitor, model, SwiftUI history window
   ColorPicker/ NSColorSampler + color formatting
-  Cleaner/     Dashboard, cache/build-junk/uninstall tabs (dark window)
+  Cleaner/     Dashboard, cache/build-junk/uninstall tabs
 Hotkeys/     Carbon global hotkey registration (no Accessibility permission needed)
 Settings/    Preferences store + SwiftUI settings dashboard
 Support/     Permissions, paster, notifier, sounds, diagnostics

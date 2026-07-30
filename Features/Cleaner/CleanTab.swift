@@ -32,40 +32,44 @@ struct CleanTab: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider().overlay(CleanerTheme.line)
+            CleanerListHeader(total: SystemStats.format(totalBytes),
+                              caption: "reclaimable in \(visible.count) place\(visible.count == 1 ? "" : "s")",
+                              hasRows: !visible.isEmpty,
+                              allSelected: !visible.isEmpty && selected.count >= visible.count) {
+                selected = selected.isEmpty ? Set(visible.map(\.id)) : []
+            }
+
+            Divider()
 
             if isScanning {
-                VStack(spacing: 10) {
-                    ProgressView().controlSize(.small)
-                    Text("Measuring…").font(.system(size: 12)).foregroundStyle(CleanerTheme.muted)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ProgressView("Measuring…")
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if visible.isEmpty {
-                CleanerEmptyState(symbol: "checkmark.circle", title: "Nothing to clean",
-                                  detail: "No caches, logs or temporary files worth removing right now.")
+                ContentUnavailableView("Nothing to Clean",
+                                       systemImage: "checkmark.circle",
+                                       description: Text("No caches, logs or temporary files worth removing right now."))
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 0, pinnedViews: []) {
-                        ForEach(groups) { group in
-                            let rows = visible.filter { $0.group == group }
-                            CleanerGroupHeader(title: group.rawValue,
-                                               state: state(of: rows),
-                                               size: SystemStats.format(bytes(of: rows))) {
-                                toggle(rows)
-                            }
+                List {
+                    ForEach(groups) { group in
+                        let rows = visible.filter { $0.group == group }
+                        Section {
                             ForEach(rows) { category in
-                                CleanerRow(symbol: category.symbol, title: category.name,
+                                CleanerRow(symbol: category.symbol,
+                                           title: category.name,
                                            detail: category.detail,
                                            size: SystemStats.format(sizes[category.id] ?? 0),
-                                           isSelected: selected.contains(category.id)) {
-                                    toggle([category])
-                                }
+                                           isSelected: binding(category.id))
                             }
+                        } header: {
+                            CleanerGroupHeader(title: group.rawValue,
+                                               size: SystemStats.format(bytes(of: rows)),
+                                               selection: rows.map { binding($0.id) })
                         }
                     }
-                    .padding(.bottom, 8)
                 }
+                .listStyle(.inset)
+                .alternatingRowBackgrounds()
             }
 
             CleanerActionBar(summary: summary,
@@ -77,27 +81,6 @@ struct CleanTab: View {
         .task { await scan() }
     }
 
-    private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(SystemStats.format(totalBytes))
-                    .font(.system(size: 26, weight: .semibold)).monospacedDigit()
-                    .foregroundStyle(CleanerTheme.accent)
-                Text("reclaimable in \(visible.count) place\(visible.count == 1 ? "" : "s")")
-                    .font(.system(size: 11)).foregroundStyle(CleanerTheme.muted)
-            }
-            Spacer()
-            Button(selected.isEmpty ? "Select all" : "Deselect all") {
-                selected = selected.isEmpty ? Set(visible.map(\.id)) : []
-            }
-            .buttonStyle(.plain)
-            .font(.system(size: 12))
-            .foregroundStyle(CleanerTheme.accent)
-            .disabled(visible.isEmpty)
-        }
-        .padding(.horizontal, 16).padding(.vertical, 14)
-    }
-
     private var summary: String {
         if let result { return result }
         let count = visible.filter { selected.contains($0.id) }.count
@@ -106,33 +89,30 @@ struct CleanTab: View {
 
     // MARK: - Selection
 
+    private func binding(_ id: String) -> Binding<Bool> {
+        Binding(get: { selected.contains(id) },
+                set: { isOn in
+                    if isOn { selected.insert(id) } else { selected.remove(id) }
+                })
+    }
+
     private func bytes(of rows: [CacheCategory]) -> UInt64 {
         rows.reduce(0) { $0 + (sizes[$1.id] ?? 0) }
-    }
-
-    private func state(of rows: [CacheCategory]) -> SelectionState {
-        SelectionState(selected: rows.filter { selected.contains($0.id) }.count, total: rows.count)
-    }
-
-    private func toggle(_ rows: [CacheCategory]) {
-        let ids = rows.map(\.id)
-        if state(of: rows).clickSelects {
-            selected.formUnion(ids)
-        } else {
-            selected.subtract(ids)
-        }
     }
 
     // MARK: - Work
 
     private func scan() async {
-        let catalog = CacheCleaner.present(in: CacheCleaner.catalog(
-            home: FileManager.default.homeDirectoryForCurrentUser))
+        // Building the catalog is a stat() per path; measuring walks whole
+        // directory trees. Both belong off the main actor — the window is
+        // drawing while they run.
+        let catalog = await CacheCleaner.presentCatalogInBackground()
+        let measured = await CacheCleaner.measure(catalog)
         categories = catalog
-        sizes = await CacheCleaner.measure(catalog)
+        sizes = measured
         // Trash is the one category that deletes for good, so it is never
         // pre-ticked no matter how big it is.
-        selected = Set(catalog.filter { $0.defaultOn && (sizes[$0.id] ?? 0) > 0 }.map(\.id))
+        selected = Set(catalog.filter { $0.defaultOn && (measured[$0.id] ?? 0) > 0 }.map(\.id))
         isScanning = false
     }
 

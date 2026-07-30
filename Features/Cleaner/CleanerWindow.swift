@@ -8,6 +8,9 @@ import SwiftUI
 /// Every destructive action in here goes to the Trash, with one exception the
 /// UI names out loud (emptying the Trash itself). Nothing is removed without
 /// being listed, sized and ticked first.
+///
+/// It looks like the rest of SnapDesk: standard title bar, system materials,
+/// system controls, and it follows the Mac's light or dark appearance.
 final class CleanerWindow: NSWindowController, NSWindowDelegate {
     private static var shared: CleanerWindow?
 
@@ -25,22 +28,20 @@ final class CleanerWindow: NSWindowController, NSWindowDelegate {
     }
 
     private init(playSound: @escaping () -> Void) {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 640),
-                              styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 620),
+                              styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
         window.title = "SnapDesk Cleaner"
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
         window.isReleasedWhenClosed = false
-        // The one window in the app that is dark whatever the Mac is set to —
-        // a dashboard reads better on a dark ground, and the reclaimable figures
-        // keep the same weight in both system appearances.
-        window.appearance = NSAppearance(named: .darkAqua)
-        window.backgroundColor = NSColor(CleanerTheme.background)
+        window.contentMinSize = NSSize(width: 460, height: 460)
         window.center()
         super.init(window: window)
         window.delegate = self
-        window.contentViewController = NSHostingController(rootView: CleanerRootView(playSound: playSound))
+        let host = NSHostingController(rootView: CleanerRootView(playSound: playSound))
+        // Without this the hosting controller reports its content's ideal size
+        // and the window snaps to it, ignoring contentRect and any resize.
+        host.sizingOptions = []
+        window.contentViewController = host
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
@@ -77,10 +78,10 @@ struct CleanerRootView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .padding(.horizontal, 16)
-            .padding(.top, 28)      // room for the hidden title bar
+            .padding(.top, 12)
             .padding(.bottom, 10)
 
-            Divider().overlay(CleanerTheme.line)
+            Divider()
 
             // Each tab keeps its own scan while the window is open: switching
             // away and back should not re-walk the whole home directory.
@@ -92,7 +93,5 @@ struct CleanerRootView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(CleanerTheme.background)
-        .preferredColorScheme(.dark)
     }
 }

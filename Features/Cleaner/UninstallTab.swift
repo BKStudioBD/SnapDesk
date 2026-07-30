@@ -11,16 +11,87 @@ struct UninstallTab: View {
     @State private var apps: [AppUninstaller.App] = []
     @State private var search = ""
     @State private var chosen: AppUninstaller.App?
-    @State private var leftovers: [AppUninstaller.Leftover] = []
-    @State private var selected: Set<String> = []
-    @State private var isLoading = false
-    @State private var isRemoving = false
-    @State private var result: String?
+    @State private var isLoadingApps = true
 
     private var filtered: [AppUninstaller.App] {
         guard !search.isEmpty else { return apps }
         return apps.filter { $0.name.localizedCaseInsensitiveContains(search) }
     }
+
+    var body: some View {
+        NavigationStack {
+            list
+                .navigationDestination(item: $chosen) { app in
+                    UninstallDetail(app: app, playSound: playSound) {
+                        apps.removeAll { $0.id == app.id }
+                        chosen = nil
+                    }
+                }
+        }
+        // Reading every bundle's Info.plist and icon is disk work; it used to
+        // run on the main actor while this view drew its first frame.
+        .task {
+            apps = await AppUninstaller.installedAppsInBackground()
+            isLoadingApps = false
+        }
+    }
+
+    private var list: some View {
+        Group {
+            if isLoadingApps {
+                ProgressView("Reading your applications…")
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if filtered.isEmpty {
+                ContentUnavailableView.search(text: search)
+            } else {
+                List(filtered) { app in
+                    Button { chosen = app } label: {
+                        HStack(spacing: 10) {
+                            Image(nsImage: app.icon)
+                                .resizable()
+                                .frame(width: 26, height: 26)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(app.name)
+                                Text(app.bundleID.isEmpty ? app.url.path : app.bundleID)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                            Spacer(minLength: 8)
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Uninstall \(app.name)")
+                }
+                .listStyle(.inset)
+                .alternatingRowBackgrounds()
+            }
+        }
+        .searchable(text: $search, placement: .toolbar, prompt: "Search apps")
+    }
+}
+
+/// One app: everything it left behind, ticked and sized, and the one button
+/// that moves the lot to the Trash.
+private struct UninstallDetail: View {
+    let app: AppUninstaller.App
+    var playSound: () -> Void
+    /// Called once the app bundle itself has gone, so the list drops it.
+    var onRemoved: () -> Void
+
+    @State private var leftovers: [AppUninstaller.Leftover] = []
+    @State private var selected: Set<String> = []
+    @State private var isRunning = false
+    @State private var isLoading = true
+    @State private var isRemoving = false
+    @State private var result: String?
 
     private var picked: [AppUninstaller.Leftover] {
         leftovers.filter { selected.contains($0.id) }
@@ -28,163 +99,97 @@ struct UninstallTab: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let chosen {
-                detail(for: chosen)
-            } else {
-                list
-            }
-        }
-        .task { apps = AppUninstaller.installedApps() }
-    }
+            header
 
-    // MARK: - App list
-
-    private var list: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").font(.system(size: 12))
-                    .foregroundStyle(CleanerTheme.muted)
-                TextField("Search apps", text: $search)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 13))
-                    .foregroundStyle(CleanerTheme.text)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 9)
-            .background(CleanerTheme.card)
-            .clipShape(RoundedRectangle(cornerRadius: 9))
-            .padding(.horizontal, 16).padding(.vertical, 12)
-
-            Divider().overlay(CleanerTheme.line)
-
-            if filtered.isEmpty {
-                CleanerEmptyState(symbol: "magnifyingglass", title: "No matching app",
-                                  detail: "Nothing in Applications matches “\(search)”.")
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(filtered) { app in
-                            Button { choose(app) } label: {
-                                HStack(spacing: 11) {
-                                    Image(nsImage: app.icon).resizable()
-                                        .frame(width: 26, height: 26)
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text(app.name).font(.system(size: 13, weight: .medium))
-                                            .foregroundStyle(CleanerTheme.text)
-                                        Text(app.bundleID.isEmpty ? app.url.path : app.bundleID)
-                                            .font(.system(size: 11)).foregroundStyle(CleanerTheme.muted)
-                                            .lineLimit(1).truncationMode(.middle)
-                                    }
-                                    Spacer(minLength: 8)
-                                    Image(systemName: "chevron.right").font(.system(size: 11))
-                                        .foregroundStyle(CleanerTheme.muted)
-                                }
-                                .padding(.horizontal, 16).padding(.vertical, 8)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Uninstall \(app.name)")
-                        }
-                    }
-                    .padding(.bottom, 8)
-                }
-            }
-        }
-    }
-
-    // MARK: - One app
-
-    private func detail(for app: AppUninstaller.App) -> some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 11) {
-                Button {
-                    chosen = nil; leftovers = []; selected = []; result = nil
-                } label: {
-                    Image(systemName: "chevron.left").font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(CleanerTheme.accent)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Back to the app list")
-
-                Image(nsImage: app.icon).resizable().frame(width: 32, height: 32)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(app.name).font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(CleanerTheme.text)
-                    if AppUninstaller.isRunning(app) {
-                        Text("Running — it will be quit first")
-                            .font(.system(size: 11)).foregroundStyle(CleanerTheme.warning)
-                    } else {
-                        Text(SystemStats.format(leftovers.reduce(0) { $0 + $1.size }))
-                            .font(.system(size: 11)).foregroundStyle(CleanerTheme.muted)
-                    }
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 16).padding(.vertical, 12)
-
-            Divider().overlay(CleanerTheme.line)
+            Divider()
 
             if isLoading {
-                VStack(spacing: 10) {
-                    ProgressView().controlSize(.small)
-                    Text("Finding everything it left behind…")
-                        .font(.system(size: 12)).foregroundStyle(CleanerTheme.muted)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ProgressView("Finding everything it left behind…")
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if leftovers.isEmpty {
+                ContentUnavailableView("Nothing Left Behind",
+                                       systemImage: "checkmark.circle",
+                                       description: Text("\(app.name) has already been removed."))
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(leftovers) { leftover in
-                            CleanerRow(symbol: leftover.url == app.url ? "app.badge" : "folder",
-                                       title: leftover.name, detail: leftover.location,
-                                       size: SystemStats.format(leftover.size),
-                                       isSelected: selected.contains(leftover.id)) {
-                                if selected.contains(leftover.id) { selected.remove(leftover.id) }
-                                else { selected.insert(leftover.id) }
-                            }
-                        }
-                    }
-                    .padding(.bottom, 8)
+                List(leftovers) { leftover in
+                    CleanerRow(symbol: leftover.url == app.url ? "app.badge" : "folder",
+                               title: leftover.name,
+                               detail: leftover.location,
+                               size: SystemStats.format(leftover.size),
+                               isSelected: binding(leftover.id))
                 }
+                .listStyle(.inset)
+                .alternatingRowBackgrounds()
             }
 
             CleanerActionBar(summary: result ?? "\(picked.count) of \(leftovers.count) items",
                              title: "Move to Trash",
                              isEnabled: !picked.isEmpty, isBusy: isRemoving) {
-                Task { await uninstall(app) }
+                Task { await uninstall() }
             }
         }
+        .navigationTitle(app.name)
+        .task { await load() }
     }
 
-    // MARK: - Work
-
-    private func choose(_ app: AppUninstaller.App) {
-        chosen = app
-        isLoading = true
-        result = nil
-        Task {
-            let found = await AppUninstaller.leftoversInBackground(for: app)
-            leftovers = found
-            // System-wide files under /Library may belong to another account on
-            // this Mac, so they are listed unticked.
-            selected = Set(found.filter(\.preselected).map(\.id))
-            isLoading = false
+    private var header: some View {
+        HStack(spacing: 10) {
+            Image(nsImage: app.icon)
+                .resizable()
+                .frame(width: 32, height: 32)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(app.name).fontWeight(.semibold)
+                if isRunning {
+                    Label("Running — it will be quit first", systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                } else {
+                    Text(SystemStats.format(leftovers.reduce(0) { $0 + $1.size }))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 
-    private func uninstall(_ app: AppUninstaller.App) async {
+    private func binding(_ id: String) -> Binding<Bool> {
+        Binding(get: { selected.contains(id) },
+                set: { isOn in
+                    if isOn { selected.insert(id) } else { selected.remove(id) }
+                })
+    }
+
+    private func load() async {
+        // `isRunning` used to be read inside the body — an NSWorkspace scan of
+        // every running process, on every redraw of this view.
+        isRunning = AppUninstaller.isRunning(app)
+        let found = await AppUninstaller.leftoversInBackground(for: app)
+        leftovers = found
+        // System-wide files under /Library may belong to another account on
+        // this Mac, so they are listed unticked.
+        selected = Set(found.filter(\.preselected).map(\.id))
+        isLoading = false
+    }
+
+    private func uninstall() async {
         isRemoving = true
         let removingBundle = picked.contains { $0.url == app.url }
         if removingBundle { await AppUninstaller.quit(app) }
 
-        let outcome = AppUninstaller.trash(picked)
+        let outcome = await AppUninstaller.trashInBackground(picked)
         let removed = Set(picked.map(\.id))
         leftovers.removeAll { removed.contains($0.id) }
         selected = []
-        if removingBundle { apps.removeAll { $0.id == app.id } }
         isRemoving = false
+        isRunning = false
         result = outcome.failed == 0
             ? "Moved \(outcome.moved) items · \(SystemStats.format(outcome.freed))"
             : "Moved \(outcome.moved) · \(outcome.failed) couldn't be removed"
         playSound()
+        if removingBundle && outcome.failed == 0 { onRemoved() }
     }
 }

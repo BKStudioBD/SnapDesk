@@ -20,65 +20,45 @@ struct DeveloperTab: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider().overlay(CleanerTheme.line)
+            CleanerListHeader(total: SystemStats.format(totalBytes),
+                              caption: "across \(items.count) build folder\(items.count == 1 ? "" : "s")",
+                              hasRows: !items.isEmpty,
+                              allSelected: !items.isEmpty && selected.count >= items.count) {
+                selected = selected.isEmpty ? Set(items.map(\.id)) : []
+            }
+
+            Divider()
 
             if isScanning {
-                VStack(spacing: 10) {
-                    ProgressView().controlSize(.small)
-                    Text("Looking through your projects…")
-                        .font(.system(size: 12)).foregroundStyle(CleanerTheme.muted)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ProgressView("Looking through your projects…")
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if items.isEmpty {
-                CleanerEmptyState(symbol: "checkmark.circle", title: "No build folders found",
-                                  detail: "Nothing rebuildable is taking up space in your home folder.")
+                ContentUnavailableView("No Build Folders Found",
+                                       systemImage: "checkmark.circle",
+                                       description: Text("Nothing rebuildable is taking up space in your home folder."))
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(items) { item in
-                            CleanerRow(symbol: item.kind.symbol,
-                                       title: "\(item.kind.label) · \(item.url.lastPathComponent)",
-                                       detail: item.project,
-                                       size: SystemStats.format(item.size),
-                                       isSelected: selected.contains(item.id)) {
-                                toggle(item)
-                            }
-                        }
+                List {
+                    ForEach(items) { item in
+                        CleanerRow(symbol: item.kind.symbol,
+                                   title: "\(item.kind.label) · \(item.url.lastPathComponent)",
+                                   detail: item.project,
+                                   size: SystemStats.format(item.size),
+                                   isSelected: binding(item.id))
                     }
-                    .padding(.bottom, 8)
                 }
+                .listStyle(.inset)
+                .alternatingRowBackgrounds()
             }
 
             CleanerActionBar(summary: summary,
                              title: selectedBytes > 0
                                 ? "Move \(SystemStats.format(selectedBytes)) to Trash" : "Move to Trash",
                              isEnabled: selectedBytes > 0, isBusy: isTrashing) {
-                trashSelected()
+                Task { await trashSelected() }
             }
         }
         .task { await scan() }
-    }
-
-    private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(SystemStats.format(totalBytes))
-                    .font(.system(size: 26, weight: .semibold)).monospacedDigit()
-                    .foregroundStyle(CleanerTheme.accent)
-                Text("across \(items.count) build folder\(items.count == 1 ? "" : "s")")
-                    .font(.system(size: 11)).foregroundStyle(CleanerTheme.muted)
-            }
-            Spacer()
-            Button(selected.isEmpty ? "Select all" : "Deselect all") {
-                selected = selected.isEmpty ? Set(items.map(\.id)) : []
-            }
-            .buttonStyle(.plain)
-            .font(.system(size: 12))
-            .foregroundStyle(CleanerTheme.accent)
-            .disabled(items.isEmpty)
-        }
-        .padding(.horizontal, 16).padding(.vertical, 14)
     }
 
     private var summary: String {
@@ -87,8 +67,11 @@ struct DeveloperTab: View {
         return "\(selectedItems.count) selected"
     }
 
-    private func toggle(_ item: JunkItem) {
-        if selected.contains(item.id) { selected.remove(item.id) } else { selected.insert(item.id) }
+    private func binding(_ id: String) -> Binding<Bool> {
+        Binding(get: { selected.contains(id) },
+                set: { isOn in
+                    if isOn { selected.insert(id) } else { selected.remove(id) }
+                })
     }
 
     private func scan() async {
@@ -99,10 +82,12 @@ struct DeveloperTab: View {
         isScanning = false
     }
 
-    private func trashSelected() {
+    private func trashSelected() async {
         isTrashing = true
         let picked = selectedItems
-        let freed = ProjectJunkScanner.trash(picked)
+        // A node_modules tree is tens of thousands of files; moving it on the
+        // main actor froze the window until the last one landed.
+        let freed = await ProjectJunkScanner.trashInBackground(picked)
         let removed = Set(picked.map(\.id))
         items.removeAll { removed.contains($0.id) }
         selected.subtract(removed)

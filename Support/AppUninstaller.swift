@@ -80,7 +80,16 @@ enum AppUninstaller {
         let name: String
         let url: URL
         let bundleID: String
-        var icon: NSImage { NSWorkspace.shared.icon(forFile: url.path) }
+        /// Fetched ONCE during the scan. As a computed property this asked
+        /// NSWorkspace for the icon on every row redraw — a disk-backed lookup
+        /// inside a list that redraws on every keystroke in the search field.
+        let icon: NSImage
+
+        // Identity is the bundle id (or path). Synthesised conformance would
+        // drag NSImage's object identity into ==, so two reads of the same app
+        // could compare unequal.
+        static func == (lhs: App, rhs: App) -> Bool { lhs.id == rhs.id }
+        func hash(into hasher: inout Hasher) { hasher.combine(id) }
     }
 
     /// A single removable thing: the bundle, or one leftover.
@@ -115,10 +124,19 @@ enum AppUninstaller {
                 guard bundleID != ownID else { continue }
                 out.append(App(id: bundleID.isEmpty ? child.path : bundleID,
                                name: child.deletingPathExtension().lastPathComponent,
-                               url: child, bundleID: bundleID))
+                               url: child, bundleID: bundleID,
+                               icon: NSWorkspace.shared.icon(forFile: child.path)))
             }
         }
         return out.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// Off the main actor: reading every bundle's Info.plist and icon is disk
+    /// work, and it used to run while the window was drawing its first frame.
+    /// On a queue, not a detached task — the reads block, and blocking a
+    /// cooperative-pool thread is what `BackgroundWork` exists to avoid.
+    static func installedAppsInBackground() async -> [App] {
+        await BackgroundWork.run { installedApps() }
     }
 
     /// Where leftovers hide. The `/Library` entries are admin-owned and a trash
@@ -229,5 +247,11 @@ enum AppUninstaller {
             }
         }
         return (moved, failed, freed)
+    }
+
+    /// Off the main actor: trashing an app bundle plus its containers is a lot
+    /// of file moves, and the window froze for the whole sweep.
+    static func trashInBackground(_ leftovers: [Leftover]) async -> (moved: Int, failed: Int, freed: UInt64) {
+        await BackgroundWork.run { trash(leftovers) }
     }
 }

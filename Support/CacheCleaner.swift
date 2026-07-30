@@ -179,6 +179,15 @@ enum CacheCleaner {
         }
     }
 
+    /// Build the catalog and drop what isn't installed — off the main actor,
+    /// since "does this path exist" is a stat() per entry and the window asks
+    /// for it while it is opening.
+    static func presentCatalogInBackground() async -> [CacheCategory] {
+        await BackgroundWork.run {
+            present(in: catalog(home: FileManager.default.homeDirectoryForCurrentUser))
+        }
+    }
+
     // MARK: - Measuring
 
     /// Bytes the category would free.
@@ -188,11 +197,13 @@ enum CacheCleaner {
 
     /// Size every category concurrently. A task group rather than one queue hop:
     /// the slow categories (DerivedData, browser caches) then run alongside the
-    /// dozen instant ones instead of behind them.
+    /// dozen instant ones instead of behind them. Each measurement hops onto the
+    /// background queue: directory enumeration BLOCKS, and a dozen blocked
+    /// cooperative-pool threads is how the whole pool stalls.
     static func measure(_ categories: [CacheCategory]) async -> [String: UInt64] {
         await withTaskGroup(of: (String, UInt64).self) { group in
             for category in categories {
-                group.addTask { (category.id, size(of: category)) }
+                group.addTask { await BackgroundWork.run { (category.id, size(of: category)) } }
             }
             var out: [String: UInt64] = [:]
             for await (id, bytes) in group { out[id] = bytes }
