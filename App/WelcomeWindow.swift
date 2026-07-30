@@ -64,7 +64,7 @@ private struct WelcomeView: View {
                 Text("Two quick permissions").font(.headline)
                 permission("Screen Recording", "Needed for capture, OCR and color picking.",
                            granted: screenOK, action: grantScreen)
-                permission("Accessibility", "Needed for double-click paste into other apps.",
+                permission("Accessibility", "Needed to paste clipboard items into other apps with a click.",
                            granted: axOK, action: grantAX)
                 if !screenOK {
                     // macOS only honors a fresh Screen Recording grant after a

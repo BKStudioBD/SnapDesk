@@ -43,10 +43,23 @@ osascript -e "tell application \"${APP}\" to quit" >/dev/null 2>&1 || true
 pkill -x "${APP}" 2>/dev/null || true
 sleep 1
 
+# Verify the signature BEFORE trusting the download. Stripping the Gatekeeper
+# quarantine flag disables the OS's own check, so this script must do that check
+# itself — otherwise a tampered or man-in-the-middled ZIP installs silently with
+# every warning suppressed.
+echo "==> Verifying the code signature..."
+if ! codesign --verify --deep --strict "${TMP}/unpacked/${APP}.app" 2>/dev/null; then
+  echo "REFUSING TO INSTALL: ${APP}.app has no valid code signature." >&2
+  echo "The download may be corrupt or tampered with. Delete it and fetch again." >&2
+  exit 1
+fi
+codesign -dv "${TMP}/unpacked/${APP}.app" 2>&1 | sed -n 's/^Authority=/    signed by: /p' | head -1
+
 echo "==> Installing to /Applications..."
 rm -rf "${DEST}"
 cp -R "${TMP}/unpacked/${APP}.app" "${DEST}"
 
+# Only now — with the signature verified above — remove the quarantine flag.
 echo "==> Clearing the Gatekeeper quarantine flag..."
 xattr -dr com.apple.quarantine "${DEST}" 2>/dev/null || true
 

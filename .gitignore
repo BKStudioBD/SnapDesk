@@ -1,5 +1,8 @@
 # Build output
 build/
+.build/
+.swiftpm/
+Package.resolved
 
 # Distributables
 *.dmg

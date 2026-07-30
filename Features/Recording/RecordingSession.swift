@@ -19,6 +19,7 @@ final class RecordingSession: NSObject {
     private var borderWindow: NSWindow?
     private var barWindow: NSWindow?
     private var countdownWindow: NSWindow?
+    private var cameraBubble: CameraBubbleWindow?
     private var timeLabel: NSTextField?
     private var pauseButton: NSButton?
 
@@ -30,9 +31,14 @@ final class RecordingSession: NSObject {
     private var cancelled = false
     private var finishedOnce = false
     private var startedRecording = false
+    /// The running countdown, so stop()/cancel() can end it immediately.
+    private var countdownTask: Task<Void, Error>?
 
     /// True when the user cancelled/discarded (so a nil URL isn't an error).
     var wasDiscarded: Bool { discardOnFinish || cancelled }
+
+    /// The Camera privacy pane is opened at most once per app session.
+    private static var openedCameraPane = false
 
     private(set) var isPaused = false
 
@@ -74,7 +80,18 @@ final class RecordingSession: NSObject {
         if settings.recordCamera {
             cameraOK = await AVCaptureDevice.requestAccess(for: .video)
             if !cameraOK {
-                Notifier.info("Camera off", "Allow SnapDesk under Privacy → Camera for the webcam bubble.")
+                // macOS shows its permission dialog exactly ONCE per app, ever.
+                // Denied back then → requestAccess now returns false silently,
+                // which reads as "the camera just doesn't work". Take the user
+                // to the switch they need (once per app session, not per
+                // recording — they may be recording something else right now).
+                Notifier.info("Camera off", "Turn ON SnapDesk under Privacy → Camera (Settings just opened), then record again.")
+                if !Self.openedCameraPane {
+                    Self.openedCameraPane = true
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
             }
         }
         if cancelled { return }
@@ -115,7 +132,10 @@ final class RecordingSession: NSObject {
                     cursorBoost: settings.recordCursorBoost,
                     clickHighlight: settings.recordClickHighlight,
                     keystrokes: settings.recordKeystrokes,
-                    camera: settings.recordCamera && cameraOK)
+                    camera: settings.recordCamera && cameraOK,
+                    cameraCorner: settings.cameraCorner,
+                    cameraSize: settings.cameraSize,
+                    cameraMirrored: settings.cameraMirrored)
                 let deco = FrameDecorator(config: cfg,
                                           displayID: displayID,
                                           sourceRect: selection.rectInScreenPoints,
@@ -142,6 +162,7 @@ final class RecordingSession: NSObject {
                                scale: selection.screen.backingScaleFactor,
                                captureAudio: settings.recordSystemAudio,
                                micDevice: micDevice,
+                               noiseCancellation: settings.recordNoiseCancellation,
                                fps: settings.recordFPS,
                                codec: settings.recordHEVC ? .hevc : .h264,
                                bitsPerPixel: settings.recordQuality.bitsPerPixel,
@@ -150,6 +171,16 @@ final class RecordingSession: NSObject {
                                decorator: decorator,
                                url: url)
             startedRecording = true
+            // Live preview of the burned-in webcam bubble — without it the
+            // camera is invisible until playback and reads as broken.
+            if let cam = decorator?.liveCameraSession {
+                let bubble = CameraBubbleWindow(session: cam, selection: selection,
+                                                corner: settings.cameraCorner,
+                                                size: settings.cameraSize,
+                                                mirrored: settings.cameraMirrored)
+                bubble.orderFrontRegardless()
+                cameraBubble = bubble
+            }
             startDate = Date()
             pausedAccum = 0
             startTimer()
@@ -164,7 +195,9 @@ final class RecordingSession: NSObject {
             // this catch don't both fire onFinished/notify twice.
             guard !finishedOnce else { return }
             finishedOnce = true
-            if !cancelled { Notifier.error("Recording failed", error.localizedDescription) }
+            // The coordinator's onFinished(nil) path already shows a single
+            // "Recording failed" notification for a non-discarded failure — don't
+            // post a second one here.
             onFinished?(nil)
         }
     }
@@ -187,6 +220,8 @@ final class RecordingSession: NSObject {
     }
 
     func stop() {
+        // End a running countdown at once — its sleep throws on cancellation.
+        countdownTask?.cancel()
         if recorder.isRecording {
             recorder.stop()
         } else if !startedRecording {
@@ -205,6 +240,26 @@ final class RecordingSession: NSObject {
         stop()
     }
 
+    /// Bin what has been recorded so far and start over immediately with the same
+    /// area, sources and effects. Fumbling the opening sentence used to mean stop,
+    /// find the file, delete it, re-select the area and set every toggle again.
+    func restart() {
+        guard recorder.isRecording, !finishedOnce, startedRecording else { return }
+        recorder.restart()
+        startDate = Date()
+        pausedAccum = 0
+        pauseBegan = nil
+        if isPaused {
+            // The fresh run begins unpaused; the button, the menu and the timer
+            // must not claim otherwise.
+            isPaused = false
+            pauseButton?.image = Self.symbol("pause.fill")
+            pauseButton?.toolTip = "Pause"
+        }
+        tick()
+        onStateChange?()
+    }
+
     private func handleFinish(_ finishedURL: URL?) {
         // Fires from user-stop AND the writer's async completion — only once.
         guard !finishedOnce else { return }
@@ -220,8 +275,8 @@ final class RecordingSession: NSObject {
     }
 
     private func teardownWindows() {
-        [borderWindow, barWindow, countdownWindow].forEach { $0?.orderOut(nil) }
-        borderWindow = nil; barWindow = nil; countdownWindow = nil
+        [borderWindow, barWindow, countdownWindow, cameraBubble].forEach { $0?.orderOut(nil) }
+        borderWindow = nil; barWindow = nil; countdownWindow = nil; cameraBubble = nil
         timeLabel = nil; pauseButton = nil
     }
 
@@ -276,22 +331,36 @@ final class RecordingSession: NSObject {
         label.font = .systemFont(ofSize: 84, weight: .bold)
         label.textColor = .white
         label.alignment = .center
-        label.frame = NSRect(x: 0, y: 8, width: size, height: size - 16)
+        label.frame = NSRect(x: 0, y: 24, width: size, height: size - 32)
+        // Esc has always worked here; nobody knew. Say so.
+        let hint = NSTextField(labelWithString: "Esc to cancel")
+        hint.font = .systemFont(ofSize: 11, weight: .medium)
+        hint.textColor = NSColor.white.withAlphaComponent(0.75)
+        hint.alignment = .center
+        hint.frame = NSRect(x: 0, y: 10, width: size, height: 14)
         let bg = NSView(frame: NSRect(origin: .zero, size: NSSize(width: size, height: size)))
         bg.wantsLayer = true
         bg.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.55).cgColor
         bg.layer?.cornerRadius = 24
         bg.addSubview(label)
+        bg.addSubview(hint)
         win.contentView = bg
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         countdownWindow = win
 
-        for n in stride(from: secs, through: 1, by: -1) {
-            if cancelled { break }
-            label.stringValue = "\(n)"
-            try? await Task.sleep(nanoseconds: 1_000_000_000)   // a real second per tick
+        // Store the task and cancel it in stop(): `Task.sleep` THROWS on
+        // cancellation, so Esc / ⌃5 ends the countdown at once. Polling a
+        // `cancelled` flag between sleeps meant up to a full second of dead UI.
+        let task = Task { @MainActor in
+            for n in stride(from: secs, through: 1, by: -1) {
+                label.stringValue = "\(n)"
+                try await Task.sleep(for: .seconds(1))
+            }
         }
+        countdownTask = task
+        _ = await task.result       // completes normally, or early on cancel
+        countdownTask = nil
         win.orderOut(nil)
         countdownWindow = nil
     }
@@ -331,11 +400,15 @@ final class RecordingSession: NSObject {
 
         let pause = glassButton("pause.fill", "Pause", #selector(pauseTapped))
         pauseButton = pause
+        let restartB = glassButton("arrow.counterclockwise",
+                                   "Start over — throws away what's recorded so far",
+                                   #selector(restartTapped))
         let stopB = glassButton("stop.fill", "Stop & save", #selector(stopTapped))
         stopB.contentTintColor = .systemRed
         let cancelB = glassButton("xmark", "Cancel (discard)", #selector(cancelTapped))
 
-        [dot, label, separator(), pause, stopB, cancelB].forEach { stack.addArrangedSubview($0) }
+        [dot, label, separator(), pause, restartB, stopB, cancelB]
+            .forEach { stack.addArrangedSubview($0) }
 
         let fx = NSVisualEffectView()
         fx.material = .hudWindow
@@ -406,6 +479,7 @@ final class RecordingSession: NSObject {
     }
 
     @objc private func pauseTapped() { togglePause() }
+    @objc private func restartTapped() { restart() }
     @objc private func stopTapped() { stop() }
     @objc private func cancelTapped() { cancel() }
 

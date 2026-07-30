@@ -76,6 +76,9 @@ final class HotkeyCenter {
 
     private var registrations: [UInt32: Registration] = [:]
     private var nextID: UInt32 = 1
+    /// Combos we've already warned the user about, so re-registration cycles
+    /// don't re-post the same "Shortcut unavailable" notification repeatedly.
+    private var notifiedFailures: Set<String> = []
     private var eventHandler: EventHandlerRef?
 
     init() {
@@ -100,11 +103,17 @@ final class HotkeyCenter {
         guard status == noErr, let ref else {
             NSLog("SnapDesk: failed to register hotkey \(hotkey.displayString) (status \(status))")
             // Silent failure looked like the app was broken — tell the user the
-            // combo is owned by another app so they rebind it.
-            Notifier.error("Shortcut unavailable",
-                           "\(hotkey.displayString) is used by another app — pick a different combo in Settings → Shortcuts.")
+            // combo is owned by another app so they rebind it. But hotkeys are
+            // re-registered on every rebind and every recorder-arm cycle, so warn
+            // only the FIRST time a given combo fails — not on every cycle.
+            if notifiedFailures.insert(hotkey.displayString).inserted {
+                Notifier.error("Shortcut unavailable",
+                               "\(hotkey.displayString) is used by another app — pick a different combo in Settings → Shortcuts.")
+            }
             return 0
         }
+        // Succeeded now → if it failed before, allow a future conflict to warn again.
+        notifiedFailures.remove(hotkey.displayString)
         registrations[id] = Registration(ref: ref, action: action)
         return id
     }

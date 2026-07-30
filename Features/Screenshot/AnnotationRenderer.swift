@@ -92,9 +92,21 @@ enum AnnotationRenderer {
     /// Pixelate a region of `cg`. `r` is in point coords of a view sized `viewSize`
     /// (bottom-left origin); `cg` is the full frozen image (top-left origin).
     static func pixelate(_ cg: CGImage, rectInPoints r: CGRect, viewSize: NSSize) -> NSImage? {
-        guard r.width > 2, r.height > 2 else { return nil }
-        let sx = CGFloat(cg.width) / viewSize.width, sy = CGFloat(cg.height) / viewSize.height
-        let pr = CGRect(x: r.minX * sx, y: (viewSize.height - r.maxY) * sy,
+        pixelate(cg, rectInPoints: r, displayedIn: CGRect(origin: .zero, size: viewSize))
+    }
+
+    /// Pixelate a region of a base image that occupies only `displayRect` of the
+    /// view (bottom-left origin) — the case once a crop or rotate has replaced the
+    /// frozen screen inside the selection, where blurring the frozen pixels would
+    /// smear a region of the *old* picture into the new one.
+    ///
+    /// The point→pixel maths is spelled out here rather than shared with
+    /// ImageTransformer so this file still compiles on its own (test-tools.sh builds
+    /// it with nothing but tools/main.swift for the headless render check).
+    static func pixelate(_ cg: CGImage, rectInPoints r: CGRect, displayedIn displayRect: CGRect) -> NSImage? {
+        guard r.width > 2, r.height > 2, displayRect.width > 0, displayRect.height > 0 else { return nil }
+        let sx = CGFloat(cg.width) / displayRect.width, sy = CGFloat(cg.height) / displayRect.height
+        let pr = CGRect(x: (r.minX - displayRect.minX) * sx, y: (displayRect.maxY - r.maxY) * sy,
                         width: r.width * sx, height: r.height * sy).integral
         guard let crop = cg.cropping(to: pr) else { return nil }
         let ci = CIImage(cgImage: crop)
@@ -123,6 +135,31 @@ enum AnnotationRenderer {
         NSGraphicsContext.current = ctx
         let xform = NSAffineTransform(); xform.translateX(by: -sel.minX, yBy: -sel.minY); xform.concat()
         frozen.draw(in: NSRect(origin: .zero, size: fullSize))
+        for s in strokes { draw(s) }
+        NSGraphicsContext.restoreGraphicsState()
+        return rep.cgImage
+    }
+
+    /// Composite an already-flattened bitmap (one that has been cropped, rotated or
+    /// flipped) plus the strokes drawn over it since.
+    ///
+    /// Renders at the base's exact pixel size — NOT at a point size × scale — so a
+    /// crop or rotate never resamples the picture it just produced: `displayRect`
+    /// only sets the point coordinate system the strokes were recorded in.
+    static func compositeFlat(base: CGImage, displayRect: CGRect,
+                              strokes: [AnnotationStroke]) -> CGImage? {
+        let rect = displayRect.standardized
+        guard base.width > 0, base.height > 0, rect.width > 0, rect.height > 0 else { return nil }
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: base.width, pixelsHigh: base.height,
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                         isPlanar: false, colorSpaceName: .deviceRGB,
+                                         bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
+        rep.size = rect.size
+        guard let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = ctx
+        let xform = NSAffineTransform(); xform.translateX(by: -rect.minX, yBy: -rect.minY); xform.concat()
+        NSImage(cgImage: base, size: rect.size).draw(in: rect)
         for s in strokes { draw(s) }
         NSGraphicsContext.restoreGraphicsState()
         return rep.cgImage

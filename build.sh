@@ -33,7 +33,7 @@ rm -rf "$BUILD"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 SDK="$(xcrun --sdk macosx --show-sdk-path)"
-SOURCES=$(find "$ROOT" -name '*.swift' -not -path "$BUILD/*" -not -path "$ROOT/tools/*")
+SOURCES=$(find "$ROOT" -name '*.swift' -not -path "$BUILD/*" -not -path "$ROOT/tools/*" -not -path "$ROOT/Tests/*" -not -path "$ROOT/.build/*" -not -name "Package.swift")
 
 # --- Compile a UNIVERSAL binary (arm64 + x86_64) -----------------------------
 # Build each arch separately, then lipo them into one fat binary so SnapDesk

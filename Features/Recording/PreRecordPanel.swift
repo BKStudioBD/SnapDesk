@@ -17,6 +17,10 @@ final class PreRecordPanel: NSObject {
     private var window: KeyPanel?
     private var borderWindow: NSWindow?
     private var toggles: [(NSButton, () -> Bool)] = []
+    /// Live input level, so "is the mic actually hearing me" is answered here
+    /// instead of after the recording is uploaded.
+    private var meter: AudioLevelMeterView?
+    private let micMonitor = MicLevelMonitor()
 
     @MainActor
     static func present(selection: RegionSelection, settings: SettingsStore,
@@ -52,7 +56,32 @@ final class PreRecordPanel: NSObject {
                   set: { [weak self] in self?.settings.recordSystemAudio = $0 })
         addToggle(to: stack, symbol: "mic.fill", help: "Microphone",
                   get: { [weak self] in self?.settings.recordMic ?? false },
-                  set: { [weak self] in self?.settings.recordMic = $0 })
+                  set: { [weak self] on in
+                      guard let self else { return }
+                      self.settings.recordMic = on
+                      self.refreshMicMonitor()
+                  })
+        addToggle(to: stack, symbol: "waveform.badge.magnifyingglass",
+                  help: "Noise cancellation on your voice",
+                  get: { [weak self] in self?.settings.recordNoiseCancellation ?? false },
+                  set: { [weak self] on in
+                      guard let self else { return }
+                      self.settings.recordNoiseCancellation = on
+                      // Re-open the mic through the other backend, so the meter
+                      // keeps showing what will actually be recorded.
+                      self.refreshMicMonitor()
+                  })
+
+        // Always in the stack, even with the mic off: the panel window is sized
+        // once from `fittingSize`, so a view that came and went would leave a hole
+        // or push the Record button off the end.
+        let meterView = AudioLevelMeterView(frame: NSRect(x: 0, y: 0, width: 56, height: 14))
+        meterView.widthAnchor.constraint(equalToConstant: 56).isActive = true
+        meterView.heightAnchor.constraint(equalToConstant: 14).isActive = true
+        meterView.toolTip = "Microphone input level"
+        stack.addArrangedSubview(meterView)
+        meter = meterView
+        micMonitor.onLevel = { [weak self] level in self?.meter?.update(level) }
         addToggle(to: stack, symbol: "web.camera.fill", help: "Webcam bubble",
                   get: { [weak self] in self?.settings.recordCamera ?? false },
                   set: { [weak self] in self?.settings.recordCamera = $0 })
@@ -79,6 +108,7 @@ final class PreRecordPanel: NSObject {
         let gear = NSButton(image: Self.symbol("gearshape.fill"), target: self, action: #selector(gearTapped))
         gear.isBordered = false; gear.contentTintColor = NSColor.white.withAlphaComponent(0.85)
         gear.toolTip = "All recording settings"
+        gear.setAccessibilityLabel("Recording settings")
         stack.addArrangedSubview(gear)
 
         let record = NSButton(title: "  Record", target: self, action: #selector(recordTapped))
@@ -93,6 +123,7 @@ final class PreRecordPanel: NSObject {
         let cancel = NSButton(image: Self.symbol("xmark"), target: self, action: #selector(cancelTapped))
         cancel.isBordered = false; cancel.contentTintColor = NSColor.white.withAlphaComponent(0.85)
         cancel.toolTip = "Cancel (Esc)"
+        cancel.setAccessibilityLabel("Cancel")
         stack.addArrangedSubview(cancel)
 
         let fx = NSVisualEffectView()
@@ -133,6 +164,34 @@ final class PreRecordPanel: NSObject {
         NSApp.activate(ignoringOtherApps: true)
         window = win
         if settings.recordBlurEnabled { showBlurOverlay() }
+        refreshMicMonitor()
+    }
+
+    /// Open (or re-open, or close) the level monitor to match the toggles.
+    ///
+    /// This DOES light the system microphone indicator while the panel is up —
+    /// which is the honest thing: the meter is only shown when the user has
+    /// already switched the mic on for this recording. It never triggers a
+    /// permission prompt; the recording flow owns that request, and an
+    /// unauthorized mic simply leaves the meter dark.
+    private func refreshMicMonitor() {
+        micMonitor.stop()
+        guard settings.recordMic else {
+            meter?.isActive = false
+            return
+        }
+        // Optimistic: `start` returns BEFORE the device is open, because opening it
+        // (an AVCaptureDevice discovery pass, VPIO init and a CoreAudio walk that
+        // queries every device's UID one at a time) runs 100–500 ms and blocking the
+        // main thread on it made this panel appear late and freeze on every mic /
+        // noise-cancellation click with the button stuck in its old state. Light the
+        // meter now and take it back only if the open actually failed.
+        meter?.isActive = true
+        micMonitor.start(deviceID: settings.micDeviceID,
+                         noiseCancellation: settings.recordNoiseCancellation) { [weak self] opened in
+            guard opened == false else { return }
+            self?.meter?.isActive = false
+        }
     }
 
     // MARK: - Blur drag overlay (screenshot-editor style)
@@ -242,6 +301,8 @@ final class PreRecordPanel: NSObject {
         b.isBordered = false
         b.setButtonType(.momentaryChange)
         b.toolTip = help
+        // Icon-only button — give VoiceOver the same words the tooltip shows.
+        b.setAccessibilityLabel(help)
         b.tag = toggles.count
         b.widthAnchor.constraint(equalToConstant: 30).isActive = true
         b.heightAnchor.constraint(equalToConstant: 26).isActive = true
@@ -281,6 +342,11 @@ final class PreRecordPanel: NSObject {
     @objc private func gearTapped() { onGear() }
 
     private func finish(_ proceed: Bool) {
+        // Release the microphone before anything else — leaving it open would keep
+        // the system indicator lit AND hand the recording a device already in use.
+        micMonitor.stop()
+        micMonitor.onLevel = nil
+        meter = nil
         window?.orderOut(nil); window = nil
         borderWindow?.orderOut(nil); borderWindow = nil
         hideBlurOverlay()
@@ -347,12 +413,42 @@ private final class BlurSelectView: NSView {
         drawHint()
     }
 
+    /// Cached pixelation per box rect. `drawBox` runs for EVERY box on every
+    /// mouse-moved event during a drag, and each uncached call is a CoreImage
+    /// pixelate plus a GPU→CPU readback — so dragging one box re-rendered all of
+    /// them, every frame. Keyed by the rect, so only the box actually changing
+    /// re-renders.
+    ///
+    /// Keyed by an explicit struct, NOT by CGRect: `CGRect: Hashable` only exists
+    /// on macOS 15+, and this app targets 14.
+    private struct RectKey: Hashable {
+        let x: Int, y: Int, w: Int, h: Int
+        init(_ r: CGRect) {
+            x = Int(r.origin.x.rounded()); y = Int(r.origin.y.rounded())
+            w = Int(r.width.rounded());    h = Int(r.height.rounded())
+        }
+    }
+    private var pixelCache: [RectKey: NSImage] = [:]
+
     /// Real pixelation preview (falls back to a soft grey fill until the
     /// frozen capture arrives).
     private func drawBox(_ r: CGRect, selected: Bool) {
-        if let frozen,
-           let img = AnnotationRenderer.pixelate(frozen, rectInPoints: r, viewSize: bounds.size) {
-            img.draw(in: r, from: .zero, operation: .sourceOver, fraction: 1)
+        if let frozen {
+            let key = RectKey(r)
+            let cached = pixelCache[key]
+                ?? AnnotationRenderer.pixelate(frozen, rectInPoints: r, viewSize: bounds.size)
+            if let cached {
+                if pixelCache[key] == nil {
+                    // Bound the cache: a long drag would otherwise keep an image
+                    // for every intermediate rect it passed through.
+                    if pixelCache.count > 24 { pixelCache.removeAll() }
+                    pixelCache[key] = cached
+                }
+                cached.draw(in: r, from: .zero, operation: .sourceOver, fraction: 1)
+            } else {
+                NSColor(white: 0.5, alpha: 0.55).setFill()
+                NSBezierPath(rect: r).fill()
+            }
         } else {
             NSColor(white: 0.5, alpha: 0.55).setFill()
             NSBezierPath(rect: r).fill()

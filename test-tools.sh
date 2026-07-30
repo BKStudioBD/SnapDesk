@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Headless render test for the annotation tools. Compiles AnnotationRenderer
-# together with tools/selftest.swift and draws every tool onto a synthetic
+# together with tools/main.swift and draws every tool onto a synthetic
 # screenshot, writing one PNG per tool to the output dir. Verifies the drawing
 # pipeline without launching the GUI.
 #

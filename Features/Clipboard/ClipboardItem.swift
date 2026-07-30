@@ -1,7 +1,8 @@
 import AppKit
 
-/// A single clipboard history entry. Text items persist to disk; image items
-/// live for the session only (kept lightweight).
+/// A single row of the clipboard window: a captured history entry, or a snippet
+/// the person wrote (`title` != nil). Both persist across launches — text in the
+/// defaults blob, image bytes in `ClipboardImageStore`.
 struct ClipboardItem: Identifiable, Equatable {
     enum Kind {
         case text(String)
@@ -19,14 +20,29 @@ struct ClipboardItem: Identifiable, Equatable {
     /// full string) caused visible scroll hitches with large history items.
     let preview: String
     let contentType: ContentType
+    /// Non-nil ONLY on a snippet row — the name the person gave it. A captured
+    /// entry has no name, so nil is also what tells the two apart: a snippet is
+    /// never counted against the history cap and never wiped on quit (see
+    /// `ClipboardManager.trimmed` and `retainedOnQuit`).
+    let title: String?
 
-    init(id: UUID = UUID(), kind: Kind, date: Date = Date(), pinned: Bool = false) {
+    init(id: UUID = UUID(), kind: Kind, date: Date = Date(), pinned: Bool = false,
+         title: String? = nil) {
         self.id = id
         self.kind = kind
         self.date = date
         self.pinned = pinned
+        self.title = title
         self.preview = Self.makePreview(kind)
         self.contentType = Self.makeContentType(kind)
+    }
+
+    /// A snippet rendered as a row, so authored entries and captured history share
+    /// ONE keyboard-navigable list instead of living in two panes. The id is the
+    /// snippet's own, so a row action routes straight back to `SnippetStore`.
+    init(snippet: Snippet) {
+        self.init(id: snippet.id, kind: .text(snippet.body), date: snippet.date,
+                  pinned: false, title: snippet.title)
     }
 
     /// True if `s` has more than `n` characters, walking at most n+1 — a plain
@@ -54,6 +70,16 @@ struct ClipboardItem: Identifiable, Equatable {
         return false
     }
 
+    /// True for a row that came from `SnippetStore`.
+    var isSnippet: Bool { title != nil }
+
+    /// The full stored string, nil for an image row. `preview` is the capped,
+    /// display-only version; this is what gets pasted, merged or edited.
+    var text: String? {
+        if case .text(let s) = kind { return s }
+        return nil
+    }
+
     static func == (lhs: ClipboardItem, rhs: ClipboardItem) -> Bool { lhs.id == rhs.id }
 }
 
@@ -75,6 +101,16 @@ extension ClipboardItem {
             if Self.looksLikeCode(t) { return .code }
             return .text
         }
+    }
+
+    /// Storage normalization: a copied URL routinely arrives with a trailing
+    /// newline (address bars, chat apps append one). Stored verbatim, every
+    /// paste re-emits that newline — which SENDS the message / navigates the
+    /// page the instant it lands. If the trimmed text is a bare link, store it
+    /// trimmed; anything else is kept byte-for-byte.
+    static func normalizedForStorage(_ s: String) -> String {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        return isLink(t) ? t : s
     }
 
     /// "#RRGGBB" string when this item is a color, else nil.

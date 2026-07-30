@@ -175,7 +175,10 @@ enum Permissions {
             NSApp.activate(ignoringOtherApps: true)
             a.window.orderFrontRegardless()
             a.runModal()
-            InstallHelper.relaunchSelf()
+            // The timer body is nonisolated even though it only ever runs on the
+            // main run loop, so hop explicitly rather than call a @MainActor
+            // method across isolation (a warning today, an error in Swift 6).
+            MainActor.assumeIsolated { InstallHelper.relaunchSelf() }
         }
         RunLoop.main.add(timer, forMode: .common)
     }

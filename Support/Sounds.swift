@@ -3,7 +3,17 @@ import AppKit
 /// Plays a named feedback sound. Resolves in order: bundled custom sound
 /// (Resources/Sounds/<name>.wav) → named NSSound → system sound file. Instances
 /// are cached and retriggered, so rapid clicks stay snappy.
+///
+/// SnapDesk ships exactly TWO sounds, both synthesised for the app (no sourced
+/// audio): a rising pair for content coming IN (captured, copied, saved) and its
+/// falling mirror for content going OUT (pasted into another app). Two sounds,
+/// two meanings — the ear learns the direction without looking.
 enum Sounds {
+    /// Content arrived: capture, copy, save, finish.
+    static func playIn() { play("SnapIn") }
+    /// Content left: pasted into another app.
+    static func playOut() { play("SnapOut") }
+
     private static var cache: [String: NSSound] = [:]
 
     static func play(_ name: String) {

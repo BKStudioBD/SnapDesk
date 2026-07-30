@@ -52,6 +52,40 @@ enum CaptureService {
         return copy ?? cropped
     }
 
+    /// True when the image carries no visible detail — every sampled pixel is
+    /// the same shade.
+    ///
+    /// This is how a capture FAILS SILENTLY on macOS: a process without Screen
+    /// Recording rights is handed a frame with the windows stripped out (just
+    /// the desktop picture) and NO error — measured. So "Vision found no text"
+    /// and "the OS gave us an empty frame" are indistinguishable downstream,
+    /// and the user gets "No text found" for text plainly on their screen.
+    /// Cheap: one 16×16 downsample, no full-size scan.
+    static func looksBlank(_ img: CGImage) -> Bool {
+        let side = 16
+        var pixels = [UInt8](repeating: 0, count: side * side * 4)
+        guard let ctx = pixels.withUnsafeMutableBytes({ buf -> CGContext? in
+            CGContext(data: buf.baseAddress, width: side, height: side,
+                      bitsPerComponent: 8, bytesPerRow: side * 4,
+                      space: CGColorSpaceCreateDeviceRGB(),
+                      bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue |
+                                  CGBitmapInfo.byteOrder32Little.rawValue)
+        }) else { return false }
+        ctx.interpolationQuality = .low
+        ctx.draw(img, in: CGRect(x: 0, y: 0, width: side, height: side))
+        var lo = 255, hi = 0
+        for i in stride(from: 0, to: pixels.count, by: 4) {
+            // Buffer is BGRA (byteOrder32Little + premultipliedFirst): the three
+            // COLOUR bytes are at i, i+1, i+2; i+3 is alpha. The old code summed
+            // i+1…i+3, averaging in the constant alpha and dropping blue — so a
+            // solid blue frame read as "not blank". Sum the real B+G+R.
+            let l = Int(pixels[i]) &+ Int(pixels[i + 1]) &+ Int(pixels[i + 2])
+            let v = l / 3
+            lo = min(lo, v); hi = max(hi, v)
+        }
+        return hi - lo < 6
+    }
+
     /// Copy a CGImage into its own tightly-sized backing (drops the shared
     /// full-frame buffer that `cropping(to:)` retains).
     private static func detached(_ img: CGImage) -> CGImage? {
@@ -69,16 +103,44 @@ enum CaptureService {
     /// plenty (we only need displays + our own windows).
     @MainActor private static var cachedContent: (SCShareableContent, Date)?
 
+    /// Refresh the cache ahead of a capture the user hasn't finished asking for
+    /// yet (they're still dragging). Without this every OCR pays the full
+    /// enumerate-every-window IPC *after* mouse-up, where it's dead wait.
+    /// Fire-and-forget: a failure here just means the real capture refetches.
+    static func warmShareableContent() {
+        Task { @MainActor in
+            guard let content = try? await SCShareableContent.excludingDesktopWindows(
+                false, onScreenWindowsOnly: false) else { return }
+            cachedContent = (content, Date())
+        }
+    }
+
     /// Captures one whole display at native pixel resolution. Used to "freeze"
     /// the screen for the in-place annotation editor.
     @MainActor
     static func captureScreen(_ screen: NSScreen) async throws -> CGImage {
+        // The desktop cover only exists to be in THIS frame — the instant the
+        // pixels are in hand the user's icons come back, on every path out of
+        // here including a throw. `lowerAfterGrab` rather than `lower`: the
+        // screenshot flow freezes EVERY display in a loop, and lowering after the
+        // first one put the icons back into screens 2..n. A caller that grabs more
+        // than one frame holds the cover across the whole loop.
+        defer { DesktopCover.lowerAfterGrab() }
+
         let scale = screen.backingScaleFactor
         // Stale NSScreen (display just reconfigured) → fail, never guess.
         guard let displayID = screen.displayID else { throw CaptureError.displayNotFound }
 
-        let content: SCShareableContent
-        if let (c, at) = cachedContent, Date().timeIntervalSince(at) < 2 {
+        // Windows of ours that must survive the app-wide exclusion below.
+        let coverIDs = Set(DesktopCover.windowIDs)
+
+        var content: SCShareableContent
+        // A snapshot taken before the cover went up doesn't list it, and
+        // filtering against one that doesn't know about it hands back a frame
+        // with the very icons the cover hides. Refetch in that case only — the
+        // warm-up during the drag normally already includes it.
+        if let (c, at) = cachedContent, Date().timeIntervalSince(at) < 2,
+           coverIDs.isSubset(of: Set(c.windows.map { $0.windowID })) {
             content = c
         } else {
             content = try await SCShareableContent.excludingDesktopWindows(
@@ -95,6 +157,11 @@ enum CaptureService {
             let fresh = try await SCShareableContent.excludingDesktopWindows(
                 false, onScreenWindowsOnly: false)
             cachedContent = (fresh, Date())
+            // Adopt the fresh snapshot wholesale — reading the display from one
+            // snapshot and our own app from another risks missing ourselves in
+            // the stale list, which silently drops the self-exclusion below and
+            // captures SnapDesk's own overlay into the image.
+            content = fresh
             scDisplay = fresh.displays.first(where: { $0.displayID == displayID })
         }
         guard let scDisplay else {
@@ -104,10 +171,15 @@ enum CaptureService {
         // Exclude SnapDesk's own windows (recording border/control bar, pins…)
         // so they never appear inside a screenshot taken mid-recording.
         let pid = pid_t(ProcessInfo.processInfo.processIdentifier)
+        // …except the desktop cover, which is one of our windows too: excluded
+        // along with the rest, it would hide the icons on screen and leave them
+        // in the file.
+        let covers = coverIDs.isEmpty ? []
+            : content.windows.filter { coverIDs.contains($0.windowID) }
         let filter: SCContentFilter
         if let ourApp = content.applications.first(where: { $0.processID == pid }) {
             filter = SCContentFilter(display: scDisplay, excludingApplications: [ourApp],
-                                     exceptingWindows: [])
+                                     exceptingWindows: covers)
         } else {
             filter = SCContentFilter(display: scDisplay, excludingWindows: [])
         }

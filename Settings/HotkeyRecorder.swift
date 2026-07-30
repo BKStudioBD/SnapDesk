@@ -19,8 +19,11 @@ extension Hotkey {
         if f.contains(.shift)   { mods |= UInt32(shiftKey) }
         if f.contains(.option)  { mods |= UInt32(optionKey) }
         if f.contains(.control) { mods |= UInt32(controlKey) }
-        // Require at least one modifier so global hotkeys don't eat plain keys.
-        guard mods != 0 else { return nil }
+        // Require at least one NON-shift modifier so a global hotkey never eats
+        // ordinary typing. Shift alone (e.g. ⇧S) would register a hotkey that
+        // swallows every capital letter system-wide; Shift is only valid as an
+        // ADDITION to ⌘/⌃/⌥.
+        guard mods & ~UInt32(shiftKey) != 0 else { return nil }
         self.init(keyCode: UInt32(event.keyCode), modifiers: mods)
     }
 }

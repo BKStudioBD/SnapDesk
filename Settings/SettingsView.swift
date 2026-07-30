@@ -91,31 +91,61 @@ private struct GeneralTab: View {
                 Text("Keeps SnapDesk ready in the menu bar after every restart.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Section("Menu bar") {
-                Picker("Icon style", selection: $settings.menuBarIconStyle) {
-                    ForEach(MenuBarIconStyle.allCases) { Text($0.rawValue).tag($0) }
+            Section {
+                Toggle("Check for updates on launch", isOn: $settings.autoCheckUpdates)
+                LabeledContent("Version") {
+                    HStack(spacing: 10) {
+                        Text(Updater.currentVersion).monospacedDigit().foregroundStyle(.secondary)
+                        Button("Check Now") { checkNow() }
+                    }
                 }
+                if let last = settings.lastUpdateCheck {
+                    LabeledContent("Last checked") {
+                        Text(last.formatted(date: .abbreviated, time: .shortened))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text("Updates")
+            } footer: {
+                Text("Reads the public releases list on GitHub — nothing is sent, no identifiers, no telemetry. This is the ONLY thing in SnapDesk that touches the network, which is why it's off unless you turn it on. An update always asks before it downloads, and is installed only if it's signed by the same identity as the copy you're running.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Capture") {
-                Picker("Delay before capture", selection: $settings.captureDelaySeconds) {
+                Picker("Delay before Capture & Annotate", selection: $settings.captureDelaySeconds) {
                     Text("None").tag(0); Text("1 second").tag(1)
                     Text("2 seconds").tag(2); Text("3 seconds").tag(3); Text("5 seconds").tag(5)
                 }
+                Text("Time to arrange windows after pressing \(settings.screenshotHotkey.displayString). Only Capture & Annotate waits — OCR, scrolling capture and recording start right away.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Toggle("Play sound on action", isOn: $settings.playSound)
-                HStack {
-                    Picker("Sound", selection: $settings.soundName) {
-                        ForEach(SettingsStore.soundNames, id: \.self) { Text($0).tag($0) }
+                LabeledContent("Sounds") {
+                    HStack(spacing: 12) {
+                        Button("In", systemImage: "play.circle.fill") { Sounds.playIn() }
+                            .help("Plays when something is captured or copied")
+                        Button("Out", systemImage: "play.circle") { Sounds.playOut() }
+                            .help("Plays when something is pasted into another app")
                     }
-                    Button { Sounds.play(settings.soundName) } label: {
-                        Image(systemName: "play.circle.fill")
-                    }
-                    .buttonStyle(.borderless).help("Test sound")
+                    .buttonStyle(.borderless)
                 }
                 .disabled(!settings.playSound)
+                Text("Two sounds, two meanings: a rising pair when content comes in (capture, copy, save), its falling mirror when it goes out (paste).")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .glassForm()
     }
+
+    /// Route to the coordinator's checker via the menu action, so the alert and
+    /// the notification behave exactly as they do from the menu bar.
+    private func checkNow() {
+        NSApp.sendAction(Selector(("checkForUpdates")), to: nil, from: nil)
+    }
+}
+
+/// "~/Movies/Recordings" style short path — shared by every folder row.
+private func displayPath(_ path: String) -> String {
+    (path as NSString).abbreviatingWithTildeInPath
 }
 
 // MARK: - Recording
@@ -129,6 +159,19 @@ private struct RecordingTab: View {
     @State private var driveAvailable = false
     var body: some View {
         Form {
+            Section {
+                LabeledContent("Preset") {
+                    HStack(spacing: 8) {
+                        ForEach(RecordingPreset.allCases) { preset in
+                            Button(preset.rawValue) { settings.apply(preset) }
+                                .help(preset.summary)
+                        }
+                    }
+                }
+            } footer: {
+                Text("Sets frame rate, audio, camera, captions and the presenter effects in one click. Your output folder, codec, quality, countdown, blur and noise cancellation are left alone.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Video") {
                 Picker("Frame rate", selection: $settings.recordFPS) {
                     Text("30 fps").tag(30)
@@ -155,6 +198,17 @@ private struct RecordingTab: View {
                 Toggle("Highlight clicks", isOn: $settings.recordClickHighlight)
                 Toggle("Show keystrokes", isOn: $settings.recordKeystrokes)
                 Toggle("Webcam bubble", isOn: $settings.recordCamera)
+                if settings.recordCamera {
+                    Picker("Bubble corner", selection: $settings.cameraCorner) {
+                        ForEach(CameraCorner.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    Picker("Bubble size", selection: $settings.cameraSize) {
+                        ForEach(CameraSize.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    Toggle("Mirror me (like a mirror)", isOn: $settings.cameraMirrored)
+                    Text("The live bubble on screen and the one burned into the video always match — same corner, same size, same mirroring.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             Section("Privacy") {
                 Toggle("Blur a region in the video", isOn: $settings.recordBlurEnabled)
@@ -173,6 +227,9 @@ private struct RecordingTab: View {
                             Text(d.localizedName).tag(d.uniqueID)
                         }
                     }
+                    Toggle("Noise cancellation", isOn: $settings.recordNoiseCancellation)
+                    Text("Apple's voice processing — suppresses room noise, keyboard clatter and echo, and evens out your level. Same processing FaceTime uses, entirely on-device. Turn it off for music or to capture the room as-is.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
             Section {
@@ -214,11 +271,6 @@ private struct RecordingTab: View {
         }
     }
 
-    /// "~/Movies/Recordings" style short path for display.
-    private func displayPath(_ path: String) -> String {
-        (path as NSString).abbreviatingWithTildeInPath
-    }
-
     private func chooseRecordingFolder() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -240,15 +292,17 @@ private struct ShortcutsTab: View {
     var body: some View {
         Form {
             Section {
-                row("Capture & Annotate", $settings.screenshotHotkey)
-                row("OCR — Grab Text", $settings.ocrHotkey)
-                row("Pick a Color", $settings.colorHotkey)
-                row("Clipboard History", $settings.clipboardHotkey)
-                row("Record Screen", $settings.recordHotkey)
-                row("Scrolling Capture", $settings.scrollHotkey)
+                HotkeyRow("Capture & Annotate", $settings.screenshotHotkey)
+                HotkeyRow("OCR — Grab Text", $settings.ocrHotkey)
+                HotkeyRow("OCR — Grab Last Area Again", $settings.ocrRepeatHotkey)
+                HotkeyRow("OCR — Text Stack On/Off", $settings.ocrStackHotkey)
+                HotkeyRow("Pick a Color", $settings.colorHotkey)
+                HotkeyRow("Clipboard History", $settings.clipboardHotkey)
+                HotkeyRow("Record Screen", $settings.recordHotkey)
+                HotkeyRow("Scrolling Capture", $settings.scrollHotkey)
             } footer: {
                 HStack {
-                    Text("Click a shortcut, then press a new combo. Esc cancels.")
+                    Text("Click a shortcut, then press a new combo. Esc cancels. Every shortcut also appears in the pane for the feature it belongs to.")
                         .font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     Button("Reset to defaults") { settings.resetHotkeysToDefault() }
@@ -257,17 +311,29 @@ private struct ShortcutsTab: View {
         }
         .glassForm()
     }
+}
 
-    private func row(_ label: String, _ binding: Binding<Hotkey>) -> some View {
+/// One rebindable shortcut: label + recorder, sharing the conflict rule with
+/// every pane that shows a shortcut — so a feature's own pane can offer its
+/// binding without the Shortcuts list and the feature pane drifting apart.
+private struct HotkeyRow: View {
+    @EnvironmentObject var settings: SettingsStore
+    private let label: String
+    @Binding private var hotkey: Hotkey
+
+    init(_ label: String, _ hotkey: Binding<Hotkey>) {
+        self.label = label
+        self._hotkey = hotkey
+    }
+
+    var body: some View {
         HStack {
-            Text(label); Spacer()
-            HotkeyRecorder(hotkey: binding, isConflict: { [weak settings] hk in
+            Text(label)
+            Spacer()
+            HotkeyRecorder(hotkey: $hotkey, isConflict: { [weak settings] hk in
                 guard let s = settings else { return false }
                 // Taken by any OTHER action (comparing against current values).
-                return [s.screenshotHotkey, s.ocrHotkey, s.colorHotkey,
-                        s.clipboardHotkey, s.recordHotkey, s.scrollHotkey]
-                    .filter { $0 != binding.wrappedValue }
-                    .contains(hk)
+                return s.allHotkeys.filter { $0 != hotkey }.contains(hk)
             })
             .frame(width: 140, height: 24)
         }
@@ -309,14 +375,27 @@ private struct ScreenshotTab: View {
                     }
                 }
                 Toggle("Auto-save every capture to a folder", isOn: $settings.autoSaveEnabled)
-                if settings.autoSaveEnabled {
-                    HStack {
-                        Text(settings.autoSaveFolder).lineLimit(1).truncationMode(.middle)
-                            .font(.caption).foregroundStyle(.secondary)
-                        Spacer()
-                        Button("Choose…", action: chooseFolder)
-                    }
+                // The folder row stays VISIBLE with the toggle off: scrolling
+                // captures always save here, so hiding it left the user unable to
+                // see or change where those files land.
+                HStack {
+                    Text(displayPath(settings.autoSaveFolder)).lineLimit(1).truncationMode(.middle)
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Choose…", action: chooseFolder)
                 }
+                Text(settings.autoSaveEnabled
+                     ? "Every capture and every scrolling capture is saved here."
+                     : "Captures are copy-only, but scrolling captures still save to this folder.")
+                    .font(.caption).foregroundStyle(.secondary)
+
+                Divider()
+                Toggle("Hide desktop icons while capturing", isOn: $settings.hideDesktopDuringCapture)
+                // Says "most" on purpose. A wallpaper set to Center or Tile is left
+                // alone: macOS reports both as the same scaling mode, so redrawing it
+                // would risk putting pixels in the file that were never on screen.
+                Text("Covers the desktop with your wallpaper for the length of the capture, so files on the desktop stay out of the shot. Works on most wallpaper styles — a centred or tiled desktop is left as it is.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .glassForm()
@@ -338,24 +417,102 @@ private struct ScreenshotTab: View {
 
 private struct OCRTab: View {
     @EnvironmentObject var settings: SettingsStore
+
+    /// Vision's own language list, plus the saved code if a system update
+    /// dropped it — otherwise the picker would render blank on that value.
+    private var languages: [(String, String)] {
+        let list = SettingsStore.ocrLanguages
+        guard !list.contains(where: { $0.1 == settings.ocrLanguage }) else { return list }
+        return list + [(settings.ocrLanguage, settings.ocrLanguage)]
+    }
+
     var body: some View {
         Form {
+            Section {
+                Picker("Engine", selection: $settings.ocrEngine) {
+                    ForEach(OCREngine.allCases) { Text($0.rawValue).tag($0) }
+                }
+                Picker("Language", selection: $settings.ocrLanguage) {
+                    ForEach(languages, id: \.1) { Text($0.0).tag($0.1) }
+                }
+                HotkeyRow("Grab text", $settings.ocrHotkey)
+            } header: {
+                Text("Recognition")
+            } footer: {
+                // Keep footers to ONE short line. A settings pane is 480pt tall;
+                // a paragraph here pushes the next section below the fold, and a
+                // control the user has to scroll to find reads as missing.
+                // Long explanations belong in Settings → Help.
+                Text("Automatic uses macOS Live Text, falling back to the detailed pass.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            Section {
+                Toggle("Code mode — don't autocorrect identifiers", isOn: $settings.ocrCodeMode)
+                Toggle("Table mode — tab-separate columns", isOn: $settings.ocrTableMode)
+            } header: {
+                Text("Special layouts")
+            } footer: {
+                Text("Code mode turns the language model off, so getUserById() and --no-cache come back intact instead of being rewritten into English words. Table mode splits columns with tabs — it only triggers on a real grid (repeating column edges), so ordinary sentences are never turned into tabs. Both use the detailed engine.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            Section {
+                HotkeyRow("Grab the last area again", $settings.ocrRepeatHotkey)
+            } header: {
+                Text("Grab again")
+            } footer: {
+                Text("Re-reads the last area with no drag.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            Section {
+                Toggle("Collect grabs into one clipboard", isOn: $settings.ocrStackActive)
+                HotkeyRow("Turn the stack on or off", $settings.ocrStackHotkey)
+                LabeledContent("Collected") {
+                    HStack(spacing: 10) {
+                        Text(settings.ocrStack.isEmpty ? "Nothing yet" : "\(settings.ocrStack.count) grabs")
+                            .foregroundStyle(.secondary)
+                        Button("Clear") { settings.ocrStackClear() }
+                            .disabled(settings.ocrStack.isEmpty)
+                    }
+                }
+            } header: {
+                Text("Text stack")
+            } footer: {
+                Text("One paste lands the whole collection. Always starts off after a launch.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
             Section {
                 Picker("Copy style", selection: $settings.ocrKeepLineBreaks) {
                     Text("Outline — keep line breaks").tag(true)
                     Text("Inline — one line").tag(false)
                 }.pickerStyle(.radioGroup)
+                Toggle("Separate paragraphs with a blank line", isOn: $settings.ocrParagraphBreaks)
+                    .disabled(!settings.ocrKeepLineBreaks)
+                Toggle("Trim surrounding whitespace", isOn: $settings.ocrTrimWhitespace)
+                Toggle("Show notification with copied text", isOn: $settings.ocrNotify)
+            } header: {
+                Text("Copy style")
             } footer: {
-                Text("Inline joins everything into a single line; Outline preserves the on-screen layout.")
+                Text("Paragraph spacing is measured from the real line gaps.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Section("Recognition") {
-                Picker("Language", selection: $settings.ocrLanguage) {
-                    ForEach(SettingsStore.ocrLanguages, id: \.1) { Text($0.0).tag($0.1) }
+
+            Section {
+                TextField("Words to favour", text: $settings.ocrCustomWordsText, axis: .vertical)
+                    .lineLimit(2...4)
+                LabeledContent("In the list") {
+                    Text(settings.ocrCustomWords.isEmpty ? "None"
+                         : "\(settings.ocrCustomWords.count) word\(settings.ocrCustomWords.count == 1 ? "" : "s")")
+                        .foregroundStyle(.secondary)
                 }
-                Toggle("Trim surrounding whitespace", isOn: $settings.ocrTrimWhitespace)
-                Toggle("Append to existing clipboard text", isOn: $settings.ocrAppend)
-                Toggle("Show notification with copied text", isOn: $settings.ocrNotify)
+            } header: {
+                Text("Custom words")
+            } footer: {
+                Text("One per line, or comma-separated. Forces the detailed engine.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .glassForm()
@@ -366,6 +523,16 @@ private struct OCRTab: View {
 
 private struct ColorTab: View {
     @EnvironmentObject var settings: SettingsStore
+    /// The pair being contrast-checked. Defaults to the two most recent picks so
+    /// the section is useful the moment it appears.
+    @State private var foreground = "#000000"
+    @State private var background = "#FFFFFF"
+
+    private var ratio: Double {
+        ColorContrast.ratio(NSColor(hex: foreground) ?? .black,
+                            NSColor(hex: background) ?? .white)
+    }
+
     var body: some View {
         Form {
             Section("Copy") {
@@ -382,21 +549,96 @@ private struct ColorTab: View {
                 } else {
                     LazyVGrid(columns: Array(repeating: GridItem(.fixed(28)), count: 8), spacing: 8) {
                         ForEach(settings.recentColors, id: \.self) { hex in
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Color(hex: hex))
-                                .frame(width: 26, height: 26)
-                                .overlay(RoundedRectangle(cornerRadius: 6).stroke(.secondary.opacity(0.3)))
-                                .help(hex)
-                                .onTapGesture {
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(hex, forType: .string)
-                                }
+                            // A real Button, not onTapGesture: VoiceOver can reach
+                            // and describe it, and it gives the same copy feedback
+                            // every other copy action gives.
+                            Button {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(hex, forType: .string)
+                                if settings.playSound { Sounds.playIn() }
+                            } label: {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color(hex: hex))
+                                    .frame(width: 26, height: 26)
+                                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(.secondary.opacity(0.3)))
+                            }
+                            .buttonStyle(.plain)
+                            .help("Copy \(hex)")
+                            .accessibilityLabel("Copy color \(hex)")
                         }
+                    }
+                    LabeledContent("Export palette") {
+                        Menu("Copy as…") {
+                            ForEach(PaletteFormat.allCases) { format in
+                                Button(format.rawValue) {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(
+                                        format.text(for: settings.recentColors), forType: .string)
+                                    if settings.playSound { Sounds.playIn() }
+                                }
+                            }
+                        }
+                        .fixedSize()
                     }
                 }
             }
+
+            Section {
+                colorField("Foreground", $foreground)
+                colorField("Background", $background)
+                LabeledContent("Contrast") {
+                    HStack(spacing: 10) {
+                        // Live sample, so the number is never the only signal.
+                        Text("Aa")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Color(hex: foreground))
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(RoundedRectangle(cornerRadius: 5).fill(Color(hex: background)))
+                            .overlay(RoundedRectangle(cornerRadius: 5).stroke(.secondary.opacity(0.3)))
+                        Text(ColorContrast.formatted(ratio)).monospacedDigit()
+                    }
+                }
+                let passing = ColorContrast.passing(ratio)
+                ForEach(ColorContrast.Level.allCases, id: \.rawValue) { level in
+                    let ok = passing.contains(level)
+                    Label {
+                        Text("\(level.rawValue) — needs \(ColorContrast.formatted(level.threshold))")
+                    } icon: {
+                        Image(systemName: ok ? "checkmark.circle.fill" : "xmark.circle")
+                            .foregroundStyle(ok ? Color.green : Color.secondary)
+                    }
+                    .font(.caption)
+                    // Never colour-only: the symbol shape carries the verdict too.
+                    .accessibilityLabel("\(level.rawValue): \(ok ? "passes" : "fails")")
+                }
+            } header: {
+                Text("Contrast check")
+            } footer: {
+                Text("WCAG 2.1 contrast between any two colors — paste a hex or pick from Recent above. AA text is the everyday bar; UI shapes covers icons, borders and focus rings.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
         .glassForm()
+    }
+
+    /// Hex field with a live swatch, and a menu to fill it from Recent colors.
+    private func colorField(_ label: String, _ binding: Binding<String>) -> some View {
+        LabeledContent(label) {
+            HStack(spacing: 8) {
+                RoundedRectangle(cornerRadius: 5).fill(Color(hex: binding.wrappedValue))
+                    .frame(width: 22, height: 22)
+                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(.secondary.opacity(0.3)))
+                TextField("#RRGGBB", text: binding).frame(width: 90).monospaced()
+                if settings.recentColors.isEmpty == false {
+                    Menu("Recent") {
+                        ForEach(settings.recentColors, id: \.self) { hex in
+                            Button(hex) { binding.wrappedValue = hex }
+                        }
+                    }
+                    .fixedSize()
+                }
+            }
+        }
     }
 }
 
@@ -421,10 +663,13 @@ private struct ClipboardTab: View {
                 Toggle("Lock starred (pinned) items", isOn: $settings.lockPinned)
                 Toggle("Clear history when SnapDesk quits", isOn: $settings.clearOnQuit)
             }
-            Section("Pasting") {
-                Toggle("Click to paste — one click pastes into the previous app", isOn: $settings.doubleClickToPaste)
+            Section {
                 Toggle("Activate target app after paste", isOn: $settings.activateAfterPaste)
-                    .disabled(!settings.doubleClickToPaste)
+            } header: {
+                Text("Pasting")
+            } footer: {
+                Text("In the history window: one click pastes into the app you came from, a double-click only copies.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section {
                 Toggle("Ignore passwords & secrets", isOn: $settings.ignoreSecrets)
@@ -444,6 +689,8 @@ private struct ClipboardTab: View {
                         Button { settings.ignoreApps.removeAll { $0 == bundleID } } label: {
                             Image(systemName: "minus.circle.fill").foregroundStyle(.secondary)
                         }.buttonStyle(.borderless)
+                        .accessibilityLabel("Remove \(appLabel(bundleID)) from the ignore list")
+                        .help("Remove from list")
                     }
                 }
                 Button("Add App…", action: chooseApp)
@@ -481,6 +728,8 @@ private struct HelpTab: View {
             Section("Global shortcuts") {
                 key("camera.viewfinder", "Capture & Annotate", settings.screenshotHotkey.displayString)
                 key("text.viewfinder", "OCR — Grab Text", settings.ocrHotkey.displayString)
+                key("arrow.clockwise.circle", "OCR — Grab Last Area Again", settings.ocrRepeatHotkey.displayString)
+                key("square.stack.3d.up", "OCR — Text Stack On/Off", settings.ocrStackHotkey.displayString)
                 key("eyedropper", "Pick a Color", settings.colorHotkey.displayString)
                 key("doc.on.clipboard", "Clipboard History", settings.clipboardHotkey.displayString)
                 key("record.circle", "Record Screen", settings.recordHotkey.displayString)
@@ -490,26 +739,25 @@ private struct HelpTab: View {
                 row("Start/Stop", "Press the shortcut, drag a region → 3-2-1 countdown → records. Press again (or Stop on the bar) to finish.")
                 row("Full screen", "While selecting, click “Create a full screen recording” — or just press F.")
                 row("Control bar", "Timer · pause/resume · stop · ✕ cancel (discard). Pauses are cut from the video.")
-                row("Audio", "System audio and/or your microphone (Settings → General).")
+                row("Preset", "Tutorial / Meeting / Silent demo set frame rate, audio, camera, captions and effects in one click (Settings → Recording).")
+                row("Audio", "System audio and/or your microphone, with Apple noise cancellation on your voice (Settings → Recording).")
                 row("Captions", "Optional: captions (English / Spanish / German) transcribed on-device and burned straight into the video.")
+                row("Webcam", "Bubble corner, size and mirroring are configurable; the live preview always matches the video.")
                 row("Blur", "Optional privacy blur: drag a second area after the recording area — it stays pixelated in the video.")
                 row("Preview", "A review window opens when done — Reveal, Delete or Done.")
-                row("Saved", "To your chosen video folder — Settings → General → “Save videos to”.")
+                row("Saved", "To your chosen video folder — Settings → Recording → “Save videos to”.")
             }
             Section("Scrolling capture") {
                 row("Start", "Menu bar → Scrolling Capture… → select the area.")
                 row("Scroll", "Scroll the content slowly; the counter shows captured frames.")
                 row("Done", "Stitches everything into one tall image — copied + saved.")
             }
-            Section("Cleaner") {
-                row("Clean", "One click: force-frees inactive RAM + clears the ticked junk — user caches, temp files, logs, Trash.")
-                row("Trash", "“Empty Trash” is permanent — it's never pre-checked.")
-                row("Uninstall", "Removes an app AND its leftover files — everything goes to Trash (reversible).")
-            }
             Section("Screenshot editor") {
                 row("Select", "Drag a region — or click a window to snap to it.")
                 row("Tools", "A arrow · L line · R rectangle · O ellipse · P pen · H marker · B blur · N step · T text · S spotlight")
                 row("Copy", "⌘C or ↵")
+                row("Grab text", "⌘⇧T (or the text button) reads the TEXT out of the shot instead of copying pixels.")
+                row("Repeat", "⌘⇧R re-arms the last annotation's tool, colour and width — five arrows in a row without re-picking.")
                 row("Save", "⌘S    ·    Undo  ⌘Z    ·    Close  Esc")
                 row("Color", "Pick a swatch; slider sets stroke width.")
                 row("Resize", "Drag the handles around the selection.")
@@ -518,26 +766,37 @@ private struct HelpTab: View {
                 row("Loupe", "Magnifier with pixel grid + hex while you drag.")
             }
             Section("Clipboard  (\(settings.clipboardHotkey.displayString))") {
-                row("Copy", "Single-click an item → copies it (sound + flash). The window stays open — copy several in a row.")
-                row("Paste", "One click → copies AND pastes into the app you came from.")
+                row("Paste", "ONE click on an item → copies it AND pastes it into the app you came from; the window closes. The list keeps its order, so the row you just used stays where it was.")
+                row("Copy", "DOUBLE-click → copies only, no paste, and moves the item to the top as the newest copy. The window stays open, so you can collect several in a row.")
+                row("Keyboard", "↑ ↓ move the selection · ↵ pastes it · ⌘1–⌘9 paste that numbered row directly · ⌘⌫ deletes. Just type to filter — Esc closes.")
+                row("Line breaks", "A trailing line break is stripped on the way out, so a paste lands where your cursor is instead of dropping to the next line. Line breaks INSIDE the text are kept.")
                 row("Star", "⭐ pins an item; pinned survive Clear All.")
                 row("Find", "Search box + chips: All / Text / Links / Images / Pinned.")
                 row("Types", "Links, colors (swatch), code, images auto-detected.")
+                row("Copy as", "Right-click → Copy as: strip line breaks, trim lines, case changes, slug, URL-decode, pretty-print JSON. The stored item is never rewritten — only what you paste this once.")
                 row("More", "Right-click for Copy / Paste / Star / Delete.")
             }
             Section("Color  (\(settings.colorHotkey.displayString))") {
                 row("Pick", "Magnified eyedropper; copies in your chosen format.")
                 row("Formats", "HEX · RGB · RGBA · HSL · CSS var · SwiftUI · NSColor")
+                row("Contrast", "Settings → Color checks any two colors against WCAG 2.1 — AA/AAA text and UI-shape thresholds.")
+                row("Export", "Recent colors → CSS variables, Tailwind config, SwiftUI or a plain hex list.")
                 row("Loop", "“Keep sampling” picks several colors in a row.")
             }
             Section("OCR  (\(settings.ocrHotkey.displayString))") {
                 row("Grab", "Drag over text → copied to the clipboard.")
-                row("Style", "Inline (one line) or Outline (keep line breaks).")
-                row("Language", "Auto-detect or pick a specific language.")
+                row("Again", "\(settings.ocrRepeatHotkey.displayString) re-reads the LAST area with no drag — good for a value that keeps changing. Settings → OCR → Grab again.")
+                row("Stack", "\(settings.ocrStackHotkey.displayString) — or the switch in Settings → OCR → Text stack — collects several grabs into one clipboard payload. It starts off every launch, and while it's on the menu bar shows a count beside the icon.")
+                row("Style", "Inline (one line) or Outline (keep line breaks, optional blank line between paragraphs).")
+                row("Engine", "Automatic reads with macOS Live Text first — it follows columns and wrapped paragraphs in the right order — and falls back to the detailed word-by-word pass when Live Text finds nothing. Detailed always uses that pass: small text, thin strips and busy regions get an upscale, a bigger retry, then overlapping tiles before SnapDesk gives up.")
+                row("Language", "Auto-detect or pick any language this macOS can recognize.")
+                row("Code mode", "Turns the language model off so getUserById() and --no-cache survive instead of being rewritten.")
+                row("Table mode", "Tab-separates real columns so a table pastes into a spreadsheet as cells. Only fires on a genuine grid — sentences are never turned into tabs.")
+                row("Custom words", "Names, jargon and identifiers the recognizer would otherwise autocorrect into something else (Settings → OCR). While the list has entries, recognition uses the detailed engine — Live Text can't be given custom words.")
             }
             Section("Good to know") {
                 row("Startup", "Launch-at-login keeps SnapDesk ready after a restart.")
-                row("Sounds", "Soft custom sound on each action (toggle in General).")
+                row("Sounds", "Two custom sounds: a rising pair when content comes IN (capture, copy, save), a falling one when it goes OUT (paste). Toggle in General.")
                 row("Privacy", "100% on-device. Passwords & secrets are never saved.")
             }
         }

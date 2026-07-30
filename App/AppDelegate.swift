@@ -49,9 +49,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         others.forEach { $0.terminate() }
-        // A stuck old instance can ignore the polite quit — force it after 3s
-        // so the user never sees two menu-bar icons.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+        // A stuck old instance can ignore the polite quit — force it, but only
+        // after long enough that an instance finalizing a recording can finish.
+        // `applicationShouldTerminate` there holds the quit up to 6s to write the
+        // .mov's moov atom; force-killing at 3s (the old value) truncated the
+        // file into an unplayable one. Wait past that watchdog with a margin.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
             others.filter { !$0.isTerminated }.forEach { $0.forceTerminate() }
         }
     }

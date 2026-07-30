@@ -1,30 +1,27 @@
 import AppKit
 
-/// Selectable menu-bar icon look. Stored in settings; all drawn as vector
-/// template images so they adapt to light/dark menu bars with zero asset files.
-enum MenuBarIconStyle: String, CaseIterable, Identifiable {
-    case snap = "Snap"            // viewfinder + scissor notch (default, distinctive)
-    case viewfinder = "Viewfinder"
-    case camera = "Camera"
-    case crosshair = "Crosshair"
-
-    var id: String { rawValue }
-}
-
-/// Crisp, vector-drawn menu-bar icons. Template images → adapt to light/dark
-/// automatically. Cheap to draw, no asset files needed.
+/// SnapDesk's menu-bar mark. ONE icon, drawn in code as a vector template image
+/// so it adapts to light and dark menu bars, stays crisp at any scale, and needs
+/// no asset files.
+///
+/// It is the app icon reduced to monochrome: four short, heavy, round-capped
+/// corner brackets (capture) around a solid centre mark (the target you drag
+/// over). The centre is a DIAMOND, not a dot — a dot plus brackets is Apple's own
+/// `viewfinder` symbol, and at 2× (what every Retina Mac actually shows) the
+/// rotated square is what makes the mark read as ours.
+///
+/// Every measurement is a fraction of the requested point size, so the mark is
+/// resolution-independent. The detail level is deliberately low: anything finer
+/// (the app icon's four-quadrant colour wheel, for instance) collapses into a
+/// blob at a real 18pt menu-bar size — verified by rasterising it.
 enum MenuBarIcon {
-    static func image(style: MenuBarIconStyle = .snap, pointSize: CGFloat = 18) -> NSImage {
+    static func image(pointSize: CGFloat = 18) -> NSImage {
         let size = NSSize(width: pointSize, height: pointSize)
         let img = NSImage(size: size, flipped: false) { rect in
             NSColor.black.setStroke()
             NSColor.black.setFill()
-            switch style {
-            case .snap:       drawSnap(in: rect)
-            case .viewfinder: drawViewfinder(in: rect)
-            case .camera:     drawCamera(in: rect)
-            case .crosshair:  drawCrosshair(in: rect)
-            }
+            drawBrackets(in: rect)
+            drawCentre(in: rect)
             return true
         }
         img.isTemplate = true
@@ -32,6 +29,7 @@ enum MenuBarIcon {
     }
 
     /// Solid red dot shown in the menu bar while a recording is in progress.
+    /// Not a style — a state, which is why it lives alongside the one mark.
     static func recordingImage(pointSize: CGFloat = 18) -> NSImage {
         let size = NSSize(width: pointSize, height: pointSize)
         let img = NSImage(size: size, flipped: false) { rect in
@@ -43,76 +41,49 @@ enum MenuBarIcon {
         return img
     }
 
-    // MARK: - Variants
+    // MARK: - The mark
 
-    /// Viewfinder brackets with a small diagonal "snip" mark — SnapDesk's mark.
-    private static func drawSnap(in rect: NSRect) {
-        let inset = rect.insetBy(dx: 2, dy: 2)
-        drawBrackets(in: inset, lineWidth: 1.6)
-        // Center "snip": two short diagonal strokes forming an open scissor tip.
-        let c = NSPoint(x: rect.midX, y: rect.midY)
-        let r = inset.width * 0.16
-        let p = NSBezierPath()
-        p.lineWidth = 1.6
-        p.lineCapStyle = .round
-        p.move(to: NSPoint(x: c.x - r, y: c.y - r)); p.line(to: NSPoint(x: c.x + r, y: c.y + r))
-        p.move(to: NSPoint(x: c.x - r, y: c.y + r)); p.line(to: NSPoint(x: c.x + r, y: c.y - r))
-        p.stroke()
-    }
-
-    private static func drawViewfinder(in rect: NSRect) {
-        let inset = rect.insetBy(dx: 2, dy: 2)
-        drawBrackets(in: inset, lineWidth: 1.6)
-        let dotR = inset.width * 0.13
-        let d = NSRect(x: rect.midX - dotR, y: rect.midY - dotR, width: dotR * 2, height: dotR * 2)
-        NSBezierPath(ovalIn: d).fill()
-    }
-
-    private static func drawCamera(in rect: NSRect) {
-        let body = rect.insetBy(dx: 2, dy: 3.5)
-        let path = NSBezierPath(roundedRect: body, xRadius: 3, yRadius: 3)
-        path.lineWidth = 1.5
-        path.stroke()
-        // Little viewfinder bump on top.
-        let bump = NSRect(x: rect.midX - 3, y: body.maxY - 1, width: 6, height: 2.5)
-        NSBezierPath(roundedRect: bump, xRadius: 1, yRadius: 1).fill()
-        // Lens.
-        let lr = body.width * 0.20
-        let lens = NSRect(x: rect.midX - lr, y: rect.midY - lr, width: lr * 2, height: lr * 2)
-        let lp = NSBezierPath(ovalIn: lens); lp.lineWidth = 1.5; lp.stroke()
-    }
-
-    private static func drawCrosshair(in rect: NSRect) {
-        let inset = rect.insetBy(dx: 2.5, dy: 2.5)
-        let ring = NSBezierPath(ovalIn: inset); ring.lineWidth = 1.5; ring.stroke()
-        let p = NSBezierPath(); p.lineWidth = 1.5; p.lineCapStyle = .round
-        p.move(to: NSPoint(x: rect.midX, y: inset.minY - 1.5)); p.line(to: NSPoint(x: rect.midX, y: inset.maxY + 1.5))
-        p.move(to: NSPoint(x: inset.minX - 1.5, y: rect.midY)); p.line(to: NSPoint(x: inset.maxX + 1.5, y: rect.midY))
-        p.stroke()
-    }
-
-    /// Four rounded corner brackets inside `inset`.
-    private static func drawBrackets(in inset: NSRect, lineWidth: CGFloat) {
-        let corner = inset.width * 0.28
+    /// Four corner brackets. Short arms and an open middle so the mark reads as a
+    /// viewfinder rather than a filled box; round caps to match the app icon.
+    private static func drawBrackets(in rect: NSRect) {
+        let unit = rect.width
+        let frame = rect.insetBy(dx: unit * 0.11, dy: unit * 0.11)
+        let arm = frame.width * 0.33
         let path = NSBezierPath()
-        path.lineWidth = lineWidth
+        path.lineWidth = unit * 0.085          // ≈1.5pt at 18pt
         path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+
         // top-left
-        path.move(to: NSPoint(x: inset.minX, y: inset.maxY - corner))
-        path.line(to: NSPoint(x: inset.minX, y: inset.maxY))
-        path.line(to: NSPoint(x: inset.minX + corner, y: inset.maxY))
+        path.move(to: NSPoint(x: frame.minX, y: frame.maxY - arm))
+        path.line(to: NSPoint(x: frame.minX, y: frame.maxY))
+        path.line(to: NSPoint(x: frame.minX + arm, y: frame.maxY))
         // top-right
-        path.move(to: NSPoint(x: inset.maxX - corner, y: inset.maxY))
-        path.line(to: NSPoint(x: inset.maxX, y: inset.maxY))
-        path.line(to: NSPoint(x: inset.maxX, y: inset.maxY - corner))
+        path.move(to: NSPoint(x: frame.maxX - arm, y: frame.maxY))
+        path.line(to: NSPoint(x: frame.maxX, y: frame.maxY))
+        path.line(to: NSPoint(x: frame.maxX, y: frame.maxY - arm))
         // bottom-right
-        path.move(to: NSPoint(x: inset.maxX, y: inset.minY + corner))
-        path.line(to: NSPoint(x: inset.maxX, y: inset.minY))
-        path.line(to: NSPoint(x: inset.maxX - corner, y: inset.minY))
+        path.move(to: NSPoint(x: frame.maxX, y: frame.minY + arm))
+        path.line(to: NSPoint(x: frame.maxX, y: frame.minY))
+        path.line(to: NSPoint(x: frame.maxX - arm, y: frame.minY))
         // bottom-left
-        path.move(to: NSPoint(x: inset.minX + corner, y: inset.minY))
-        path.line(to: NSPoint(x: inset.minX, y: inset.minY))
-        path.line(to: NSPoint(x: inset.minX, y: inset.minY + corner))
+        path.move(to: NSPoint(x: frame.minX + arm, y: frame.minY))
+        path.line(to: NSPoint(x: frame.minX, y: frame.minY))
+        path.line(to: NSPoint(x: frame.minX, y: frame.minY + arm))
         path.stroke()
+    }
+
+    /// The centre diamond — a square on its point, so it survives as a distinct
+    /// shape at 2× instead of rounding off into a dot.
+    private static func drawCentre(in rect: NSRect) {
+        let r = rect.width * 0.11
+        let c = NSPoint(x: rect.midX, y: rect.midY)
+        let path = NSBezierPath()
+        path.move(to: NSPoint(x: c.x, y: c.y + r))
+        path.line(to: NSPoint(x: c.x + r, y: c.y))
+        path.line(to: NSPoint(x: c.x, y: c.y - r))
+        path.line(to: NSPoint(x: c.x - r, y: c.y))
+        path.close()
+        path.fill()
     }
 }

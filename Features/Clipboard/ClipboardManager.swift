@@ -2,8 +2,9 @@ import AppKit
 import Combine
 import ImageIO
 
-/// Watches the system pasteboard and keeps a searchable, pinnable history.
-/// Text entries persist across launches; image entries are session-only.
+/// Watches the system pasteboard and keeps a searchable, pinnable history. Both
+/// text and image entries persist across launches — text in the defaults blob,
+/// image bytes in `ClipboardImageStore`.
 final class ClipboardManager: ObservableObject {
     @Published private(set) var items: [ClipboardItem] = []
 
@@ -13,9 +14,26 @@ final class ClipboardManager: ObservableObject {
     private weak var settings: SettingsStore?
     private var maxUnpinned: Int { settings?.clipboardMaxItems ?? 100 }
     private let persistKey = "SnapDesk.clipboard.text"
+    /// Image METADATA only (id, date, pinned). The bytes are files, under their own
+    /// 0700 directory — a base64 image in the defaults plist would be neither
+    /// bounded nor 0600.
+    private let imagePersistKey = "SnapDesk.clipboard.images"
+    private let imageStore = ClipboardImageStore()
 
     /// Inject settings (max items, enable, store-images).
-    func attach(settings: SettingsStore) { self.settings = settings }
+    func attach(settings: SettingsStore) {
+        self.settings = settings
+        // Nothing observed "clear history when SnapDesk quits", so switching it ON
+        // changed only what the NEXT write would do: the unpinned `.jpg` files and
+        // the unpinned plaintext already on disk survived until some incidental
+        // persist happened to run — a copy, a star, a delete, or a clean quit. Anyone
+        // who turned the switch on because of what was in their history and then
+        // force-quit (or crashed, where the quit path never runs) still had all of it
+        // on disk, and it came back on the next launch. Rewrite the disk on the
+        // transition itself, in both directions, so what is stored always matches
+        // what the switch says.
+        settings.onClearOnQuitChanged = { [weak self] _ in self?.persistNow() }
+    }
 
     /// Privacy: never capture items that apps explicitly mark as secret or
     /// throwaway. Password managers and the system Keychain set
@@ -57,7 +75,7 @@ final class ClipboardManager: ObservableObject {
         timer = nil
         // Optionally wipe unpinned history when the app quits.
         if settings?.clearOnQuit == true {
-            items.removeAll { !$0.pinned }
+            items = Self.retainedOnQuit(items)
         }
         flushPersist()   // write any pending (debounced) changes before quit
     }
@@ -93,13 +111,18 @@ final class ClipboardManager: ObservableObject {
         if let string = pasteboard.string(forType: .string),
            !string.isEmpty {
             // Cap in-memory text (~1 MB) — a select-all of a huge log would
-            // otherwise retain tens of MB per item in a "lightweight" app.
-            let capped = string.utf8.count > 1_048_576 ? String(string.prefix(1_048_576)) : string
-            ingest(.text(capped))
+            // otherwise retain tens of MB per item in a "lightweight" app. Cap by
+            // BYTES: `prefix(1_048_576)` counts characters, so multi-byte text
+            // (CJK, emoji) could still keep ~4 MB.
+            ingest(.text(ClipboardItem.normalizedForStorage(Self.cappedByBytes(string, 1_048_576))))
         } else if settings?.clipboardStoreImages != false,
                   let data = pasteboard.data(forType: .tiff) ?? pasteboard.data(forType: .png) {
-            // Same image copied twice in a row → skip the duplicate row.
-            let hash = data.count ^ (data.prefix(4096).hashValue)
+            // Same image copied twice in a row → skip the duplicate row. Hash
+            // the WHOLE buffer: two different screenshots of the same window are
+            // the same byte length and share a header + first pixel row, so a
+            // count-plus-4KB hash collided and silently dropped the second.
+            var hasher = Hasher(); hasher.combine(data)
+            let hash = hasher.finalize()
             if hash == lastImageHash, case .image = items.first?.kind { return }
             lastImageHash = hash
             // Decompression-bomb guard: read the DECLARED pixel dimensions from
@@ -112,8 +135,10 @@ final class ClipboardManager: ObservableObject {
                 if w <= 0 || h <= 0 || w > 30_000 || h > 30_000 || w * h > 60_000_000 { return }
             }
             // Decode + downscale + JPEG-compress OFF the main thread (was a
-            // visible hitch on every large image copy), then insert on main.
-            DispatchQueue.global(qos: .utility).async { [weak self] in
+            // visible hitch on every large image copy), then insert on main. A
+            // SERIAL queue, so two images copied in quick succession finish — and
+            // therefore insert — in the order they were copied.
+            Self.compressQueue.async { [weak self] in
                 guard let image = NSImage(data: data),
                       let stored = Self.compressed(image) else { return }
                 DispatchQueue.main.async { self?.ingest(stored) }
@@ -121,31 +146,52 @@ final class ClipboardManager: ObservableObject {
         }
     }
 
+    /// Draw `img` into a fresh bitmap no larger than `maxPx` on its long edge.
+    ///
+    /// Sized from the TRUE pixel size, not NSImage.size (which is in POINTS — a 2×
+    /// Retina screenshot reports half its pixels there, so scaling off it stored
+    /// and pasted the image at half resolution, visibly blurry).
+    private static func downscaled(_ img: NSImage, maxPx: CGFloat) -> NSBitmapImageRep? {
+        let pxW = CGFloat(img.representations.map(\.pixelsWide).max() ?? Int(img.size.width))
+        let pxH = CGFloat(img.representations.map(\.pixelsHigh).max() ?? Int(img.size.height))
+        guard pxW > 0, pxH > 0 else { return nil }
+        let f = min(1, maxPx / max(pxW, pxH))
+        let w = Int(pxW * f), h = Int(pxH * f)
+        guard w > 0, h > 0,
+              let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h,
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                         isPlanar: false, colorSpaceName: .deviceRGB,
+                                         bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        img.draw(in: NSRect(x: 0, y: 0, width: w, height: h),
+                 from: .zero, operation: .copy, fraction: 1)
+        NSGraphicsContext.restoreGraphicsState()
+        return rep
+    }
+
+    private static func image(from rep: NSBitmapImageRep) -> NSImage {
+        let out = NSImage(size: rep.size)
+        out.addRepresentation(rep)
+        return out
+    }
+
     /// Downscale to ≤1600 px, JPEG-compress (quality 0.85) and build a ≤320 px
     /// row thumbnail. ~100-300 KB per item instead of tens of MB.
     private static func compressed(_ image: NSImage) -> ClipboardItem.Kind? {
-        func bitmap(_ img: NSImage, maxPx: CGFloat) -> NSBitmapImageRep? {
-            let s = img.size
-            guard s.width > 0, s.height > 0 else { return nil }
-            let f = min(1, maxPx / max(s.width, s.height))
-            let w = Int(s.width * f), h = Int(s.height * f)
-            guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h,
-                                             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
-                                             isPlanar: false, colorSpaceName: .deviceRGB,
-                                             bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
-            NSGraphicsContext.saveGraphicsState()
-            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-            img.draw(in: NSRect(x: 0, y: 0, width: w, height: h),
-                     from: .zero, operation: .copy, fraction: 1)
-            NSGraphicsContext.restoreGraphicsState()
-            return rep
-        }
-        guard let full = bitmap(image, maxPx: 1600),
+        guard let full = downscaled(image, maxPx: 1600),
               let data = full.representation(using: .jpeg, properties: [.compressionFactor: 0.85]),
-              let thumbRep = bitmap(image, maxPx: 320) else { return nil }
-        let thumb = NSImage(size: thumbRep.size)
-        thumb.addRepresentation(thumbRep)
-        return .image(data: data, thumb: thumb)
+              let thumbRep = downscaled(image, maxPx: 320) else { return nil }
+        return .image(data: data, thumb: Self.image(from: thumbRep))
+    }
+
+    /// Rebuild a row from bytes already on disk: the JPEG is kept as-is (it was
+    /// compressed once, at copy time — re-encoding it would only lose quality) and
+    /// only the row thumbnail is regenerated.
+    private static func restoredKind(from data: Data) -> ClipboardItem.Kind? {
+        guard let image = NSImage(data: data),
+              let rep = downscaled(image, maxPx: 320) else { return nil }
+        return .image(data: data, thumb: Self.image(from: rep))
     }
 
     private func ingest(_ kind: ClipboardItem.Kind) {
@@ -173,6 +219,8 @@ final class ClipboardManager: ObservableObject {
 
     private var lastImageHash: Int?
     private var purgeTick = 0
+    /// Serial so image compressions insert in copy order.
+    private static let compressQueue = DispatchQueue(label: "com.snapdesk.clipboard.compress", qos: .utility)
 
     /// Auto-delete unpinned items older than the configured window. Throttled to
     /// ~every 10s (not every 0.5s poll) since the cutoff is hour-granular.
@@ -186,32 +234,107 @@ final class ClipboardManager: ObservableObject {
         if items.count != before { persist() }
     }
 
-    private func trim() {
+    private func trim() { items = Self.trimmed(items, cap: maxUnpinned) }
+
+    /// The cap counts CAPTURED, unstarred rows only.
+    ///
+    /// Starred items are exempt (that is what starring means), and so is anything
+    /// the person authored: a snippet is not a trace of copying and evicting one
+    /// would silently destroy something they typed. Internal for tests.
+    static func trimmed(_ items: [ClipboardItem], cap: Int) -> [ClipboardItem] {
         var unpinnedCount = 0
-        items = items.filter { item in
-            if item.pinned { return true }
+        return items.filter { item in
+            if item.pinned || item.isSnippet { return true }
             unpinnedCount += 1
-            return unpinnedCount <= maxUnpinned
+            return unpinnedCount <= cap
         }
+    }
+
+    /// What survives "clear history when SnapDesk quits": starred rows, plus
+    /// anything authored. The setting is about traces of copying, not about
+    /// content the person wrote themselves. Internal for tests.
+    static func retainedOnQuit(_ items: [ClipboardItem]) -> [ClipboardItem] {
+        items.filter { $0.pinned || $0.isSnippet }
     }
 
     // MARK: - Actions
 
+    /// What a paste should actually emit.
+    ///
+    /// Copied text routinely arrives with a trailing newline — selecting a whole
+    /// line in a terminal or an editor, a table cell, a chat message. Pasting it
+    /// verbatim re-emits that newline: the caret drops to the START OF THE NEXT
+    /// LINE instead of staying where the text landed, and in a message field it
+    /// sends. History keeps the original bytes; only what goes on the pasteboard
+    /// is trimmed, and only at the very END, so a code block's indentation and
+    /// its internal line breaks survive untouched.
+    ///
+    /// `Character.isNewline` covers "\n", "\r", "\r\n" (one grapheme) and the
+    /// Unicode line/paragraph separators.
+    /// Internal for tests — see PasteboardTextTests.
+    static func pasteboardText(_ s: String) -> String {
+        var t = s
+        while let last = t.last, last.isNewline { t.removeLast() }
+        // An item that is nothing but newlines would paste nothing at all.
+        return t.isEmpty ? s : t
+    }
+
+    /// Truncate to at most `maxBytes` of UTF-8, on a character boundary (never
+    /// splits a multi-byte scalar). Returns the string unchanged when it fits.
+    /// Internal for tests.
+    static func cappedByBytes(_ s: String, _ maxBytes: Int) -> String {
+        guard s.utf8.count > maxBytes else { return s }
+        var end = s.startIndex, bytes = 0
+        for i in s.indices {
+            let n = String(s[i]).utf8.count
+            if bytes + n > maxBytes { break }
+            bytes += n; end = s.index(after: i)
+        }
+        return String(s[s.startIndex..<end])
+    }
+
     /// Copies an item back to the pasteboard (without re-adding it to history).
-    func copyToPasteboard(_ item: ClipboardItem) {
+    ///
+    /// - Parameter movingToTop: whether this counts as a fresh copy and should
+    ///   promote the item to the top of the history. True for an explicit
+    ///   re-copy (double-click); false when the item is only being routed
+    ///   through the pasteboard on its way to a paste, because renumbering the
+    ///   list under the user's cursor there makes every following row move.
+    func copyToPasteboard(_ item: ClipboardItem, movingToTop: Bool = false) {
         pasteboard.clearContents()
         switch item.kind {
-        case .text(let s): pasteboard.setString(s, forType: .string)
+        case .text(let s):
+            let out = Self.pasteboardText(s)
+            pasteboard.setString(out, forType: .string)
+            // Links also get the URL flavor — apps that read `public.url`
+            // (browsers, Finder's Go-to, link fields) then paste it natively
+            // instead of falling back to plain text. Only when it's a real
+            // absolute URL: a scheme-less "www.…" written to public.url is
+            // invalid and some apps then paste nothing at all.
+            if item.contentType == .link, let url = URL(string: out), url.scheme != nil {
+                pasteboard.setString(out, forType: .URL)
+            }
         case .image(let data, _):
             if let img = NSImage(data: data) { pasteboard.writeObjects([img]) }
         }
+        // Claim the change so the monitor doesn't read our own write back and
+        // file it as a fresh copy.
         lastChangeCount = pasteboard.changeCount
-        // Move it to the top.
-        if let idx = items.firstIndex(of: item) {
-            let moved = items.remove(at: idx)
-            items.insert(moved, at: 0)
-            persist()
-        }
+        guard movingToTop, let idx = items.firstIndex(of: item), idx != 0 else { return }
+        let moved = items.remove(at: idx)
+        items.insert(moved, at: 0)
+        persist()
+    }
+
+    /// Adds text composed inside SnapDesk — today, the merge of several rows.
+    ///
+    /// Goes through `ingest` so it obeys the same duplicate rule, byte cap and trim
+    /// as a real copy. Deliberately does NOT touch the pasteboard: merging is
+    /// collecting, and silently replacing what the person has copied would be a
+    /// surprise from a button that says "Merge".
+    func add(text: String) {
+        guard text.isEmpty == false else { return }
+        ingest(.text(Self.cappedByBytes(text, 1_048_576)))
     }
 
     func togglePin(_ item: ClipboardItem) {
@@ -240,52 +363,132 @@ final class ClipboardManager: ObservableObject {
         persist()
     }
 
-    // MARK: - Persistence (text only)
+    // MARK: - Persistence
 
-    private struct Persisted: Codable {
+    /// Internal for tests.
+    struct Persisted: Codable {
         let id: UUID
         let text: String
         let date: Date
         let pinned: Bool
     }
 
-    private var saveWork: DispatchWorkItem?
+    /// An image row's metadata. The bytes live in `ClipboardImageStore` under this
+    /// same id; this only records that the row existed and how it was filed.
+    /// Internal for tests.
+    struct PersistedImage: Codable {
+        let id: UUID
+        let date: Date
+        let pinned: Bool
+    }
 
-    /// Snapshot the text items on the main thread (cheap — just refs), then
-    /// debounce + JSON-encode + write OFF the main thread so rapid copies/clicks
-    /// never hitch the UI.
+    private var saveWork: DispatchWorkItem?
+    /// One serial queue owns every write. A debounced write and the quit-time
+    /// flush used to run on different queues, so a late debounced write could
+    /// land AFTER the flush and resurrect cleared/deleted history. Serializing
+    /// them makes the last-scheduled write the last-executed write.
+    private static let persistQueue = DispatchQueue(label: "com.snapdesk.clipboard.persist")
+    /// Total on-disk budget for history text (UTF-8 bytes). Bounds both the
+    /// plist size and the synchronous decode at launch.
+    private static let persistByteBudget = 8_388_608   // 8 MB
+
+    /// Debounced: rapid copies and clicks must never hitch the UI on a write.
     private func persist() {
-        let snapshot = Self.persistSnapshot(items, cap: maxUnpinned)
+        let work = persistWork()
         saveWork?.cancel()
-        let key = persistKey
-        let work = DispatchWorkItem { Self.write(snapshot, key: key) }
         saveWork = work
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.8, execute: work)
+        Self.persistQueue.asyncAfter(deadline: .now() + 0.8, execute: work)
+    }
+
+    /// Write without waiting out the debounce, still off the main thread.
+    ///
+    /// For changes whose whole point is that they take effect NOW — switching
+    /// "clear history when SnapDesk quits" on has to purge what is already on disk.
+    /// Cancelling the pending debounced work matters as much as the new write: that
+    /// one was snapshotted while the flag was still false and would otherwise land
+    /// 0.8 s later and write the unpinned bytes straight back.
+    private func persistNow() {
+        let work = persistWork()
+        saveWork?.cancel()
+        saveWork = work
+        Self.persistQueue.async(execute: work)
     }
 
     /// Flush any pending save immediately and synchronously (used on quit).
     private func flushPersist() {
+        let work = persistWork()
         saveWork?.cancel()
-        let snapshot = Self.persistSnapshot(items, cap: maxUnpinned)
-        Self.write(snapshot, key: persistKey)
+        Self.persistQueue.sync(execute: work)
     }
 
-    /// Text items only, filtered FIRST (images no longer eat the quota), every
-    /// pinned item always included, huge strings capped at 512 KB so the
-    /// UserDefaults plist stays sane.
-    private static func persistSnapshot(_ items: [ClipboardItem], cap: Int) -> [Persisted] {
+    /// Snapshot everything on the main thread (cheap — refs and a plan), then do
+    /// the encoding, the plist write, the image writes and the orphan prune on the
+    /// persist queue. ONE serial queue owns the plist AND the image directory, so a
+    /// debounced write, the quit-time flush and a prune can never interleave.
+    private func persistWork() -> DispatchWorkItem {
+        let pinnedOnly = pinnedOnlyOnDisk
+        let snapshot = Self.persistSnapshot(items, cap: maxUnpinned, pinnedOnly: pinnedOnly)
+        // Text is safe to write at any moment. The image half is NOT: while a
+        // restore is outstanding `items` has no image rows yet, so a plan built from
+        // it is empty — and that emptied the manifest and deleted every stored
+        // `.jpg`, on the persist queue, while the restore loop was still reading
+        // those very files off `compressQueue`. Whatever it had not reached was gone
+        // for good: those bytes had never been in memory. See `imagesRestorePending`.
+        let entries = imagesRestorePending
+            ? nil
+            : ClipboardImageStore.plan(items, pinnedOnly: pinnedOnly)
+        // Metadata for exactly what the plan allows on disk, so the manifest and
+        // the directory can never disagree: an entry with no file is a row that
+        // comes back blank, a file with no entry is an orphan.
+        let meta = entries.map { Self.imageSnapshot(items, keeping: Set($0.map(\.id))) }
+        let key = persistKey, imageKey = imagePersistKey, store = imageStore
+        return DispatchWorkItem {
+            Self.write(snapshot, key: key)
+            guard let entries, let meta else { return }
+            Self.writeImageMeta(meta, key: imageKey)
+            store.synchronize(entries, prune: true)
+        }
+    }
+
+    /// With "Clear history when SnapDesk quits" on, unpinned content must NEVER
+    /// reach the disk — neither text nor image bytes — because a crash or
+    /// force-quit (where `stop()` never runs) would leave the whole history
+    /// behind. So persist pinned only.
+    private var pinnedOnlyOnDisk: Bool { settings?.clearOnQuit == true }
+
+    /// Text items only, filtered FIRST (images no longer eat the quota), pinned
+    /// items first (kept preferentially), huge strings capped at 512 KB, and a
+    /// hard aggregate byte budget so the plist can't grow without bound.
+    /// Internal for tests.
+    static func persistSnapshot(_ items: [ClipboardItem], cap: Int, pinnedOnly: Bool) -> [Persisted] {
+        func persisted(_ item: ClipboardItem) -> Persisted? {
+            // A snippet row has its own store and its own blob; writing it here too
+            // would resurrect a deleted snippet as a history entry on next launch.
+            guard case .text(let raw) = item.kind, item.isSnippet == false else { return nil }
+            let text = raw.utf8.count > 524_288 ? cappedByBytes(raw, 524_288) : raw
+            return Persisted(id: item.id, text: text, date: item.date, pinned: item.pinned)
+        }
         var out: [Persisted] = []
-        var unpinned = 0
-        for item in items {
-            guard case .text(let raw) = item.kind else { continue }
-            if !item.pinned {
-                unpinned += 1
-                if unpinned > max(cap, 200) { continue }
-            }
-            let text = raw.count > 524_288 ? String(raw.prefix(524_288)) : raw
-            out.append(Persisted(id: item.id, text: text, date: item.date, pinned: item.pinned))
+        var bytes = 0
+        // Pinned first so the budget never sacrifices a starred item for recents.
+        let pinned = items.filter { $0.pinned }
+        let unpinned: [ClipboardItem] = pinnedOnly ? [] : Array(items.filter { !$0.pinned }.prefix(max(cap, 200)))
+        for item in pinned + unpinned {
+            guard let p = persisted(item) else { continue }
+            bytes += p.text.utf8.count
+            if bytes > persistByteBudget && !p.pinned { continue }
+            out.append(p)
         }
         return out
+    }
+
+    /// Metadata for exactly the images `ClipboardImageStore.plan` allows on disk.
+    /// Internal for tests.
+    static func imageSnapshot(_ items: [ClipboardItem], keeping ids: Set<UUID>) -> [PersistedImage] {
+        items.compactMap { item in
+            guard item.isImage, ids.contains(item.id) else { return nil }
+            return PersistedImage(id: item.id, date: item.date, pinned: item.pinned)
+        }
     }
 
     private static func write(_ items: [Persisted], key: String) {
@@ -297,11 +500,83 @@ final class ClipboardManager: ObservableObject {
         }
     }
 
+    private static func writeImageMeta(_ items: [PersistedImage], key: String) {
+        do {
+            let data = try JSONEncoder().encode(items)
+            UserDefaults.standard.set(data, forKey: key)
+        } catch {
+            NSLog("SnapDesk: failed to persist clipboard image index: \(error)")
+        }
+    }
+
     private func loadPersisted() {
+        defer { loadPersistedImages() }
         guard let data = UserDefaults.standard.data(forKey: persistKey),
               let saved = try? JSONDecoder().decode([Persisted].self, from: data) else { return }
+        // Normalize on load too — links saved before trailing-newline trimming
+        // existed would otherwise keep their broken paste behavior forever.
         items = saved.map {
-            ClipboardItem(id: $0.id, kind: .text($0.text), date: $0.date, pinned: $0.pinned)
+            ClipboardItem(id: $0.id, kind: .text(ClipboardItem.normalizedForStorage($0.text)),
+                          date: $0.date, pinned: $0.pinned)
         }
+    }
+
+    /// Safety ceiling on restore. The real bound is the store's byte budget, which
+    /// the manifest already respects; this only stops an old or hand-edited
+    /// manifest from turning launch into a thousand JPEG decodes.
+    private static let maxRestoredImages = 300
+
+    /// Image rows come back ASYNCHRONOUSLY: decoding a list of screenshots into row
+    /// thumbnails is the most expensive thing available at launch, and the history
+    /// window is not on screen yet. Same off-main queue the compression path uses.
+    private func loadPersistedImages() {
+        guard let data = UserDefaults.standard.data(forKey: imagePersistKey),
+              let meta = try? JSONDecoder().decode([PersistedImage].self, from: data),
+              meta.isEmpty == false else { return }
+        let wanted = meta.sorted { $0.date > $1.date }.prefix(Self.maxRestoredImages)
+        let store = imageStore
+        // Set BEFORE the hop: a copy one millisecond from now must already find the
+        // restore outstanding, or its persist prunes the files this loop reads.
+        imagesRestorePending = true
+        Self.compressQueue.async { [weak self] in
+            var restored: [ClipboardItem] = []
+            for entry in wanted {
+                // A missing file is not an error: the directory may have been
+                // pruned, or the person may have cleared it by hand.
+                guard let bytes = store.data(for: entry.id),
+                      let kind = Self.restoredKind(from: bytes) else { continue }
+                restored.append(ClipboardItem(id: entry.id, kind: kind,
+                                              date: entry.date, pinned: entry.pinned))
+            }
+            // Always hops back, even with nothing to merge: the flag has to be
+            // cleared or no persist would ever prune the image directory again.
+            DispatchQueue.main.async { self?.finishImageRestore(restored) }
+        }
+    }
+
+    /// True from the moment the image restore is dispatched until its rows are back
+    /// in `items`. Main-thread only — see `persistWork()` for what it guards.
+    private var imagesRestorePending = false
+
+    private func finishImageRestore(_ restored: [ClipboardItem]) {
+        imagesRestorePending = false
+        if restored.isEmpty == false { merge(restored: restored) }
+        // Any prune that was skipped while the restore was outstanding still owes the
+        // person their promise: with clear-on-quit on, unpinned bytes must not be
+        // left sitting on disk waiting for the next incidental write.
+        if pinnedOnlyOnDisk { persistNow() }
+    }
+
+    /// Splice restored image rows into the loaded text history by date, so the list
+    /// reads in the order things were actually copied. Anything copied while the
+    /// decode was running keeps its place — matching by id, never by position.
+    ///
+    /// No `persist()` here: nothing about what is on disk changed, and writing from
+    /// a load would mean a launch that crashes mid-restore could shorten history.
+    private func merge(restored: [ClipboardItem]) {
+        let known = Set(items.map(\.id))
+        items = (items + restored.filter { known.contains($0.id) == false })
+            .sorted { $0.date > $1.date }
+        trim()
     }
 }

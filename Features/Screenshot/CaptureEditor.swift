@@ -38,9 +38,14 @@ enum CaptureEditor {
         }
 
         func start() {
-            windows.forEach { $0.makeKeyAndOrderFront(nil) }
-            windows.first?.makeKey()
+            // Activate FIRST: this is an accessory (LSUIElement) app launched from
+            // a Carbon global hotkey, so it isn't frontmost. A borderless window
+            // can only become key once the app is active, so ordering activate
+            // before makeKey is what actually delivers keyboard events (Esc, tool
+            // shortcuts) instead of leaving them dropped.
             NSApp.activate(ignoringOtherApps: true)
+            windows.forEach { $0.orderFront(nil) }
+            windows.first?.makeKeyAndOrderFront(nil)
         }
 
         func claim(_ view: EditorView) {
@@ -109,6 +114,10 @@ private final class SwatchButton: NSButton {
 final class EditorView: NSView, NSTextFieldDelegate {
     private enum Phase { case selecting, editing, passive }
     private enum DragMode { case none, drawing, resizing(Int) }
+    /// What the pointer is doing to the crop box: nothing, dragging handle `n`,
+    /// sliding it (from the last mouse point), or rubber-banding a new one (from
+    /// where the drag started).
+    private enum CropDrag { case none, handle(Int), move(CGPoint), draw(CGPoint) }
 
     private let frozen: NSImage
     private let frozenCG: CGImage
@@ -135,14 +144,33 @@ final class EditorView: NSView, NSTextFieldDelegate {
     private var color: NSColor = .systemRed
     private var lineWidth: CGFloat = 3
     private var annotations: [AnnotationStroke] = []
-    private var redoStack: [AnnotationStroke] = []
     private var current: AnnotationStroke?
     private var stepCounter = 0
+
+    /// ONE stack for strokes and whole-image transforms alike — see EditorEdit.
+    private var undoStack: [EditorEdit] = []
+    private var redoStack: [EditorEdit] = []
+
+    /// Non-nil once a crop / rotate / flip has been applied: the flat bitmap the
+    /// selection now shows *instead of* the frozen screen underneath it.
+    ///
+    /// Strategy (b) of the two ways to transform an annotated picture: flatten the
+    /// strokes into the bitmap first, then transform the bitmap. (a) — transforming
+    /// each stroke's geometry alongside the image — keeps them editable, but every
+    /// arrow head, text baseline and stroke width has to be re-derived, and any
+    /// error there is invisible until someone looks closely at a shipped screenshot.
+    /// The deliberate cost of (b): strokes made BEFORE a transform are pixels
+    /// afterwards and can no longer be undone individually — ⌘Z past the transform
+    /// restores them as live strokes again, which is where they become editable.
+    private var flattened: CGImage?
+    private var cropBox: CropBox?
+    private var cropDrag: CropDrag = .none
 
     private var toolBar: NSView?
     private var actionBar: NSView?
     private var toolButtons: [NSButton] = []
     private var swatchButtons: [SwatchButton] = []
+    private weak var cropButton: NSButton?
 
     private var textField: NSTextField?
     private var pendingTextOrigin: CGPoint = .zero
@@ -214,6 +242,11 @@ final class EditorView: NSView, NSTextFieldDelegate {
         if self !== active { phase = .passive; needsDisplay = true }
     }
 
+    /// Work that a stray click on another display must not discard.
+    private var hasEdits: Bool {
+        annotations.isEmpty == false || current != nil || flattened != nil
+    }
+
     // MARK: - Mouse
 
     override func mouseMoved(with event: NSEvent) {
@@ -235,8 +268,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
         case .passive:
             // Another display is mid-annotation → a stray click here must not
             // throw that work away. Only a click with no edits closes.
-            if let active = session?.activeView,
-               active.annotations.isEmpty == false || active.current != nil { return }
+            if let active = session?.activeView, active.hasEdits { return }
             session?.finish()
         case .selecting:
             session?.claim(self)
@@ -244,6 +276,15 @@ final class EditorView: NSView, NSTextFieldDelegate {
             dragStart = p; selection = .zero; needsDisplay = true
         case .editing:
             commitTextIfEditing()
+            // Crop mode swallows the mouse: no stroke may start while a crop is
+            // pending, or confirming it would flatten a half-drawn annotation.
+            if let box = cropBox {
+                if let h = box.handle(at: p, size: handleSize) { cropDrag = .handle(h) }
+                else if box.rect.contains(p) { cropDrag = .move(p) }
+                else { cropDrag = .draw(p) }   // rect only changes once the drag moves
+                needsDisplay = true
+                return
+            }
             if let h = handleAt(p) { dragMode = .resizing(h); dragStart = p }
             else if selection.contains(p) { beginAnnotation(at: p); dragMode = .drawing }
         }
@@ -261,6 +302,19 @@ final class EditorView: NSView, NSTextFieldDelegate {
             // un-dimmed patches. Single frozen-image blit per frame stays smooth.
             needsDisplay = true
         case .editing:
+            if var box = cropBox {
+                switch cropDrag {
+                case .handle(let h): box.drag(handle: h, to: p)
+                case .move(let last):
+                    box.move(by: CGSize(width: p.x - last.x, height: p.y - last.y))
+                    cropDrag = .move(p)
+                case .draw(let origin): box.draw(from: origin, to: p)
+                case .none: return
+                }
+                cropBox = box
+                needsDisplay = true
+                return
+            }
             switch dragMode {
             case .drawing: updateAnnotation(to: p)
             case .resizing(let h):
@@ -290,6 +344,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
                 selection = hw; enterEditing()
             } else { needsDisplay = true }
         case .editing:
+            if cropBox != nil { cropDrag = .none; needsDisplay = true; return }
             if case .drawing = dragMode { finishAnnotation() }
             dragMode = .none; needsDisplay = true
         case .passive: break
@@ -303,14 +358,24 @@ final class EditorView: NSView, NSTextFieldDelegate {
         needsDisplay = true
     }
 
-    /// Smallest on-screen window containing `p` (≈ the topmost one).
+    /// Topmost on-screen window containing `p`. `windowRects` comes from
+    /// CGWindowList in front-to-back order, so the FIRST match is the one the
+    /// user actually sees under the cursor — picking the smallest instead used to
+    /// snap to a tiny window fully hidden behind a larger one.
     private func windowAt(_ p: CGPoint) -> CGRect? {
-        windowRects.filter { $0.contains(p) }.min { $0.width * $0.height < $1.width * $1.height }
+        windowRects.first { $0.contains(p) }
     }
 
     override func keyDown(with event: NSEvent) {
         // Note: while the inline text field is editing it is first responder, so
         // these never fire then — letters type into the field as expected.
+
+        // Crop mode owns Esc and ↵ first: Esc must abandon the crop, not the whole
+        // capture — that would take every annotation with it.
+        if cropBox != nil {
+            if event.keyCode == 53 { cancelCrop(); return }
+            if event.keyCode == 36 || event.keyCode == 76 { applyCrop(); return }
+        }
         if event.keyCode == 53 { session?.finish(); return }          // Esc
         if event.keyCode == 36 || event.keyCode == 76 { copyAction(); return }  // Return
 
@@ -319,12 +384,26 @@ final class EditorView: NSView, NSTextFieldDelegate {
             switch ch {
             case "c": copyAction(); return     // ⌘C — copy without clicking
             case "s": saveAction(); return     // ⌘S
+            case "t" where event.modifierFlags.contains(.shift):
+                grabTextAction(); return       // ⌘⇧T — OCR this shot
+            case "r" where event.modifierFlags.contains(.shift):
+                repeatLastAnnotation(); return // ⌘⇧R — same tool/colour/width again
             case "z":
                 if event.modifierFlags.contains(.shift) { redo() } else { undo() }
                 return                         // ⌘Z / ⌘⇧Z
+            // Rotate matches Preview's ⌘L / ⌘R. ⌘⇧R stays "repeat last annotation"
+            // because its `where` case above is matched first.
+            case "l": applyTransform(.rotateLeft); return
+            case "r": applyTransform(.rotateRight); return
+            case "h" where event.modifierFlags.contains(.shift):
+                applyTransform(.flipHorizontal); return     // ⌘⇧H
+            case "v" where event.modifierFlags.contains(.shift):
+                applyTransform(.flipVertical); return       // ⌘⇧V
             default: break
             }
-        } else if phase == .editing, let t = toolForKey(ch) {
+        } else if phase == .editing, cropBox == nil, ch == "c" {
+            beginCrop(); return                // C — the one letter no tool uses
+        } else if phase == .editing, cropBox == nil, let t = toolForKey(ch) {
             setTool(t); return                 // A/L/R/O/P/H/B/N/T
         }
         super.keyDown(with: event)
@@ -340,23 +419,42 @@ final class EditorView: NSView, NSTextFieldDelegate {
         switch event.charactersIgnoringModifiers?.lowercased() {
         case "c": copyAction(); return true
         case "s": saveAction(); return true
+        case "t" where event.modifierFlags.contains(.shift):
+            grabTextAction(); return true
         case "z":
             commitTextIfEditing()
             if event.modifierFlags.contains(.shift) { redo() } else { undo() }
             return true
+        // ⌘⇧R is not handled here (it isn't today either), so guard the shift bit
+        // rather than stealing it for a rotate.
+        case "r" where event.modifierFlags.contains(.shift) == false:
+            applyTransform(.rotateRight); return true
+        case "l" where event.modifierFlags.contains(.shift) == false:
+            applyTransform(.rotateLeft); return true
+        case "h" where event.modifierFlags.contains(.shift):
+            applyTransform(.flipHorizontal); return true
+        case "v" where event.modifierFlags.contains(.shift):
+            applyTransform(.flipVertical); return true
         default: return super.performKeyEquivalent(with: event)
         }
     }
 
     // MARK: - Annotations
 
+    /// The only way a stroke reaches `annotations`, so the undo stack can never
+    /// disagree with what's on screen.
+    private func pushStroke(_ a: AnnotationStroke) {
+        annotations.append(a)
+        undoStack.append(.stroke(nil))
+        redoStack.removeAll()
+    }
+
     private func beginAnnotation(at p: CGPoint) {
         if tool == .text { beginText(at: p); dragMode = .none; return }
         if tool == .step {
             stepCounter += 1
-            annotations.append(AnnotationStroke(tool: .step, color: color, width: lineWidth,
-                                                points: [p], text: nil, image: nil, step: stepCounter))
-            redoStack.removeAll()
+            pushStroke(AnnotationStroke(tool: .step, color: color, width: lineWidth,
+                                        points: [p], text: nil, image: nil, step: stepCounter))
             needsDisplay = true; dragMode = .none; return
         }
         let hl = tool == .highlighter
@@ -385,11 +483,18 @@ final class EditorView: NSView, NSTextFieldDelegate {
     private func finishAnnotation() {
         guard var a = current else { return }
         if a.tool == .blur, a.points.count > 1 {
-            a.image = AnnotationRenderer.pixelate(frozenCG,
-                rectInPoints: AnnotationRenderer.rect(a.points[0], a.points[1]), viewSize: bounds.size)
+            let r = AnnotationRenderer.rect(a.points[0], a.points[1])
+            // Sample whatever the selection is actually SHOWING. After a crop or
+            // rotate the frozen screen no longer lines up with it, and blurring it
+            // would paste a slice of the old picture over the new one.
+            if let flat = flattened {
+                a.image = AnnotationRenderer.pixelate(flat, rectInPoints: r, displayedIn: selection)
+            } else {
+                a.image = AnnotationRenderer.pixelate(frozenCG, rectInPoints: r, viewSize: bounds.size)
+            }
         }
-        annotations.append(a); current = nil
-        redoStack.removeAll()
+        current = nil
+        pushStroke(a)
         lastStrokeRect = .zero
     }
 
@@ -413,9 +518,8 @@ final class EditorView: NSView, NSTextFieldDelegate {
         let s = tf.stringValue
         tf.removeFromSuperview(); textField = nil
         if !s.isEmpty {
-            annotations.append(AnnotationStroke(tool: .text, color: color, width: lineWidth,
-                                                points: [pendingTextOrigin], text: s, image: nil, step: nil))
-            redoStack.removeAll()
+            pushStroke(AnnotationStroke(tool: .text, color: color, width: lineWidth,
+                                        points: [pendingTextOrigin], text: s, image: nil, step: nil))
         }
         window?.makeFirstResponder(self); needsDisplay = true
     }
@@ -458,6 +562,12 @@ final class EditorView: NSView, NSTextFieldDelegate {
             if phase == .editing {
                 NSGraphicsContext.saveGraphicsState()
                 NSBezierPath(rect: selection).setClip()
+                // A transformed bitmap covers the frozen screen inside the selection:
+                // after a rotate the pixels underneath are no longer this picture.
+                if let flat = flattened {
+                    NSImage(cgImage: flat, size: selection.size)
+                        .draw(in: selection, from: .zero, operation: .copy, fraction: 1)
+                }
                 for a in annotations { AnnotationRenderer.draw(a) }
                 if let c = current { AnnotationRenderer.draw(c) }
                 NSGraphicsContext.restoreGraphicsState()
@@ -472,17 +582,26 @@ final class EditorView: NSView, NSTextFieldDelegate {
             NSColor.white.withAlphaComponent(0.85).setStroke()
             let inner = NSBezierPath(rect: bright.insetBy(dx: 1.5, dy: 1.5)); inner.lineWidth = 0.75; inner.stroke()
 
-            drawDimLabel(bright)
-            if phase == .editing { drawHandles() }
+            if let box = cropBox {
+                drawCropBox(box)
+            } else {
+                drawDimLabel(bright)
+                if phase == .editing, flattened == nil { drawHandles() }
+            }
         }
         if showLoupe, phase == .selecting { drawLoupe() }
         if showHint, phase != .passive { drawHint() }
     }
 
     private func drawHint() {
-        let text = phase == .editing
-            ? "Tools  A L R O P H B N T   ·   ⌘C copy   ·   ⌘Z undo   ·   Esc"
-            : "Drag to select   ·   click a window to snap   ·   Esc to cancel"
+        let text: String
+        if cropBox != nil {
+            text = "Drag the crop box   ·   ↵ to crop   ·   Esc to cancel"
+        } else if phase == .editing {
+            text = "Tools  A L R O P H B N T   ·   C crop   ·   ⌘L / ⌘R rotate   ·   ⌘C copy   ·   Esc"
+        } else {
+            text = "Drag to select   ·   click a window to snap   ·   Esc to cancel"
+        }
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor.white]
         let sz = text.size(withAttributes: attrs)
@@ -504,23 +623,64 @@ final class EditorView: NSView, NSTextFieldDelegate {
         return selection.width > 0 ? selection : .zero
     }
 
-    private func surrounding(_ s: CGRect) -> [NSRect] {
-        [NSRect(x: bounds.minX, y: s.maxY, width: bounds.width, height: bounds.maxY - s.maxY),
-         NSRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: s.minY - bounds.minY),
-         NSRect(x: bounds.minX, y: s.minY, width: s.minX - bounds.minX, height: s.height),
-         NSRect(x: s.maxX, y: s.minY, width: bounds.maxX - s.maxX, height: s.height)]
+    private func surrounding(_ s: CGRect) -> [NSRect] { surrounding(s, within: bounds) }
+
+    /// The four rects of `outer` left over around `s` — used both for the screen dim
+    /// and for dimming the part of the selection a pending crop throws away.
+    private func surrounding(_ s: CGRect, within outer: CGRect) -> [NSRect] {
+        [NSRect(x: outer.minX, y: s.maxY, width: outer.width, height: max(0, outer.maxY - s.maxY)),
+         NSRect(x: outer.minX, y: outer.minY, width: outer.width, height: max(0, s.minY - outer.minY)),
+         NSRect(x: outer.minX, y: s.minY, width: max(0, s.minX - outer.minX), height: s.height),
+         NSRect(x: s.maxX, y: s.minY, width: max(0, outer.maxX - s.maxX), height: s.height)]
     }
 
     private func drawDimLabel(_ selection: CGRect) {
-        let label = "\(Int(selection.width)) × \(Int(selection.height))"
+        drawBadge("\(Int(selection.width)) × \(Int(selection.height))", above: selection)
+    }
+
+    private func drawBadge(_ label: String, above r: CGRect) {
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold), .foregroundColor: NSColor.white]
         let sz = label.size(withAttributes: attrs)
-        let bg = CGRect(x: selection.minX, y: min(bounds.maxY - sz.height - 4, selection.maxY + 6),
+        let bg = CGRect(x: r.minX, y: min(bounds.maxY - sz.height - 4, r.maxY + 6),
                         width: sz.width + 12, height: sz.height + 5)
         NSColor.black.withAlphaComponent(0.65).setFill()
         NSBezierPath(roundedRect: bg, xRadius: 5, yRadius: 5).fill()
         label.draw(at: CGPoint(x: bg.minX + 6, y: bg.minY + 2.5), withAttributes: attrs)
+    }
+
+    /// The pending crop: the discarded area dimmed a second time, thirds guides, and
+    /// a readout of the PIXEL size the crop will produce (points would understate a
+    /// 2× capture by half).
+    private func drawCropBox(_ box: CropBox) {
+        let r = box.rect
+        NSColor.snapDim.setFill()
+        for part in surrounding(r, within: selection) { part.fill(using: .sourceOver) }
+
+        NSColor.white.withAlphaComponent(0.3).setStroke()
+        let guides = NSBezierPath(); guides.lineWidth = 0.5
+        for i in 1...2 {
+            let x = r.minX + r.width * CGFloat(i) / 3, y = r.minY + r.height * CGFloat(i) / 3
+            guides.move(to: NSPoint(x: x, y: r.minY)); guides.line(to: NSPoint(x: x, y: r.maxY))
+            guides.move(to: NSPoint(x: r.minX, y: y)); guides.line(to: NSPoint(x: r.maxX, y: y))
+        }
+        guides.stroke()
+
+        NSColor.black.withAlphaComponent(0.55).setStroke()
+        let outer = NSBezierPath(rect: r.insetBy(dx: -1, dy: -1)); outer.lineWidth = 1; outer.stroke()
+        NSColor.white.withAlphaComponent(0.95).setStroke()
+        let edge = NSBezierPath(rect: r); edge.lineWidth = 1.5; edge.stroke()
+
+        for hr in CropBox.handleRects(for: r, size: handleSize) {
+            let ring = NSBezierPath(ovalIn: hr.insetBy(dx: -1, dy: -1))
+            NSColor.black.withAlphaComponent(0.4).setStroke(); ring.lineWidth = 1; ring.stroke()
+            let p = NSBezierPath(ovalIn: hr)
+            NSColor.white.setFill(); p.fill()
+            NSColor.controlAccentColor.setStroke(); p.lineWidth = 2; p.stroke()
+        }
+
+        let s = effectiveScale
+        drawBadge("\(Int((r.width * s).rounded())) × \(Int((r.height * s).rounded())) px", above: r)
     }
 
     private func drawHandles() {
@@ -602,6 +762,10 @@ final class EditorView: NSView, NSTextFieldDelegate {
     }
 
     private func handleAt(_ p: CGPoint) -> Int? {
+        // Once a transform has replaced the pixels, dragging the selection edge can
+        // no longer mean "show me more of the screen there" — there is no more
+        // picture outside the bitmap. Trimming after a transform is the crop tool.
+        guard flattened == nil else { return nil }
         for (i, r) in handleRects().enumerated() where r.insetBy(dx: -3, dy: -3).contains(p) { return i }
         return nil
     }
@@ -655,17 +819,47 @@ final class EditorView: NSView, NSTextFieldDelegate {
         undo.bezelStyle = .texturedRounded; undo.toolTip = "Undo (⌘Z)"
         let redoB = NSButton(image: symbol("arrow.uturn.forward", "Redo"), target: self, action: #selector(redo))
         redoB.bezelStyle = .texturedRounded; redoB.toolTip = "Redo (⌘⇧Z)"
+        let crop = NSButton(image: symbol("crop", "Crop"), target: self, action: #selector(cropAction))
+        crop.bezelStyle = .texturedRounded; crop.toolTip = "Crop (C) — ↵ applies, Esc cancels"
+        crop.setAccessibilityLabel("Crop")
+        cropButton = crop
+        let transforms: [(String, EditorImageTransform, String)] = [
+            ("rotate.left", .rotateLeft, "Rotate left (⌘L)"),
+            ("rotate.right", .rotateRight, "Rotate right (⌘R)"),
+            // These spelled-out names are the flip glyphs as they were catalogued in
+            // macOS 11–15; there is no "flip.vertical" spelling at all, so both use
+            // the long form to stay a matched pair.
+            ("arrow.left.and.right.righttriangle.left.righttriangle.right", .flipHorizontal,
+             "Flip horizontal (⌘⇧H)"),
+            ("arrow.up.and.down.righttriangle.up.righttriangle.down", .flipVertical,
+             "Flip vertical (⌘⇧V)"),
+        ]
+        var transformButtons: [NSButton] = []
+        for (sym, t, help) in transforms {
+            let b = NSButton(image: symbol(sym, t.label), target: self, action: #selector(transformAction(_:)))
+            b.bezelStyle = .texturedRounded
+            b.tag = EditorImageTransform.allCases.firstIndex(of: t) ?? 0
+            b.toolTip = help
+            b.setAccessibilityLabel(t.label)
+            transformButtons.append(b)
+        }
         let beautify = NSButton(image: symbol("wand.and.stars", "Beautify"), target: self, action: #selector(beautifyAction))
         beautify.bezelStyle = .texturedRounded; beautify.toolTip = "Beautify — gradient background"
         let pin = NSButton(image: symbol("pin", "Pin"), target: self, action: #selector(pinAction))
         pin.bezelStyle = .texturedRounded; pin.toolTip = "Pin to screen"
+        let grabText = NSButton(image: symbol("text.viewfinder", "Grab text"),
+                                target: self, action: #selector(grabTextAction))
+        grabText.bezelStyle = .texturedRounded
+        grabText.toolTip = "Grab the text in this shot (⌘⇧T)"
         let copy = NSButton(title: "Copy", target: self, action: #selector(copyAction))
         copy.bezelStyle = .texturedRounded; copy.toolTip = "Copy (⌘C / ↵)"
         let save = NSButton(title: "Save", target: self, action: #selector(saveAction))
         save.bezelStyle = .texturedRounded; save.toolTip = "Save (⌘S)"
         let close = NSButton(image: symbol("xmark", "Close"), target: self, action: #selector(closeAction))
         close.bezelStyle = .texturedRounded; close.toolTip = "Close (Esc)"
-        [undo, redoB, beautify, pin, copy, save, close].forEach { aStack.addArrangedSubview($0) }
+        ([undo, redoB, crop] + transformButtons + [beautify, grabText, pin, copy, save, close])
+            .forEach { aStack.addArrangedSubview($0) }
+        styleCropButton()
         let aBar = wrapBar(aStack); actionBar = aBar; addSubview(aBar)
     }
 
@@ -780,22 +974,191 @@ final class EditorView: NSView, NSTextFieldDelegate {
     }
     @objc private func widthChanged(_ sender: NSSlider) { lineWidth = CGFloat(sender.doubleValue) }
     @objc private func undo() {
-        guard !annotations.isEmpty else { return }
-        let r = annotations.removeLast()
-        redoStack.append(r)
-        if r.tool == .step { stepCounter = max(0, stepCounter - 1) }
+        guard let edit = undoStack.popLast() else { return }
+        switch edit {
+        case .stroke:
+            guard let r = annotations.popLast() else { return }
+            if r.tool == .step { stepCounter = max(0, stepCounter - 1) }
+            redoStack.append(.stroke(r))
+        case .transform(let before, let after):
+            restore(before)
+            redoStack.append(.transform(before: before, after: after))
+        }
         needsDisplay = true
     }
 
     @objc private func redo() {
-        guard let r = redoStack.popLast() else { return }
-        annotations.append(r)
-        if r.tool == .step { stepCounter += 1 }
+        guard let edit = redoStack.popLast() else { return }
+        switch edit {
+        case .stroke(let stroke):
+            guard let r = stroke else { return }
+            annotations.append(r)
+            if r.tool == .step { stepCounter += 1 }
+            undoStack.append(.stroke(nil))
+        case .transform(let before, let after):
+            restore(after)
+            undoStack.append(.transform(before: before, after: after))
+        }
         needsDisplay = true
+    }
+
+    // MARK: - Crop / rotate / flip
+
+    /// Put the editor back into a recorded state. The bitmap is the same object the
+    /// snapshot was taken from and the strokes are the same values, so undoing a
+    /// rotate returns the picture and its annotations bit-identical — nothing is
+    /// re-rendered to get there.
+    private func restore(_ s: EditorImageState) {
+        flattened = s.flattened
+        selection = s.selection
+        annotations = s.annotations
+        stepCounter = s.stepCounter
+        current = nil
+        cancelCrop()
+        dragMode = .none
+        lastStrokeRect = .zero
+        layoutBars()
+        needsDisplay = true
+    }
+
+    private var currentState: EditorImageState {
+        EditorImageState(flattened: flattened, selection: selection,
+                         annotations: annotations, stepCounter: stepCounter)
+    }
+
+    /// Apply a whole-image change as ONE undo step.
+    private func pushTransform(to state: EditorImageState) {
+        let before = currentState
+        restore(state)
+        undoStack.append(.transform(before: before, after: state))
+        redoStack.removeAll()
+        trimTransformHistory()
+    }
+
+    /// Ceiling on the bitmaps the transform history may pin.
+    ///
+    /// Every `.transform` entry holds a full-resolution `CGImage` in its `before`
+    /// state for the whole editor session, and nothing evicted them. A full-screen
+    /// selection on a 5K display is 5120×2880×4 B ≈ 59 MB, so rotating four times to
+    /// work out which way round a shot was — and then ten crop/rotate/flip steps
+    /// before finally hitting Copy — left hundreds of megabytes resident while a
+    /// `.screenSaver`-level overlay covered the screen and could not be moved out of
+    /// the way. The rest of this file goes out of its way not to pin even one spare
+    /// full-size rep.
+    private static let transformHistoryBudget = 192 * 1024 * 1024
+
+    /// Drop the oldest transforms once they pin more than the budget.
+    ///
+    /// Trimmed from the BOTTOM, so what is left is still a contiguous suffix of the
+    /// real edit order and ⌘Z simply stops at the cut. Removing an entry from the
+    /// middle would leave older strokes to be undone against a picture whose rotate
+    /// can no longer be reversed — the mixed-order bug the single stack in
+    /// `EditorEdit` exists to prevent. The newest transform always survives, however
+    /// big it is: a rotate you cannot undo at all is worse than the memory.
+    private func trimTransformHistory() {
+        var bytes = 0
+        var kept = 0
+        var cut: Int?
+        for (i, edit) in undoStack.enumerated().reversed() {
+            // Only `before` is counted: the `after` of one step is the `before` of the
+            // next (and the newest `after` is the live picture), so adding both would
+            // count every bitmap twice.
+            guard case .transform(let before, _) = edit else { continue }
+            bytes += Self.pinnedBytes(of: before.flattened)
+            if kept > 0, bytes > Self.transformHistoryBudget { cut = i; break }
+            kept += 1
+        }
+        if let cut { undoStack.removeFirst(cut + 1) }
+    }
+
+    private static func pinnedBytes(of image: CGImage?) -> Int {
+        guard let image else { return 0 }
+        return image.bytesPerRow * image.height
+    }
+
+    /// Pixels per point of what the selection currently shows. Equals the display's
+    /// backing scale until a rotate has to shrink the bitmap to fit on screen, which
+    /// is why the crop readout can't just multiply by `scale`.
+    private var effectiveScale: CGFloat {
+        guard let flat = flattened, selection.width > 0 else { return scale }
+        return CGFloat(flat.width) / selection.width
+    }
+
+    private func applyTransform(_ t: EditorImageTransform) {
+        commitTextIfEditing()
+        guard phase == .editing, cropBox == nil else { return }
+        guard let base = compositeCG(), let out = t.apply(to: base) else {
+            Notifier.error("\(t.label) failed", "Couldn't transform that shot — try again.")
+            return
+        }
+        pushTransform(to: EditorImageState(flattened: out,
+                                           selection: t.displayRect(for: selection, in: bounds),
+                                           annotations: [],
+                                           // Baked-in step numbers must not be handed
+                                           // out twice, so the counter carries over.
+                                           stepCounter: stepCounter))
+    }
+
+    private func beginCrop() {
+        commitTextIfEditing()
+        guard phase == .editing, cropBox == nil else { return }
+        cropBox = CropBox(limit: selection)
+        cropDrag = .none
+        styleCropButton()
+        needsDisplay = true
+    }
+
+    private func cancelCrop() {
+        guard cropBox != nil else { return }
+        cropBox = nil
+        cropDrag = .none
+        styleCropButton()
+        needsDisplay = true
+    }
+
+    /// Fold a pending crop into the picture before anything composites it.
+    ///
+    /// Every finishing action goes through `compositeCG()`, which knows nothing
+    /// about `cropBox`: dragging a tight crop box and then clicking Copy — four
+    /// buttons further along the SAME bar — or pressing ⌘C (only Esc and ↵ are
+    /// intercepted while cropping) put the FULL selection on the clipboard, closed
+    /// the overlay and showed the "Copied" toast as if nothing were wrong. The crop
+    /// was unrecoverable, because the editor was already gone. Same shape as
+    /// `commitTextIfEditing()`, which those actions already call to flush the other
+    /// kind of pending edit.
+    private func commitCropIfPending() {
+        guard cropBox != nil else { return }
+        applyCrop()
+    }
+
+    private func applyCrop() {
+        guard let box = cropBox, let base = compositeCG() else { cancelCrop(); return }
+        // A box nobody touched is the 8%-inset default the constructor draws to show
+        // the box IS draggable — not a crop anyone asked for. Confirming it threw
+        // away 29% of the pixels, so a second click on the Crop button (or C then ↵)
+        // silently cut the edges off the very window being captured.
+        guard box.wasDragged else { cancelCrop(); return }
+        let px = ImageTransformer.pixelRect(from: box.rect, displayRect: selection,
+                                            pixelWidth: base.width, pixelHeight: base.height)
+        guard let out = ImageTransformer.cropped(base, toPixelRect: px) else {
+            // CropBox already forbids an empty or inverted rect; if the pixel rect
+            // still came out unusable, keep the picture and let the user re-drag.
+            Notifier.error("Crop failed", "That crop was too small — drag a larger box.")
+            return
+        }
+        // Show the result at the rect those whole pixels actually cover, not the one
+        // dragged: sub-pixel rounding otherwise skews every later stroke slightly.
+        let shown = ImageTransformer.pointRect(from: px, displayRect: selection,
+                                               pixelWidth: base.width, pixelHeight: base.height)
+        cropBox = nil
+        styleCropButton()
+        pushTransform(to: EditorImageState(flattened: out, selection: shown,
+                                           annotations: [], stepCounter: stepCounter))
     }
 
     @objc private func copyAction() {
         commitTextIfEditing()
+        commitCropIfPending()
         guard let cg = compositeCG() else { return }
         let img = NSImage(cgImage: cg, size: selection.size)
         let pb = NSPasteboard.general; pb.clearContents(); pb.writeObjects([img])
@@ -805,8 +1168,63 @@ final class EditorView: NSView, NSTextFieldDelegate {
         session?.finish()
     }
 
+    /// Grab the TEXT out of the shot instead of the pixels. Everything needed is
+    /// already here — the composited image and the user's OCR settings — so the
+    /// alternative was: copy the shot, close, press the OCR hotkey, drag the same
+    /// region again.
+    /// Re-arm the tool, colour and width of the most recent annotation.
+    ///
+    /// Annotating a screenshot is repetitive — five arrows in the same red at the
+    /// same weight — and every one of those meant re-picking the tool and the
+    /// swatch after an undo or a tool change.
+    private func repeatLastAnnotation() {
+        guard let last = annotations.last else {
+            Notifier.info("Nothing to repeat", "Draw one annotation first, then ⌘⇧R re-arms it.")
+            return
+        }
+        setTool(last.tool)
+        color = last.color
+        lineWidth = last.width
+        // Reflect it in the bar, or the toolbar would disagree with what draws.
+        swatchButtons.forEach { $0.picked = $0.swatch.hexString() == last.color.hexString() }
+        needsDisplay = true
+    }
+
+    @objc private func grabTextAction() {
+        commitTextIfEditing()
+        commitCropIfPending()
+        guard let cg = compositeCG() else { return }
+        let options = settings?.ocrOptions ?? OCROptions()
+        let notify = settings?.ocrNotify ?? true
+        session?.finish()   // the overlay must not sit over the notification
+        Task { @MainActor in
+            do {
+                let text = try await OCRService.recognizeText(in: cg, options: options)
+                guard text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+                    Notifier.info("No text found",
+                                  "Nothing readable in that shot — try a tighter crop around the text.")
+                    return
+                }
+                let pb = NSPasteboard.general
+                pb.clearContents()
+                guard pb.setString(text, forType: .string) else {
+                    Notifier.error("Copy failed", "Couldn't write to the clipboard — try again.")
+                    return
+                }
+                if notify {
+                    Notifier.info("Text copied",
+                                  "\(text.count) character\(text.count == 1 ? "" : "s") on the clipboard.")
+                }
+            } catch {
+                NSLog("SnapDesk: editor OCR failed — \(error)")
+                Notifier.error("OCR failed", "Couldn't read that shot — try again.")
+            }
+        }
+    }
+
     @objc private func saveAction() {
         commitTextIfEditing()
+        commitCropIfPending()
         guard let cg = compositeCG() else { return }
         let fmt = settings?.saveFormat ?? .png
         let q = settings?.jpegQuality ?? 0.9
@@ -833,6 +1251,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
 
     @objc private func beautifyAction() {
         commitTextIfEditing()
+        commitCropIfPending()
         guard let cg = compositeCG(), let nice = AnnotationRenderer.beautify(cg) else { return }
         let pb = NSPasteboard.general; pb.clearContents()
         pb.writeObjects([NSImage(cgImage: nice, size: NSSize(width: nice.width, height: nice.height))])
@@ -843,15 +1262,38 @@ final class EditorView: NSView, NSTextFieldDelegate {
 
     @objc private func pinAction() {
         commitTextIfEditing()
+        commitCropIfPending()
         guard let cg = compositeCG() else { return }
         playFeedback()
         let playSound = settings?.playSound ?? false
-        let soundName = settings?.soundName ?? "Pop"
+        // A transform can leave the bitmap at a different pixels-per-point than the
+        // display's, and a pin sized by the wrong one comes up half/double size.
+        let pinScale = effectiveScale
         session?.finish()
-        PinWindow.pin(cg, scale: scale, playSound: playSound, soundName: soundName)
+        PinWindow.pin(cg, scale: pinScale, playSound: playSound)
     }
 
     @objc private func closeAction() { session?.finish() }
+
+    /// One button both starts a crop and confirms it, so there's a pointer-only path
+    /// to "apply" for anyone who never presses ↵.
+    @objc private func cropAction() {
+        if cropBox == nil { beginCrop() } else { applyCrop() }
+    }
+
+    @objc private func transformAction(_ sender: NSButton) {
+        let all = EditorImageTransform.allCases
+        guard all.indices.contains(sender.tag) else { return }
+        applyTransform(all[sender.tag])
+    }
+
+    private func styleCropButton() {
+        guard let b = cropButton else { return }
+        let cropping = cropBox != nil
+        b.contentTintColor = cropping ? .controlAccentColor : nil
+        b.toolTip = cropping ? "Apply crop (↵) — Esc cancels" : "Crop (C) — ↵ applies, Esc cancels"
+        b.setAccessibilityLabel(cropping ? "Apply crop" : "Crop")
+    }
 
     private func autoSave(_ cg: CGImage, settings s: SettingsStore) {
         let ext = s.saveFormat == .png ? "png" : "jpg"
@@ -877,13 +1319,22 @@ final class EditorView: NSView, NSTextFieldDelegate {
         catch { Notifier.error("Auto-save failed", error.localizedDescription) }
     }
 
+    /// The picture as it stands: the frozen screen cropped to the selection with the
+    /// strokes drawn in, or — once a crop/rotate/flip has happened — the flattened
+    /// bitmap with whatever has been drawn on it since.
     private func compositeCG() -> CGImage? {
-        AnnotationRenderer.composite(frozen: frozen, fullSize: bounds.size, scale: scale,
-                                     selection: selection, strokes: annotations)
+        guard let flat = flattened else {
+            return AnnotationRenderer.composite(frozen: frozen, fullSize: bounds.size, scale: scale,
+                                                selection: selection, strokes: annotations)
+        }
+        // Nothing drawn since the last transform → hand back the exact same bitmap.
+        // A chain of rotates then costs no re-render at all, and can't resample.
+        guard annotations.isEmpty == false else { return flat }
+        return AnnotationRenderer.compositeFlat(base: flat, displayRect: selection, strokes: annotations)
     }
 
     private func playFeedback() {
-        if settings?.playSound == true { Sounds.play(settings?.soundName ?? "Pop") }
+        if settings?.playSound == true { Sounds.playIn() }
     }
 
     // MARK: - Symbol helper

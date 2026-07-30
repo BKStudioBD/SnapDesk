@@ -12,7 +12,13 @@ final class FrameDecorator: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         var cursorBoost = false        // draw a 2× cursor (real cursor hidden)
         var clickHighlight = false     // expanding ring on every click
         var keystrokes = false         // last shortcut/keys banner
-        var camera = false             // webcam bubble bottom-right
+        var camera = false             // webcam bubble
+        var cameraCorner: CameraCorner = .bottomRight
+        var cameraSize: CameraSize = .medium
+        /// Mirror the bubble like a mirror, which is how people expect to see
+        /// themselves. Applies to BOTH the burned-in bubble and the live preview
+        /// so the two never disagree.
+        var cameraMirrored = true
     }
 
     private let config: Config
@@ -32,6 +38,9 @@ final class FrameDecorator: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
 
     private var monitors: [Any] = []
     private var camSession: AVCaptureSession?
+    /// The running camera feed, for the live on-screen preview bubble — nil
+    /// when the camera effect is off or the device couldn't be opened.
+    var liveCameraSession: AVCaptureSession? { camSession }
     private let camControlQueue = DispatchQueue(label: "com.snapdesk.camera.control")
 
     private let cursorImage: CIImage?
@@ -66,6 +75,16 @@ final class FrameDecorator: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
             if let l { monitors.append(l) }
         }
         if config.keystrokes {
+            // A GLOBAL keyDown monitor delivers nothing unless SnapDesk has
+            // Accessibility (Input Monitoring) trust — the overlay would just
+            // stay blank with no hint why. Tell the user instead of silently
+            // recording no keystrokes.
+            if !Permissions.hasAccessibility {
+                DispatchQueue.main.async {
+                    Notifier.info("Keystroke overlay needs Accessibility",
+                                  "Turn SnapDesk on under System Settings → Privacy & Security → Accessibility to show keystrokes in the recording.")
+                }
+            }
             let m = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] e in
                 self?.setKeystroke(from: e)
             }
@@ -156,11 +175,15 @@ final class FrameDecorator: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
                 let t = CGFloat(age / 0.45)
                 let ringScale = (0.35 + t * 0.9)                     // grows
                 let alpha = (1 - t) * 0.85                            // fades
-                let size = 120 * ringScale
+                // Include the display scale like the cursor and keystroke layers
+                // do — `c.pos` is already in pixels, so without it the ring drew
+                // at half its intended size on a Retina display.
+                let draw = ringScale * scale
+                let size = 120 * draw
                 let x = c.pos.x - size / 2
                 let y = bufferSize.height - c.pos.y - size / 2        // → CI bottom-left
                 let ring = ringImage
-                    .transformed(by: CGAffineTransform(scaleX: ringScale, y: ringScale)
+                    .transformed(by: CGAffineTransform(scaleX: draw, y: draw)
                         .concatenating(CGAffineTransform(translationX: x, y: y)))
                     .applyingFilter("CIColorMatrix", parameters: [
                         "inputAVector": CIVector(x: 0, y: 0, z: 0, w: alpha)])
@@ -207,14 +230,22 @@ final class FrameDecorator: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
             let d = min(cam.extent.width, cam.extent.height)
             let squared = cam.cropped(to: CGRect(x: cam.extent.midX - d / 2,
                                                  y: cam.extent.midY - d / 2, width: d, height: d))
-            let bubble = bufferSize.height * 0.22
+            let bubble = bufferSize.height * config.cameraSize.fraction
             let s = bubble / d
             let margin = 24 * scale
-            let ox = bufferSize.width - bubble - margin
-            let oy = margin
-            let moved = squared
+            // CoreImage origin is BOTTOM-left, so "top" corners are the high y.
+            let ox = config.cameraCorner.isLeading ? margin : bufferSize.width - bubble - margin
+            let oy = config.cameraCorner.isTop ? bufferSize.height - bubble - margin : margin
+            var normalized = squared
                 .transformed(by: CGAffineTransform(translationX: -squared.extent.minX,
                                                    y: -squared.extent.minY))
+            if config.cameraMirrored {
+                // Flip horizontally about the square's own centre.
+                normalized = normalized
+                    .transformed(by: CGAffineTransform(scaleX: -1, y: 1)
+                        .concatenating(CGAffineTransform(translationX: d, y: 0)))
+            }
+            let moved = normalized
                 .transformed(by: CGAffineTransform(scaleX: s, y: s)
                     .concatenating(CGAffineTransform(translationX: ox, y: oy)))
             if camMask == nil || camMaskSize != bufferSize {

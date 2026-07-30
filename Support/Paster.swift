@@ -32,23 +32,27 @@ enum Paster {
                 }
             }
         }
-        if activate, let target {
+        if let target {
             // Activation is async (heavy app / other Space) — a fixed delay can
             // fire ⌘V into the WRONG app. Wait for the target to actually become
-            // active, with a timeout fallback.
-            target.activate()
-            waitForActivation(of: target, timeout: 1.2) {
-                // Activated in time → HID tap (frontmost = target). Timed out →
-                // post to the target's PID so ⌘V never lands in the wrong app.
+            // active, with a timeout fallback. Even when `activate` is off we
+            // still wait: closing the history window hands focus back to the
+            // previous app by itself, and the HID tap that then becomes safe is
+            // the ONLY delivery Chromium/Electron apps (Chrome, Discord, Slack…)
+            // reliably accept — they drop pid-targeted synthetic keystrokes,
+            // which is why pasting links "never worked" in exactly those apps.
+            if activate { target.activate() }
+            waitForActivation(of: target, timeout: activate ? 1.2 : 0.6) {
+                // Frontmost now → HID tap. Never became frontmost → post to the
+                // target's PID as a last resort; worst case it's ignored, but it
+                // can never land in the wrong app.
                 sendCommandV(target.isActive ? nil : target)
                 followUp()
             }
         } else {
-            // Not activating: post straight to the target's PID so the keystroke
-            // can't land in whatever happens to be frontmost (often SnapDesk
-            // itself, mid-window-close).
+            // No recorded target: HID tap after a beat, once our window is gone.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                sendCommandV(target)
+                sendCommandV(nil)
                 followUp()
             }
         }

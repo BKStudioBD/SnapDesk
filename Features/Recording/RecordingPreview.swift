@@ -268,7 +268,15 @@ final class RecordingPreviewWindow: NSWindowController, NSWindowDelegate {
         close()
     }
 
-    @objc private func doneTapped() { close() }
+    @objc private func doneTapped() {
+        // Same guard as delete/close: closing mid-export would abort the writer
+        // and lose the file. `close()` skips windowShouldClose, so gate here too.
+        guard !exporting else {
+            Notifier.info("Export in progress", "Wait for the export to finish before closing.")
+            return
+        }
+        close()
+    }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         if exporting {

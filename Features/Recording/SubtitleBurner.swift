@@ -10,7 +10,7 @@ import AppKit
 enum SubtitleBurner {
     struct Line { let text: String; let start: TimeInterval; let end: TimeInterval }
 
-    enum Err: Error, LocalizedError {
+    enum Err: Error, LocalizedError, Equatable {
         case notAuthorized, unavailable, noVideoTrack, exportFailed
         var errorDescription: String? {
             switch self {
@@ -45,29 +45,31 @@ enum SubtitleBurner {
         guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: language)),
               recognizer.isAvailable else { throw Err.unavailable }
 
+        // Captions are on-device ONLY. If Apple's on-device model for this
+        // language isn't installed, the alternative is uploading the whole audio
+        // track to Apple's speech servers — which would break SnapDesk's core
+        // "100% on-device, never touches the network" promise silently. Refuse
+        // instead: the recording is still saved, just without captions.
+        guard recognizer.supportsOnDeviceRecognition else { throw Err.unavailable }
+
         let request = SFSpeechURLRecognitionRequest(url: url)
         request.shouldReportPartialResults = false
-        if recognizer.supportsOnDeviceRecognition {
-            request.requiresOnDeviceRecognition = true   // privacy: never leaves the Mac
-        } else {
-            // Server-based recognition caps at ~1 minute of audio — long
-            // recordings would get silently truncated captions.
-            let dur = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 0
-            if dur > 60 {
-                await MainActor.run {
-                    Notifier.info("Captions may be partial",
-                                  "On-device speech isn't available for this language — only the first minute gets transcribed.")
-                }
-            }
-        }
+        request.requiresOnDeviceRecognition = true   // privacy: never leaves the Mac
 
-        final class Once: @unchecked Sendable { var done = false }
+        // The recognition callback can fire on multiple threads and more than
+        // once; the continuation must be resumed EXACTLY once. A plain Bool read
+        // across threads is a race — gate with a lock that atomically claims the
+        // single resume.
+        final class Once: @unchecked Sendable {
+            private let lock = NSLock()
+            private var done = false
+            func claim() -> Bool { lock.lock(); defer { lock.unlock() }; if done { return false }; done = true; return true }
+        }
         let once = Once()
         let result: SFSpeechRecognitionResult? = try await withCheckedThrowingContinuation { c in
             recognizer.recognitionTask(with: request) { res, err in
-                guard !once.done else { return }
                 if let err {
-                    once.done = true
+                    guard once.claim() else { return }
                     // "No speech detected" is a NORMAL outcome for a silent
                     // recording — return no lines instead of an error dialog.
                     let ns = err as NSError
@@ -78,7 +80,7 @@ enum SubtitleBurner {
                     }
                     return
                 }
-                if let res, res.isFinal { once.done = true; c.resume(returning: res) }
+                if let res, res.isFinal, once.claim() { c.resume(returning: res) }
             }
         }
         guard let transcription = result?.bestTranscription else { return [] }

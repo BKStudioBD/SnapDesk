@@ -14,7 +14,7 @@ set -euo pipefail
 MIN_MACOS="14.0"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 SDK="$(xcrun --sdk macosx --show-sdk-path)"
-SOURCES=$(find "$ROOT" -name '*.swift' -not -path "*/build/*" -not -path "*/tools/*")
+SOURCES=$(find "$ROOT" -name '*.swift' -not -path "*/build/*" -not -path "*/tools/*" -not -path "*/Tests/*" -not -path "*/.build/*" -not -name "Package.swift")
 
 echo "▶ Type-checking $(echo "$SOURCES" | wc -l | tr -d ' ') Swift files (arm64, macOS ${MIN_MACOS})…"
 xcrun -sdk macosx swiftc \
@@ -24,4 +24,13 @@ xcrun -sdk macosx swiftc \
   -sdk "$SDK" \
   $SOURCES
 
-echo "✅ All sources type-check cleanly. Now run ./build.sh to build and install the app."
+echo "✅ All sources type-check cleanly."
+
+# Unit tests (Swift Testing, via the test-only Package.swift). These cover the
+# pure-logic types — classification, hex parsing, hotkey encoding, the mic
+# sample-buffer conversion — and need no microphone, screen or permission.
+echo "▶ Running unit tests…"
+swift test 2>&1 | grep -E "^(✔|✘|→).*|Test run|error:" || true
+swift test >/dev/null 2>&1 || { echo "❌ Unit tests FAILED (run: swift test)"; exit 1; }
+
+echo "✅ Type-check + unit tests pass. Now run ./build.sh to build and install the app."
