@@ -1,6 +1,6 @@
 # SnapDesk
 
-One lightweight, fully native macOS menu-bar app that puts your whole capture workflow in the menu bar — **screenshots + annotation, on-device OCR, a color picker, clipboard history, and screen recording with a trim timeline** — with nothing else to install. Pure Swift on Apple frameworks, no external dependencies, tiny binary, low memory, and **100% on-device:** every capture, OCR and caption is computed locally. The only network call in the whole app is an **opt-in** update check against GitHub Releases — off unless you turn it on, and it sends nothing.
+One lightweight, fully native macOS menu-bar app that puts your whole capture workflow in the menu bar — **screenshots + annotation, on-device OCR, a color picker, clipboard history, screen recording with a trim timeline, and a cleaner for disk and memory** — with nothing else to install. Pure Swift on Apple frameworks, no external dependencies, tiny binary, low memory, and **100% on-device:** every capture, OCR and caption is computed locally. The only network call in the whole app is an **opt-in** update check against GitHub Releases — off unless you turn it on, and it sends nothing.
 
 Everything runs from a crisp menu-bar icon. No Dock icon, no main window.
 
@@ -85,9 +85,17 @@ Every shortcut is rebindable live in **Settings → Shortcuts** (click, press a 
 - SnapDesk stitches the frames into **one tall seamless image**, copies it and saves it.
 
 
+### 🧹 Cleaner (menu bar → *Cleaner…*)
+A dark four-tab window for getting disk and memory back. Nothing is removed without being **listed, sized and ticked** first, and everything goes to the **Trash** — with one exception the UI names out loud (emptying the Trash itself).
+
+- **Dashboard** — live processor, memory, disk and network readings with a 0–100 health score, and a **Free up memory** button. The memory pass targets *reclaimable* pages (inactive, purgeable, speculative) via `vm_allocate`, backs off the instant macOS reports memory pressure, and scales its reserve to the size of the Mac.
+- **Clean** — caches grouped into **Developer** (Xcode DerivedData, iOS DeviceSupport, SwiftPM, npm/yarn/pnpm, Homebrew, pip), **Browsers** (Chrome, Safari, Firefox, Arc), **Apps** (Spotify, Slack, Discord) and **System** (everything else in `~/Library/Caches`, temp, logs, Trash). Tick a whole group from its header, or the lot from *Select all*; the button says exactly how much it will free. Anything written in the **last ten minutes is skipped** — `unlink` succeeds on a file another app still has open, and a cache deleted mid-write is a corrupted app, not a cleaned one.
+- **Developer** — walks your home folder for rebuildable build output: `node_modules`, `DerivedData`, `.build`, `Pods`, `__pycache__`, `.venv`, `.next`, `.nuxt`, `.gradle`. Ambiguous names (`build`, `dist`, `target`) are found and listed but **never pre-ticked**. Global caches like `~/.nvm` are skipped — those belong to the Clean tab.
+- **Uninstall** — removes an app *and* what it scattered across the Library: support files, caches, preferences, containers, launch agents, logs. A running app is quit first (politely, then firmly). The matching is deliberately strict: `com.google.Chrome` never takes `com.google.Chrome.canary`, "Snap" never takes SnapDesk's files, and inside a vendor folder a child must match a *different* word than the vendor did, so removing Chrome leaves `Google/GoogleUpdater` alone.
+
 ### 🧰 Everything else
 - **Welcome & Setup window** — first-run tour + permission checklist; reopen any time from Settings → General → *Setup*.
-- **A menu bar you can read at a glance** — the capture actions, then Settings. Shortcuts, the update check and the setup window all live inside Settings rather than crowding the menu.
+- **A menu bar you can read at a glance** — the six capture actions, then the Cleaner and Settings. Shortcuts, the update check and the setup window all live inside Settings rather than crowding the menu.
 - **Settings dashboard** — grouped sidebar (General / Shortcuts / Capture: Screenshot·Recording·OCR·Color / Data: Clipboard / About: Help·About), every feature fully configurable.
 - **Built-in Help** — all shortcuts and per-feature guides inside the app.
 - **Launch at login**; two custom feedback sounds — a rising pair when content comes IN (capture, copy, save), its falling mirror when it goes OUT (paste) — each with a test button, or silent mode.
@@ -161,9 +169,12 @@ Features/
   OCR/         Vision text recognition
   Clipboard/   Pasteboard monitor, model, SwiftUI history window
   ColorPicker/ NSColorSampler + color formatting
+  Cleaner/     Dashboard, cache/build-junk/uninstall tabs (dark window)
 Hotkeys/     Carbon global hotkey registration (no Accessibility permission needed)
 Settings/    Preferences store + SwiftUI settings dashboard
 Support/     Permissions, paster, notifier, sounds, diagnostics
+             + the cleaner's engines: system stats, cache catalog, junk scanner,
+               uninstaller, memory pass
 ```
 
 ## Testing
@@ -173,7 +184,7 @@ Support/     Permissions, paster, notifier, sounds, diagnostics
 ./test-tools.sh  # headless render test of every annotation tool → PNGs
 ```
 
-`./test.sh` type-checks every source **and runs the unit suite**: `swift test` — Swift Testing, **182 tests in 26 suites, about a second**. It needs no microphone, no screen recording and no permission of any kind, and it never writes to the real pasteboard.
+`./test.sh` type-checks every source **and runs the unit suite**: `swift test` — Swift Testing, **219 tests in 31 suites, about a second**. It needs no microphone, no screen recording and no permission of any kind, and it never writes to the real pasteboard.
 
 What it pins down, chosen so every bug that actually shipped stays fixed:
 
@@ -199,6 +210,11 @@ What it pins down, chosen so every bug that actually shipped stays fixed:
 | Selection geometry | arrow move / Option-arrow resize can't invert or leave the screen, the size chip is never clipped or under the crosshair, the view↔top-left flip uses each rect's OWN screen height |
 | Wallpaper fill | every macOS fill mode reproduced or explicitly declined, an unsized image falls back to the screen, and the buffer is read as BGRA so red doesn't come back blue |
 | Updater | numeric semver (1.10.0 > 1.9.0), equal versions refused, repository pinned |
+| System stats | busy-vs-idle ticks, counters that went backwards read as zero, network as a rate, the health weighting |
+| Cache catalog | the Trash is never pre-ticked, the catch-all excludes the folders named categories own, ids stay unique |
+| In-use guard | a file written seconds ago — even one nested deep — keeps its whole folder |
+| Junk rules | the unambiguous names are pre-ticked and `build`/`dist` are not, dot-folders are skipped but `.build` is still found |
+| Uninstall matching | `com.google.Chrome` doesn't take `.canary`, "Snap" doesn't take SnapDesk, a vendor's child needs its own word |
 
 Then a one-minute manual smoke test: try each hotkey (⌃1–⌃8), copy a password (must NOT appear in clipboard history), and toggle Launch at login.
 

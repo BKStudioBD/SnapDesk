@@ -4,17 +4,24 @@ import AppKit
 /// so it adapts to light and dark menu bars, stays crisp at any scale, and needs
 /// no asset files.
 ///
-/// It is the app icon reduced to monochrome: four short, heavy, round-capped
+/// It is the app icon reduced to monochrome: a ring of short, heavy, round-capped
 /// corner brackets (capture) around a solid centre mark (the target you drag
-/// over). The centre is a DIAMOND, not a dot — a dot plus brackets is Apple's own
-/// `viewfinder` symbol, and at 2× (what every Retina Mac actually shows) the
-/// rotated square is what makes the mark read as ours.
+/// over). The brackets sit on the vertices of a regular heptagon — seven corners,
+/// not the four of a rectangle — which is what separates the mark from every
+/// other viewfinder in a menu bar. The centre is a DIAMOND, not a dot: a dot plus
+/// brackets is Apple's own `viewfinder` symbol, and at 2× (what every Retina Mac
+/// actually shows) the rotated square is what makes the mark read as ours.
 ///
 /// Every measurement is a fraction of the requested point size, so the mark is
 /// resolution-independent. The detail level is deliberately low: anything finer
 /// (the app icon's four-quadrant colour wheel, for instance) collapses into a
 /// blob at a real 18pt menu-bar size — verified by rasterising it.
 enum MenuBarIcon {
+
+    /// How many brackets the mark is built from. Shared with the app icon
+    /// generator (`tools/icon`) so the two marks can never drift apart.
+    static let cornerCount = 7
+
     static func image(pointSize: CGFloat = 18) -> NSImage {
         let size = NSSize(width: pointSize, height: pointSize)
         let img = NSImage(size: size, flipped: false) { rect in
@@ -43,47 +50,85 @@ enum MenuBarIcon {
 
     // MARK: - The mark
 
-    /// Four corner brackets. Short arms and an open middle so the mark reads as a
-    /// viewfinder rather than a filled box; round caps to match the app icon.
-    private static func drawBrackets(in rect: NSRect) {
-        let unit = rect.width
-        let frame = rect.insetBy(dx: unit * 0.11, dy: unit * 0.11)
-        let arm = frame.width * 0.33
+    /// The bracket ring: one bracket per polygon vertex, each with a short arm
+    /// running toward either neighbour and an open span between them, so the mark
+    /// reads as a viewfinder rather than a filled outline.
+    ///
+    /// - Parameters:
+    ///   - rect: The square the ring is inscribed in; the stroke stays inside it.
+    ///   - corners: How many brackets to place. Defaults to the mark's seven.
+    ///   - lineWidth: Stroke width, already in the rect's units.
+    ///   - armRatio: Arm length as a fraction of one polygon edge. Above ~0.45 the
+    ///     arms meet and the ring closes into a plain polygon.
+    /// - Returns: A stroked-not-filled path, round-capped and round-joined.
+    static func bracketsPath(in rect: NSRect,
+                             corners: Int = cornerCount,
+                             lineWidth: CGFloat,
+                             armRatio: CGFloat = 0.34) -> NSBezierPath {
         let path = NSBezierPath()
-        path.lineWidth = unit * 0.085          // ≈1.5pt at 18pt
+        path.lineWidth = lineWidth
         path.lineCapStyle = .round
         path.lineJoinStyle = .round
+        guard corners >= 3 else { return path }
 
-        // top-left
-        path.move(to: NSPoint(x: frame.minX, y: frame.maxY - arm))
-        path.line(to: NSPoint(x: frame.minX, y: frame.maxY))
-        path.line(to: NSPoint(x: frame.minX + arm, y: frame.maxY))
-        // top-right
-        path.move(to: NSPoint(x: frame.maxX - arm, y: frame.maxY))
-        path.line(to: NSPoint(x: frame.maxX, y: frame.maxY))
-        path.line(to: NSPoint(x: frame.maxX, y: frame.maxY - arm))
-        // bottom-right
-        path.move(to: NSPoint(x: frame.maxX, y: frame.minY + arm))
-        path.line(to: NSPoint(x: frame.maxX, y: frame.minY))
-        path.line(to: NSPoint(x: frame.maxX - arm, y: frame.minY))
-        // bottom-left
-        path.move(to: NSPoint(x: frame.minX + arm, y: frame.minY))
-        path.line(to: NSPoint(x: frame.minX, y: frame.minY))
-        path.line(to: NSPoint(x: frame.minX, y: frame.minY + arm))
-        path.stroke()
+        // Half the stroke hangs outside the centre line, so pull the vertices in
+        // by that much — otherwise the caps clip against the icon's edge.
+        let radius = min(rect.width, rect.height) / 2 - lineWidth / 2
+        let centre = NSPoint(x: rect.midX, y: rect.midY)
+        // Start at the top so one bracket points straight up: a rotated ring
+        // reads as a mistake, not as a design.
+        let start = CGFloat.pi / 2
+        let step = 2 * CGFloat.pi / CGFloat(corners)
+        let vertex = { (index: Int) -> NSPoint in
+            let angle = start + step * CGFloat(index)
+            return NSPoint(x: centre.x + radius * cos(angle),
+                           y: centre.y + radius * sin(angle))
+        }
+        let towards = { (from: NSPoint, to: NSPoint) -> NSPoint in
+            NSPoint(x: from.x + (to.x - from.x) * armRatio,
+                    y: from.y + (to.y - from.y) * armRatio)
+        }
+
+        for index in 0..<corners {
+            let corner = vertex(index)
+            let previous = vertex((index - 1 + corners) % corners)
+            let next = vertex((index + 1) % corners)
+            path.move(to: towards(corner, previous))
+            path.line(to: corner)
+            path.line(to: towards(corner, next))
+        }
+        return path
     }
 
     /// The centre diamond — a square on its point, so it survives as a distinct
     /// shape at 2× instead of rounding off into a dot.
-    private static func drawCentre(in rect: NSRect) {
-        let r = rect.width * 0.11
+    ///
+    /// - Parameters:
+    ///   - rect: The square the mark is drawn in.
+    ///   - radius: Distance from the centre to each point of the diamond.
+    /// - Returns: A closed path meant to be filled.
+    static func centrePath(in rect: NSRect, radius: CGFloat) -> NSBezierPath {
         let c = NSPoint(x: rect.midX, y: rect.midY)
         let path = NSBezierPath()
-        path.move(to: NSPoint(x: c.x, y: c.y + r))
-        path.line(to: NSPoint(x: c.x + r, y: c.y))
-        path.line(to: NSPoint(x: c.x, y: c.y - r))
-        path.line(to: NSPoint(x: c.x - r, y: c.y))
+        path.move(to: NSPoint(x: c.x, y: c.y + radius))
+        path.line(to: NSPoint(x: c.x + radius, y: c.y))
+        path.line(to: NSPoint(x: c.x, y: c.y - radius))
+        path.line(to: NSPoint(x: c.x - radius, y: c.y))
         path.close()
-        path.fill()
+        return path
+    }
+
+    private static func drawBrackets(in rect: NSRect) {
+        let unit = rect.width
+        // Seven brackets divide the ring into shorter edges than four did, so the
+        // stroke is a touch thinner and the arms take a bigger share of each edge
+        // — at a real 18pt menu-bar size the old weights merged into a blob.
+        bracketsPath(in: rect.insetBy(dx: unit * 0.06, dy: unit * 0.06),
+                     lineWidth: unit * 0.075,
+                     armRatio: 0.38).stroke()
+    }
+
+    private static func drawCentre(in rect: NSRect) {
+        centrePath(in: rect, radius: rect.width * 0.11).fill()
     }
 }

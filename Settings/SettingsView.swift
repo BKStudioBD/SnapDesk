@@ -722,6 +722,13 @@ private struct HelpTab: View {
                 row("Table mode", "Tab-separates real columns so a table pastes into a spreadsheet as cells. Only fires on a genuine grid — sentences are never turned into tabs.")
                 row("Custom words", "Names, jargon and identifiers the recognizer would otherwise autocorrect into something else (Settings → OCR). While the list has entries, recognition uses the detailed engine — Live Text can't be given custom words.")
             }
+            Section("Cleaner  (menu bar → Cleaner…)") {
+                row("Dashboard", "Live processor, memory, disk and network, a 0–100 health score, and one button that frees inactive memory.")
+                row("Clean", "Caches grouped by Developer / Browsers / Apps / System, each sized. Tick a group from its header; the button says how much it will free. Anything written in the last 10 minutes is skipped — that file is still in use.")
+                row("Developer", "Rebuildable build folders across your home: node_modules, DerivedData, .build, Pods, __pycache__, .venv, .next. Ambiguous ones (build, dist, target) are listed but never pre-ticked.")
+                row("Uninstall", "Removes an app plus its support files, caches, preferences, containers and launch agents. A running app is quit first.")
+                row("Safety", "Everything goes to the Trash, so an uninstall or a wrong tick is undoable. Emptying the Trash is the one permanent action, and it is never pre-ticked.")
+            }
             Section("Good to know") {
                 row("Startup", "Launch-at-login keeps SnapDesk ready after a restart.")
                 row("Sounds", "Two custom sounds: a rising pair when content comes IN (capture, copy, save), a falling one when it goes OUT (paste). Toggle in General.")

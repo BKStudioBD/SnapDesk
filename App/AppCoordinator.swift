@@ -117,6 +117,7 @@ final class AppCoordinator: NSObject {
         // Everything that isn't a capture action lives in Settings: shortcuts,
         // the update check, and the welcome/permissions window each have a home
         // there. The menu stays what you reach for mid-task.
+        menu.addItem(plainItem("Cleaner…", #selector(openCleaner), "sparkles"))
         menu.addItem(plainItem("Settings…", #selector(openSettings), "gearshape"))
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit SnapDesk", action: #selector(quit), keyEquivalent: "q")
@@ -451,6 +452,10 @@ final class AppCoordinator: NSObject {
             settingsWindow = SettingsWindowController(settings: settings)
         }
         settingsWindow?.show()
+    }
+
+    @objc func openCleaner() {
+        CleanerWindow.show { [weak self] in self?.playSoundIfEnabled() }
     }
 
     /// Manual check. `silent` is the launch-time path: say nothing when already
