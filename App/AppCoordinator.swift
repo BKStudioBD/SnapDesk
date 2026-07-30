@@ -416,12 +416,17 @@ final class AppCoordinator: NSObject {
             self?.colorPickInFlight = false
             // nil = user pressed Esc → stop (also ends continuous mode).
             guard let self, let color else { return }
-            let hex = color.hexString()
+            let value = color.formatted(as: self.settings.colorFormat,
+                                        uppercaseHex: self.settings.uppercaseHex)
             NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(hex, forType: .string)
-            self.settings.addRecentColor(hex)
-            Notifier.info("Color copied", hex)
+            NSPasteboard.general.setString(value, forType: .string)
+            self.settings.addRecentColor(color.hexString(uppercase: self.settings.uppercaseHex))
+            if self.settings.colorNotify { Notifier.info("Color copied", value) }
             self.playSoundIfEnabled()
+            // Continuous mode: reopen the eyedropper for rapid sampling.
+            if self.settings.colorContinuous {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { self.pickColor() }
+            }
         }
     }
 

@@ -227,8 +227,11 @@ final class SettingsStore: ObservableObject {
     }
 
     // MARK: Color
-    /// A pick copies its hex and joins this list — the picker has no other state.
+    @Published var colorFormat: ColorFormat { didSet { d.set(colorFormat.rawValue, forKey: "color.format") } }
+    @Published var uppercaseHex: Bool       { didSet { d.set(uppercaseHex, forKey: "color.upper") } }
     @Published var recentColors: [String]   { didSet { d.set(recentColors, forKey: "color.recents") } }
+    @Published var colorContinuous: Bool    { didSet { d.set(colorContinuous, forKey: "color.loop") } }
+    @Published var colorNotify: Bool        { didSet { d.set(colorNotify, forKey: "color.notify") } }
 
     // MARK: Clipboard
     @Published var clipboardEnabled: Bool     { didSet { d.set(clipboardEnabled, forKey: "clip.enabled") } }
@@ -348,12 +351,11 @@ final class SettingsStore: ObservableObject {
         // stored value so the old one can't linger in the plist.
         d.removeObject(forKey: "ocr.append")
 
+        colorFormat = d.string(forKey: "color.format").flatMap(ColorFormat.init(rawValue:)) ?? .hex
+        uppercaseHex = d.object(forKey: "color.upper") as? Bool ?? true
         recentColors = d.stringArray(forKey: "color.recents") ?? []
-        // Settings the picker no longer has. Dropping the stored values keeps a
-        // plist from an older build from carrying dead state forward.
-        for stale in ["color.format", "color.upper", "color.loop", "color.notify"] {
-            d.removeObject(forKey: stale)
-        }
+        colorContinuous = d.object(forKey: "color.loop") as? Bool ?? false
+        colorNotify = d.object(forKey: "color.notify") as? Bool ?? true
 
         clipboardEnabled = d.object(forKey: "clip.enabled") as? Bool ?? true
         clipboardMaxItems = (d.object(forKey: "clip.max") as? Int).map { max(20, min(500, $0)) } ?? 100

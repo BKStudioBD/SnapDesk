@@ -54,7 +54,7 @@ private struct WelcomeView: View {
                 Divider()
                 feature("text.viewfinder", "Grab Text (OCR)", "Drag over text → copied to the clipboard", settings.ocrHotkey.displayString)
                 Divider()
-                feature("eyedropper", "Pick a Color", "Eyedropper → copies the hex", settings.colorHotkey.displayString)
+                feature("eyedropper", "Pick a Color", "Eyedropper → copies HEX / RGB / HSL…", settings.colorHotkey.displayString)
                 Divider()
                 feature("doc.on.clipboard", "Clipboard History", "Everything you copy, searchable", settings.clipboardHotkey.displayString)
             }

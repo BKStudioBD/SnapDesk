@@ -526,10 +526,17 @@ private struct ColorTab: View {
 
     var body: some View {
         Form {
-            Section {
+            Section("Copy") {
+                Picker("Format", selection: $settings.colorFormat) {
+                    ForEach(ColorFormat.allCases) { Text($0.rawValue).tag($0) }
+                }
+                Toggle("Uppercase hex", isOn: $settings.uppercaseHex)
+                Toggle("Keep sampling (pick multiple)", isOn: $settings.colorContinuous)
+                Toggle("Show notification", isOn: $settings.colorNotify)
+            }
+            Section("Recent colors") {
                 if settings.recentColors.isEmpty {
-                    Text("No colors picked yet — press \(settings.colorHotkey.displayString) and click anywhere on screen.")
-                        .foregroundStyle(.secondary).font(.caption)
+                    Text("No colors picked yet").foregroundStyle(.secondary).font(.caption)
                 } else {
                     LazyVGrid(columns: Array(repeating: GridItem(.fixed(28)), count: 8), spacing: 8) {
                         ForEach(settings.recentColors, id: \.self) { hex in
@@ -552,11 +559,6 @@ private struct ColorTab: View {
                         }
                     }
                 }
-            } header: {
-                Text("Recent colors")
-            } footer: {
-                Text("Picking copies the color's hex. Click a swatch to copy it again — the last 16 picks are kept.")
-                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .glassForm()
@@ -698,8 +700,10 @@ private struct HelpTab: View {
                 row("More", "Right-click for Copy / Paste / Star / Delete.")
             }
             Section("Color  (\(settings.colorHotkey.displayString))") {
-                row("Pick", "Magnified eyedropper; the hex is copied.")
+                row("Pick", "Magnified eyedropper; copies in your chosen format.")
+                row("Formats", "HEX · RGB · RGBA · HSL · CSS var · SwiftUI · NSColor")
                 row("Recent", "Settings → Color keeps the last 16 picks — click a swatch to copy it again.")
+                row("Loop", "“Keep sampling” picks several colors in a row.")
             }
             Section("OCR  (\(settings.ocrHotkey.displayString))") {
                 row("Grab", "Drag over text → copied to the clipboard.")
