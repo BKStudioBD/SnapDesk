@@ -67,6 +67,12 @@ struct CleanerRootView: View {
     }
 
     @State private var tab: Tab = .dashboard
+    // Owned here, not by the tab views: a `switch` in a ViewBuilder rebuilds the
+    // branch it lands on, so tab-local @State and .task were destroyed on every
+    // switch — ticks lost, and Developer re-walked the whole home directory.
+    @State private var clean = CleanModel()
+    @State private var developer = DeveloperModel()
+    @State private var uninstall = UninstallModel()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -83,13 +89,14 @@ struct CleanerRootView: View {
 
             Divider()
 
-            // Each tab keeps its own scan while the window is open: switching
-            // away and back should not re-walk the whole home directory.
+            // Each tab keeps its scan and its ticks while the window is open:
+            // switching away and back re-uses the model above rather than
+            // starting over.
             switch tab {
             case .dashboard: DashboardTab()
-            case .clean: CleanTab(playSound: playSound)
-            case .developer: DeveloperTab(playSound: playSound)
-            case .uninstall: UninstallTab(playSound: playSound)
+            case .clean: CleanTab(model: clean, playSound: playSound)
+            case .developer: DeveloperTab(model: developer, playSound: playSound)
+            case .uninstall: UninstallTab(model: uninstall, playSound: playSound)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

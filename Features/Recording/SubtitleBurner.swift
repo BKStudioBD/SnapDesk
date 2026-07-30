@@ -65,23 +65,44 @@ enum SubtitleBurner {
             private var done = false
             func claim() -> Bool { lock.lock(); defer { lock.unlock() }; if done { return false }; done = true; return true }
         }
-        let once = Once()
-        let result: SFSpeechRecognitionResult? = try await withCheckedThrowingContinuation { c in
-            recognizer.recognitionTask(with: request) { res, err in
-                if let err {
-                    guard once.claim() else { return }
-                    // "No speech detected" is a NORMAL outcome for a silent
-                    // recording — return no lines instead of an error dialog.
-                    let ns = err as NSError
-                    if ns.domain == "kAFAssistantErrorDomain" && (ns.code == 1110 || ns.code == 203) {
-                        c.resume(returning: nil)
-                    } else {
-                        c.resume(throwing: err)
-                    }
-                    return
-                }
-                if let res, res.isFinal, once.claim() { c.resume(returning: res) }
+        /// Holds the recognition task so cancelling the surrounding Task can
+        /// reach it — the returned task was previously discarded outright.
+        final class HeldTask: @unchecked Sendable {
+            private let lock = NSLock()
+            private var stored: SFSpeechRecognitionTask?
+            var task: SFSpeechRecognitionTask? {
+                get { lock.lock(); defer { lock.unlock() }; return stored }
+                set { lock.lock(); stored = newValue; lock.unlock() }
             }
+        }
+        let once = Once()
+        // The task has to be retained and cancellable. `Once` guarantees the
+        // continuation is resumed at most once — nothing guaranteed it was
+        // resumed at ALL: if the handler never delivered `isFinal` or an error
+        // (recognizer released mid-transcription, or the task dropped), the
+        // caller suspended forever and the finished recording simply never
+        // appeared — no preview window, no error, no file offered.
+        let held = HeldTask()
+        let result: SFSpeechRecognitionResult? = try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { c in
+                held.task = recognizer.recognitionTask(with: request) { res, err in
+                    if let err {
+                        guard once.claim() else { return }
+                        // "No speech detected" is a NORMAL outcome for a silent
+                        // recording — return no lines instead of an error dialog.
+                        let ns = err as NSError
+                        if ns.domain == "kAFAssistantErrorDomain" && (ns.code == 1110 || ns.code == 203) {
+                            c.resume(returning: nil)
+                        } else {
+                            c.resume(throwing: err)
+                        }
+                        return
+                    }
+                    if let res, res.isFinal, once.claim() { c.resume(returning: res) }
+                }
+            }
+        } onCancel: {
+            held.task?.cancel()
         }
         guard let transcription = result?.bestTranscription else { return [] }
         return lines(from: transcription)

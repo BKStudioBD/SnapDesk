@@ -6,34 +6,22 @@ import SwiftUI
 /// launch agents behind; this finds them, shows exactly what it proposes to
 /// remove, and moves the lot to the Trash so the whole thing stays undoable.
 struct UninstallTab: View {
+    let model: UninstallModel
     var playSound: () -> Void
 
-    @State private var apps: [AppUninstaller.App] = []
-    @State private var search = ""
     @State private var chosen: AppUninstaller.App?
-    @State private var isLoadingApps = true
-
-    private var filtered: [AppUninstaller.App] {
-        guard !search.isEmpty else { return apps }
-        return apps.filter { $0.name.localizedCaseInsensitiveContains(search) }
-    }
 
     var body: some View {
         NavigationStack {
             list
                 .navigationDestination(item: $chosen) { app in
                     UninstallDetail(app: app, playSound: playSound) {
-                        apps.removeAll { $0.id == app.id }
+                        model.forget(app)
                         chosen = nil
                     }
                 }
         }
-        // Reading every bundle's Info.plist and icon is disk work; it used to
-        // run on the main actor while this view drew its first frame.
-        .task {
-            apps = await AppUninstaller.installedAppsInBackground()
-            isLoadingApps = false
-        }
+        .task { await model.loadIfNeeded() }
     }
 
     private var list: some View {
@@ -44,7 +32,7 @@ struct UninstallTab: View {
             // look like it applied to all of them.
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Search apps", text: $search)
+                TextField("Search apps", text: Bindable(model).search)
                     .textFieldStyle(.roundedBorder)
             }
             .padding(.horizontal, 16)
@@ -58,14 +46,14 @@ struct UninstallTab: View {
 
     @ViewBuilder private var content: some View {
         Group {
-            if isLoadingApps {
+            if model.isLoading {
                 ProgressView("Reading your applications…")
                     .controlSize(.small)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if filtered.isEmpty {
-                ContentUnavailableView.search(text: search)
+            } else if model.filtered.isEmpty {
+                ContentUnavailableView.search(text: model.search)
             } else {
-                List(filtered) { app in
+                List(model.filtered) { app in
                     Button { chosen = app } label: {
                         HStack(spacing: 10) {
                             Image(nsImage: app.icon)
@@ -197,7 +185,14 @@ private struct UninstallDetail: View {
     private func uninstall() async {
         isRemoving = true
         let removingBundle = picked.contains { $0.url == app.url }
-        if removingBundle { await AppUninstaller.quit(app) }
+        if removingBundle, await AppUninstaller.quit(app) == false {
+            // It is still running, and it is never killed — a save prompt may be
+            // waiting for an answer. Removing a live bundle would fail anyway.
+            isRemoving = false
+            isRunning = true
+            result = "\(app.name) is still open — quit it, then try again"
+            return
+        }
 
         let outcome = await AppUninstaller.trashInBackground(picked)
         let removed = Set(picked.map(\.id))

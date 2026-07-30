@@ -63,7 +63,17 @@ enum UninstallMatch {
     static func vendorChildMatches(vendor: String, child: String, tokens: [String]) -> Bool {
         guard let vendorToken = matchedToken(vendor, tokens: tokens) else { return false }
         guard let childToken = matchedToken(child, tokens: tokens) else { return false }
-        return childToken != vendorToken
+        guard childToken != vendorToken else { return false }
+        // A different token is not enough: "Chrome Canary" and "Chrome Beta"
+        // both match on `chrome` while being SEPARATE products, still installed,
+        // whose profiles hold their own bookmarks and logins. Every word of the
+        // folder has to belong to the app being removed — an extra word means
+        // an extra product. This under-removes the odd genuine leftover
+        // ("Slack Helper"), which is the side to err on.
+        let words = child.components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .map { $0.lowercased() }
+        return words.allSatisfy { word in tokens.contains { word.contains($0) } }
     }
 }
 
@@ -175,8 +185,17 @@ enum AppUninstaller {
             let nested = last == "Application Support" || last == "Caches"
             for child in children {
                 let name = child.lastPathComponent
-                if UninstallMatch.matchesBundleID(name, bundleID: app.bundleID)
-                    || UninstallMatch.matchesName(name, appName: app.name) {
+                // The word-boundary name rule is right for FILES — "Slack
+                // Helper.plist" belongs to Slack. It is wrong for DIRECTORIES:
+                // "Notion Calendar" is a separate app that is still installed,
+                // and its folder is that app's whole account state. A directory
+                // has to BE the app's own folder.
+                let isDirectory = (try? child.resourceValues(forKeys: [.isDirectoryKey]))?
+                    .isDirectory == true
+                let nameMatches = isDirectory
+                    ? name.caseInsensitiveCompare(app.name) == .orderedSame
+                    : UninstallMatch.matchesName(name, appName: app.name)
+                if UninstallMatch.matchesBundleID(name, bundleID: app.bundleID) || nameMatches {
                     guard seen.insert(child.path).inserted else { continue }
                     out.append(Leftover(url: child, size: CacheCleaner.size(ofItemAt: child),
                                         preselected: preselected))
@@ -221,14 +240,21 @@ enum AppUninstaller {
     /// the person has already said they want this app gone — but the polite
     /// request comes first, so an app with unsaved work gets its own chance to
     /// save.
+    /// Returns whether the app is now gone. It is never killed: `terminate()`
+    /// is what puts the app's own "Save changes?" sheet on screen, and a
+    /// `forceTerminate()` a second and a half later lands ON that sheet and
+    /// destroys the work it was asking about. If the person doesn't finish
+    /// quitting it, the caller says so instead of removing anything.
     @MainActor
-    static func quit(_ app: App) async {
+    static func quit(_ app: App) async -> Bool {
         let running = runningInstances(app)
-        guard !running.isEmpty else { return }
+        guard !running.isEmpty else { return true }
         running.forEach { $0.terminate() }
-        try? await Task.sleep(for: .milliseconds(1500))
-        running.filter { !$0.isTerminated }.forEach { $0.forceTerminate() }
-        try? await Task.sleep(for: .milliseconds(500))
+        for _ in 0..<40 {                                  // up to 20 seconds
+            if running.allSatisfy(\.isTerminated) { return true }
+            try? await Task.sleep(for: .milliseconds(500))
+        }
+        return running.allSatisfy(\.isTerminated)
     }
 
     /// Move everything to the Trash. Returns what went and what refused, so the

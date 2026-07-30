@@ -219,12 +219,21 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
                 let box = SampleBox(sb: sb)
                 self.queue.async { self.appendMic(box.sb) }
             }
-            do {
-                try mc.start(device: micDevice, queue: queue,
-                             noiseCancellation: noiseCancellation)
-                micCapture = mc
-            } catch {
-                NSLog("SnapDesk: mic capture failed: \(error)")
+            micCapture = mc
+            // Opening the device is 100–500 ms of CoreAudio work — the device
+            // UID walk, enabling voice processing, starting the engine — and
+            // `MicLevelMonitor` measures exactly that and hops off main for it.
+            // This function is @MainActor, so doing it inline froze the
+            // countdown and the control bar at the instant recording begins.
+            // The mixer already tolerates a source that starts late.
+            let recorderQueue = queue
+            recorderQueue.async {
+                do {
+                    try mc.start(device: micDevice, queue: recorderQueue,
+                                 noiseCancellation: noiseCancellation)
+                } catch {
+                    NSLog("SnapDesk: mic capture failed: \(error)")
+                }
             }
         }
 
@@ -301,39 +310,54 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
             decorator = nil          // handed to the fresh run, so NOT stopped here
             outputURL = nil
             sessionStarted = false
-            dyingStream?.stopCapture { _ in }
             dyingWriter?.cancelWriting()
             // cancelWriting() returns with the file closed, so deleting it here
             // cannot race the new writer opening the same path.
             if let partial { try? FileManager.default.removeItem(at: partial) }
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                // Stop/cancel landed during the teardown: start nothing, and report
-                // the discard so the session tears its UI down.
-                guard self.pendingRestart else {
-                    carriedDecorator?.stop()
-                    self.isRecording = false
-                    self.onFinish?(nil)
-                    return
+
+            // The fresh run may only begin once the dying stream has actually
+            // stopped delivering. `start()` is @MainActor and rewrites every
+            // queue-confined field — stream, writer, adaptor, mixer, decorator,
+            // the PTS bookkeeping — while SCStream can still be draining its
+            // buffer backlog into didOutputSampleBuffer on this queue. Firing
+            // and forgetting stopCapture's completion left those two writing
+            // the same references from two threads.
+            let beginFreshRun: @Sendable () -> Void = { [weak self] in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    // Stop/cancel landed during the teardown: start nothing, and
+                    // report the discard so the session tears its UI down.
+                    guard self.pendingRestart else {
+                        carriedDecorator?.stop()
+                        self.isRecording = false
+                        self.onFinish?(nil)
+                        return
+                    }
+                    self.pendingRestart = false
+                    do {
+                        try self.start(display: config.display, filter: config.filter,
+                                       sourceRect: config.sourceRect, scale: config.scale,
+                                       captureAudio: config.captureAudio,
+                                       micDevice: config.micDevice,
+                                       noiseCancellation: config.noiseCancellation,
+                                       fps: config.fps, codec: config.codec,
+                                       bitsPerPixel: config.bitsPerPixel,
+                                       showCursor: config.showCursor,
+                                       blurRectsPx: config.blurRectsPx,
+                                       decorator: carriedDecorator, url: config.url)
+                    } catch {
+                        NSLog("SnapDesk: restart failed: \(error)")
+                        carriedDecorator?.stop()
+                        self.isRecording = false
+                        self.onFinish?(nil)
+                    }
                 }
-                self.pendingRestart = false
-                do {
-                    try self.start(display: config.display, filter: config.filter,
-                                   sourceRect: config.sourceRect, scale: config.scale,
-                                   captureAudio: config.captureAudio,
-                                   micDevice: config.micDevice,
-                                   noiseCancellation: config.noiseCancellation,
-                                   fps: config.fps, codec: config.codec,
-                                   bitsPerPixel: config.bitsPerPixel,
-                                   showCursor: config.showCursor,
-                                   blurRectsPx: config.blurRectsPx,
-                                   decorator: carriedDecorator, url: config.url)
-                } catch {
-                    NSLog("SnapDesk: restart failed: \(error)")
-                    carriedDecorator?.stop()
-                    self.isRecording = false
-                    self.onFinish?(nil)
-                }
+            }
+
+            if let dyingStream {
+                dyingStream.stopCapture { _ in beginFreshRun() }
+            } else {
+                beginFreshRun()
             }
         }
     }

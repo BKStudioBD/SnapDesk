@@ -638,7 +638,13 @@ final class AppCoordinator: NSObject {
         let previous = session.onFinished
         session.onFinished = { url in
             previous?(url)
-            completion()
+            // Never on this turn of the run loop. When the session hasn't
+            // started recording yet — during the countdown, or the pre-record
+            // bar — `stop()` runs the finish handler INLINE, so the reply would
+            // reach AppKit before applicationShouldTerminate had returned
+            // .terminateLater, and AppKit drops it: the app then hangs until
+            // the watchdog fires.
+            DispatchQueue.main.async { completion() }
         }
         session.stop()
         return true

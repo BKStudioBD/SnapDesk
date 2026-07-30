@@ -2,72 +2,56 @@ import SwiftUI
 
 /// Caches, temporary files, logs and the Trash — grouped, sized, and ticked
 /// before anything is removed.
+///
+/// The state lives in `CleanModel`, owned by the window, so leaving this tab
+/// and coming back keeps the measurement and the ticks.
 struct CleanTab: View {
+    let model: CleanModel
     var playSound: () -> Void
 
-    @State private var categories: [CacheCategory] = []
-    @State private var sizes: [String: UInt64] = [:]
-    @State private var selected: Set<String> = []
-    @State private var isScanning = true
-    @State private var isCleaning = false
-    @State private var confirmingTrash = false
-    @State private var result: String?
-
-    /// Only what exists AND has something in it. A row reading "0 bytes" is a
-    /// row nobody can act on.
-    private var visible: [CacheCategory] {
-        categories.filter { (sizes[$0.id] ?? 0) > 0 }
-    }
-
     private var groups: [CacheCategory.Group] {
-        CacheCategory.Group.allCases.filter { group in visible.contains { $0.group == group } }
-    }
-
-    private var selectedBytes: UInt64 {
-        visible.filter { selected.contains($0.id) }.reduce(0) { $0 + (sizes[$1.id] ?? 0) }
-    }
-
-    private var totalBytes: UInt64 {
-        visible.reduce(0) { $0 + (sizes[$1.id] ?? 0) }
+        CacheCategory.Group.allCases.filter { group in model.visible.contains { $0.group == group } }
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            CleanerListHeader(total: SystemStats.format(totalBytes),
-                              caption: "reclaimable in \(visible.count) place\(visible.count == 1 ? "" : "s")",
-                              hasRows: !visible.isEmpty,
-                              allSelected: allSelected) { selectAll in
+            CleanerListHeader(total: SystemStats.format(model.totalBytes),
+                              caption: "reclaimable in \(model.visible.count) place\(model.visible.count == 1 ? "" : "s")",
+                              hasRows: !model.visible.isEmpty,
+                              allSelected: model.allSelected) { selectAll in
                 // Select All never arms the Trash: everything else is moved TO
                 // the Trash and can be put back, and emptying it is the one
                 // thing in here that cannot.
-                selected = selectAll ? Set(visible.filter { !$0.isTrash }.map(\.id)) : []
+                model.selected = selectAll
+                    ? Set(model.visible.filter { !$0.isTrash }.map(\.id))
+                    : []
             }
 
             Divider()
 
-            if isScanning {
+            if model.isScanning {
                 ProgressView("Measuring…")
                     .controlSize(.small)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if visible.isEmpty {
+            } else if model.visible.isEmpty {
                 ContentUnavailableView("Nothing to Clean",
                                        systemImage: "checkmark.circle",
                                        description: Text("No caches, logs or temporary files worth removing right now."))
             } else {
                 List {
                     ForEach(groups) { group in
-                        let rows = visible.filter { $0.group == group }
+                        let rows = model.visible.filter { $0.group == group }
                         Section {
                             ForEach(rows) { category in
                                 CleanerRow(symbol: category.symbol,
                                            title: category.name,
                                            detail: category.detail,
-                                           size: SystemStats.format(sizes[category.id] ?? 0),
+                                           size: SystemStats.format(model.sizes[category.id] ?? 0),
                                            isSelected: binding(category.id))
                             }
                         } header: {
                             CleanerGroupHeader(title: group.rawValue,
-                                               size: SystemStats.format(bytes(of: rows)),
+                                               size: SystemStats.format(model.bytes(of: rows)),
                                                selection: rows.map { binding($0.id) })
                         }
                     }
@@ -77,81 +61,36 @@ struct CleanTab: View {
             }
 
             CleanerActionBar(summary: summary,
-                             title: selectedBytes > 0 ? "Clean \(SystemStats.format(selectedBytes))" : "Clean",
-                             isEnabled: selectedBytes > 0, isBusy: isCleaning) {
+                             title: model.selectedBytes > 0
+                                ? "Clean \(SystemStats.format(model.selectedBytes))" : "Clean",
+                             isEnabled: model.selectedBytes > 0, isBusy: model.isCleaning) {
                 // The Trash is the only permanent delete in the app; say so
                 // before doing it, the way Finder does.
-                if picked.contains(where: \.isTrash) { confirmingTrash = true }
-                else { Task { await clean() } }
+                if model.picked.contains(where: \.isTrash) { model.confirmingTrash = true }
+                else { Task { await model.clean(playSound: playSound) } }
             }
         }
-        .confirmationDialog("Empty the Trash?", isPresented: $confirmingTrash) {
-            Button("Empty the Trash", role: .destructive) { Task { await clean() } }
+        .confirmationDialog("Empty the Trash?", isPresented: Bindable(model).confirmingTrash) {
+            Button("Empty the Trash", role: .destructive) {
+                Task { await model.clean(playSound: playSound) }
+            }
             Button("Cancel", role: .cancel) { }
         } message: {
             Text("Emptying the Trash deletes those items for good — they can't be put back. Everything else you ticked is moved to the Trash and can be.")
         }
-        .task { await scan() }
-    }
-
-    private var picked: [CacheCategory] {
-        visible.filter { selected.contains($0.id) }
-    }
-
-    /// Everything that Select All would tick — the Trash is deliberately not
-    /// part of it, so the button doesn't sit on "Deselect All" forever.
-    private var allSelected: Bool {
-        let selectable = visible.filter { !$0.isTrash }
-        return !selectable.isEmpty && selectable.allSatisfy { selected.contains($0.id) }
+        .task { await model.scanIfNeeded() }
     }
 
     private var summary: String {
-        if let result { return result }
-        let count = visible.filter { selected.contains($0.id) }.count
+        if let result = model.result { return result }
+        let count = model.picked.count
         return count == 0 ? "Nothing selected" : "\(count) selected"
     }
 
-    // MARK: - Selection
-
     private func binding(_ id: String) -> Binding<Bool> {
-        Binding(get: { selected.contains(id) },
+        Binding(get: { model.selected.contains(id) },
                 set: { isOn in
-                    if isOn { selected.insert(id) } else { selected.remove(id) }
+                    if isOn { model.selected.insert(id) } else { model.selected.remove(id) }
                 })
-    }
-
-    private func bytes(of rows: [CacheCategory]) -> UInt64 {
-        rows.reduce(0) { $0 + (sizes[$1.id] ?? 0) }
-    }
-
-    // MARK: - Work
-
-    private func scan() async {
-        // Building the catalog is a stat() per path; measuring walks whole
-        // directory trees. Both belong off the main actor — the window is
-        // drawing while they run.
-        let catalog = await CacheCleaner.presentCatalogInBackground()
-        let measured = await CacheCleaner.measure(catalog)
-        categories = catalog
-        sizes = measured
-        // Trash is the one category that deletes for good, so it is never
-        // pre-ticked no matter how big it is.
-        selected = Set(catalog.filter { $0.defaultOn && (measured[$0.id] ?? 0) > 0 }.map(\.id))
-        isScanning = false
-    }
-
-    private func clean() async {
-        isCleaning = true
-        let picked = self.picked
-        let freed = await CacheCleaner.clean(picked)
-        sizes = await CacheCleaner.measure(categories)
-        selected.subtract(picked.filter { (sizes[$0.id] ?? 0) == 0 }.map(\.id))
-        isCleaning = false
-        // Only the Trash gives the space back immediately; everything else is
-        // now IN the Trash, so "freed" would be a claim the disk doesn't back.
-        result = picked.contains { !$0.isTrash }
-            ? "Moved \(SystemStats.format(freed)) to the Trash — empty it to get the space back"
-            : "Emptied \(SystemStats.format(freed))"
-        playSound()
     }
 }

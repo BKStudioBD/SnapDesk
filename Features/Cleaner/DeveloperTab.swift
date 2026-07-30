@@ -4,42 +4,35 @@ import SwiftUI
 /// `.build`, Pods and friends — found across the whole home directory.
 ///
 /// Everything here goes to the Trash rather than being deleted, because a wrong
-/// guess about somebody's `build` folder has to be undoable.
+/// guess about somebody's `build` folder has to be undoable. State lives in
+/// `DeveloperModel` so a tab change doesn't throw away the scan or the ticks.
 struct DeveloperTab: View {
+    let model: DeveloperModel
     var playSound: () -> Void
-
-    @State private var items: [JunkItem] = []
-    @State private var selected: Set<String> = []
-    @State private var isScanning = true
-    @State private var isTrashing = false
-    @State private var result: String?
-
-    private var selectedItems: [JunkItem] { items.filter { selected.contains($0.id) } }
-    private var selectedBytes: UInt64 { selectedItems.reduce(0) { $0 + $1.size } }
-    private var totalBytes: UInt64 { items.reduce(0) { $0 + $1.size } }
 
     var body: some View {
         VStack(spacing: 0) {
-            CleanerListHeader(total: SystemStats.format(totalBytes),
-                              caption: "across \(items.count) build folder\(items.count == 1 ? "" : "s")",
-                              hasRows: !items.isEmpty,
-                              allSelected: !items.isEmpty && selected.count >= items.count) { selectAll in
-                selected = selectAll ? Set(items.map(\.id)) : []
+            CleanerListHeader(total: SystemStats.format(model.totalBytes),
+                              caption: "across \(model.items.count) build folder\(model.items.count == 1 ? "" : "s")",
+                              hasRows: !model.items.isEmpty,
+                              allSelected: !model.items.isEmpty
+                                && model.selected.count >= model.items.count) { selectAll in
+                model.selected = selectAll ? Set(model.items.map(\.id)) : []
             }
 
             Divider()
 
-            if isScanning {
+            if model.isScanning {
                 ProgressView("Looking through your projects…")
                     .controlSize(.small)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if items.isEmpty {
+            } else if model.items.isEmpty {
                 ContentUnavailableView("No Build Folders Found",
                                        systemImage: "checkmark.circle",
                                        description: Text("Nothing rebuildable is taking up space in your home folder."))
             } else {
                 List {
-                    ForEach(items) { item in
+                    ForEach(model.items) { item in
                         CleanerRow(symbol: item.kind.symbol,
                                    title: "\(item.kind.label) · \(item.url.lastPathComponent)",
                                    detail: item.project,
@@ -52,48 +45,25 @@ struct DeveloperTab: View {
             }
 
             CleanerActionBar(summary: summary,
-                             title: selectedBytes > 0
-                                ? "Move \(SystemStats.format(selectedBytes)) to Trash" : "Move to Trash",
-                             isEnabled: selectedBytes > 0, isBusy: isTrashing) {
-                Task { await trashSelected() }
+                             title: model.selectedBytes > 0
+                                ? "Move \(SystemStats.format(model.selectedBytes)) to Trash" : "Move to Trash",
+                             isEnabled: model.selectedBytes > 0, isBusy: model.isTrashing) {
+                Task { await model.trashSelected(playSound: playSound) }
             }
         }
-        .task { await scan() }
+        .task { await model.scanIfNeeded() }
     }
 
     private var summary: String {
-        if let result { return result }
-        if selectedItems.isEmpty { return "Nothing selected" }
-        return "\(selectedItems.count) selected"
+        if let result = model.result { return result }
+        if model.selectedItems.isEmpty { return "Nothing selected" }
+        return "\(model.selectedItems.count) selected"
     }
 
     private func binding(_ id: String) -> Binding<Bool> {
-        Binding(get: { selected.contains(id) },
+        Binding(get: { model.selected.contains(id) },
                 set: { isOn in
-                    if isOn { selected.insert(id) } else { selected.remove(id) }
+                    if isOn { model.selected.insert(id) } else { model.selected.remove(id) }
                 })
-    }
-
-    private func scan() async {
-        items = await ProjectJunkScanner.scanInBackground()
-        // A folder called `build` or `dist` might be somebody's source, and a
-        // dot-directory straight under ~ is a tool's home rather than a
-        // project's output — both are listed, neither is pre-ticked.
-        selected = Set(items.filter(\.safeToPreselect).map(\.id))
-        isScanning = false
-    }
-
-    private func trashSelected() async {
-        isTrashing = true
-        let picked = selectedItems
-        // A node_modules tree is tens of thousands of files; moving it on the
-        // main actor froze the window until the last one landed.
-        let freed = await ProjectJunkScanner.trashInBackground(picked)
-        let removed = Set(picked.map(\.id))
-        items.removeAll { removed.contains($0.id) }
-        selected.subtract(removed)
-        isTrashing = false
-        result = "Moved \(SystemStats.format(freed)) to the Trash"
-        playSound()
     }
 }

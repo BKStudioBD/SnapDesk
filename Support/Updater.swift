@@ -114,28 +114,36 @@ enum Updater {
 
         // ditto, not NSFileManager: it preserves the bundle's symlinks and
         // extended attributes, which an unzip that flattens them would break.
-        guard run("/usr/bin/ditto", ["-x", "-k", zip.path, work.path]) else { throw Err.unpackFailed }
+        //
+        // Every Process below runs on the background queue. They are
+        // `waitUntilExit()` calls — an unzip and a `codesign --deep` over a
+        // whole bundle — and this function is @MainActor, so on the main thread
+        // they beachball the menu bar, the hotkeys and any live recording's
+        // control bar for as long as they take.
+        guard await BackgroundWork.run({ run("/usr/bin/ditto", ["-x", "-k", zip.path, work.path]) })
+        else { throw Err.unpackFailed }
         guard let newApp = (try? FileManager.default.contentsOfDirectory(at: work,
                                                                         includingPropertiesForKeys: nil))?
             .first(where: { $0.pathExtension == "app" }) else { throw Err.unpackFailed }
 
         // (a) valid signature at all…
-        guard run("/usr/bin/codesign", ["--verify", "--deep", "--strict", newApp.path]) else {
-            throw Err.unsigned
-        }
+        guard await BackgroundWork.run({
+            run("/usr/bin/codesign", ["--verify", "--deep", "--strict", newApp.path])
+        }) else { throw Err.unsigned }
         // (b) …and the SAME signer as the running copy. Skipping this would accept
         // any validly-signed app someone managed to serve us.
         let running = Bundle.main.bundleURL
-        guard let mine = signingAuthority(of: running), let theirs = signingAuthority(of: newApp) else {
-            throw Err.unsigned
+        let signers = await BackgroundWork.run {
+            (mine: signingAuthority(of: running), theirs: signingAuthority(of: newApp))
         }
+        guard let mine = signers.mine, let theirs = signers.theirs else { throw Err.unsigned }
         guard mine == theirs else { throw Err.wrongSigner }
 
         // Replace the bundle we're running from. The live process keeps its own
         // inode, so this is safe; the new code takes effect on relaunch.
-        guard (try? FileManager.default.replaceItemAt(running, withItemAt: newApp)) != nil else {
-            throw Err.replaceFailed
-        }
+        guard await BackgroundWork.run({
+            (try? FileManager.default.replaceItemAt(running, withItemAt: newApp)) != nil
+        }) else { throw Err.replaceFailed }
         // Remember where we came from so What's New can be shown once, after the
         // new version starts.
         UserDefaults.standard.set(release.version, forKey: "update.installedVersion")

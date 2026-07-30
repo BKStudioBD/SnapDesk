@@ -22,6 +22,11 @@ enum RAMCleaner {
     /// Swift's cooperative pool would hold a thread the rest of the app needs.
     private static let queue = DispatchQueue(label: "com.snapdesk.ramcleaner", qos: .utility)
 
+    /// The memory-pressure watcher's own queue. It must not be the queue the
+    /// allocation pass occupies, or the warning arrives after the damage.
+    private static let pressureQueue = DispatchQueue(label: "com.snapdesk.ramcleaner.pressure",
+                                                     qos: .userInitiated)
+
     // MARK: - Reading
 
     private static func stats() -> vm_statistics64? {
@@ -84,13 +89,23 @@ enum RAMCleaner {
         purge.executableURL = URL(fileURLWithPath: "/usr/sbin/purge")
         purge.standardOutput = nil
         purge.standardError = nil
-        if (try? purge.run()) != nil { purge.waitUntilExit() }
+        if (try? purge.run()) != nil {
+            // Bounded, not `waitUntilExit()`: the re-entrancy latch is held for
+            // this whole pass, so a purge that never returns would wedge the
+            // feature until the app restarts.
+            let deadline = Date().addingTimeInterval(20)
+            while purge.isRunning, Date() < deadline { Thread.sleep(forTimeInterval: 0.1) }
+            if purge.isRunning { purge.terminate() }
+        }
 
         // Back off the instant the system reports pressure. A memory cleaner
         // that causes a system-wide stall has done the opposite of its job.
         let underPressure = OSAllocatedUnfairLock(initialState: false)
+        // NOT `queue`: this pass is running ON it, and it is serial, so an event
+        // handler scheduled there could not be dequeued until the pass it is
+        // meant to interrupt had already finished. The brake was dead code.
         let monitor = DispatchSource.makeMemoryPressureSource(
-            eventMask: [.warning, .critical], queue: queue)
+            eventMask: [.warning, .critical], queue: pressureQueue)
         monitor.setEventHandler { underPressure.withLock { $0 = true } }
         monitor.resume()
         defer { monitor.cancel() }
