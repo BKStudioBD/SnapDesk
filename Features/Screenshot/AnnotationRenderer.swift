@@ -47,7 +47,11 @@ enum AnnotationRenderer {
             guard a.points.count > 1 else { return }
             let r = rect(first, a.points[1])
             if let img = a.image { img.draw(in: r) }
-            else { NSColor.black.withAlphaComponent(0.25).setFill(); r.fill() }
+            // No pixelated image means the redaction failed. Fill it SOLID: a
+            // translucent tint leaves the password underneath perfectly
+            // readable, and this is what gets baked into the copied and saved
+            // file. Blurring nothing is a bug; blurring badly is a leak.
+            else { NSColor.black.setFill(); r.fill() }
         case .step:
             drawStep(at: first, number: a.step ?? 1, color: a.color, width: a.width)
         case .spotlight:

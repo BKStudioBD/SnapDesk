@@ -238,7 +238,17 @@ enum CacheCleaner {
             if !category.isTrash, wasTouched(item, after: cutoff) { continue }
             let bytes = size(ofItemAt: item)
             do {
-                try fm.removeItem(at: item)
+                // Emptying the Trash is the ONE permanent delete in SnapDesk,
+                // and the UI names it before it happens. Everything else goes to
+                // the Trash like the uninstaller and the build-folder sweep do —
+                // a cache directory can hold something a vendor parked there
+                // (an IDE's local history, say) that no unlink should decide is
+                // disposable.
+                if category.isTrash {
+                    try fm.removeItem(at: item)
+                } else {
+                    try fm.trashItem(at: item, resultingItemURL: nil)
+                }
                 freed += bytes
             } catch {
                 // Locked, owned by another user, or protected — leave it.

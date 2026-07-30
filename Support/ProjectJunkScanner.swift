@@ -16,7 +16,16 @@ struct JunkItem: Identifiable, Sendable, Hashable {
     let url: URL
     let kind: JunkKind
     let size: UInt64
+    /// A tool's home directory sitting straight under `~`, not a project's build
+    /// output: `~/.gradle`, `~/.venv`. Found and listed — it really is
+    /// reclaimable — but never pre-ticked, because `~/.gradle` also holds
+    /// `gradle.properties`, which is where signing passwords and registry
+    /// tokens live precisely because it is NOT in the repo.
+    var isGlobalHome: Bool = false
     var id: String { url.path }
+
+    /// Whether the scan may tick this row for the user.
+    var safeToPreselect: Bool { kind.safeToPreselect && !isGlobalHome }
     /// "~/Dev/app" — the project the folder belongs to, which is what makes a
     /// row recognisable; the folder's own name is the same for hundreds of rows.
     var project: String {
@@ -74,6 +83,14 @@ enum JunkRules {
         if name.hasPrefix(".") { return false }
         return name != "Library" && name != "Applications"
     }
+
+    /// A dot-named match found directly inside a scan root is the TOOL's home,
+    /// not a project's build output — `~/.gradle` is Gradle itself, holding
+    /// `gradle.properties` (signing passwords, registry tokens) beside the
+    /// caches. Still listed and still removable; just never ticked for you.
+    static func isGlobalHome(_ name: String, atDepth depth: Int) -> Bool {
+        depth == 0 && name.hasPrefix(".")
+    }
 }
 
 /// Walks the home directory for build folders that can be rebuilt from source.
@@ -109,7 +126,8 @@ enum ProjectJunkScanner {
                 if let kind = JunkRules.kind(for: name) {
                     guard seen.insert(child.path).inserted else { continue }
                     found.append(JunkItem(url: child, kind: kind,
-                                          size: CacheCleaner.size(ofItemAt: child)))
+                                          size: CacheCleaner.size(ofItemAt: child),
+                                          isGlobalHome: JunkRules.isGlobalHome(name, atDepth: depth)))
                     continue                      // matched — do not descend into it
                 }
                 if JunkRules.shouldDescend(into: name) {

@@ -10,6 +10,7 @@ struct CleanTab: View {
     @State private var selected: Set<String> = []
     @State private var isScanning = true
     @State private var isCleaning = false
+    @State private var confirmingTrash = false
     @State private var result: String?
 
     /// Only what exists AND has something in it. A row reading "0 bytes" is a
@@ -35,8 +36,11 @@ struct CleanTab: View {
             CleanerListHeader(total: SystemStats.format(totalBytes),
                               caption: "reclaimable in \(visible.count) place\(visible.count == 1 ? "" : "s")",
                               hasRows: !visible.isEmpty,
-                              allSelected: !visible.isEmpty && selected.count >= visible.count) {
-                selected = selected.isEmpty ? Set(visible.map(\.id)) : []
+                              allSelected: allSelected) { selectAll in
+                // Select All never arms the Trash: everything else is moved TO
+                // the Trash and can be put back, and emptying it is the one
+                // thing in here that cannot.
+                selected = selectAll ? Set(visible.filter { !$0.isTrash }.map(\.id)) : []
             }
 
             Divider()
@@ -75,10 +79,30 @@ struct CleanTab: View {
             CleanerActionBar(summary: summary,
                              title: selectedBytes > 0 ? "Clean \(SystemStats.format(selectedBytes))" : "Clean",
                              isEnabled: selectedBytes > 0, isBusy: isCleaning) {
-                Task { await clean() }
+                // The Trash is the only permanent delete in the app; say so
+                // before doing it, the way Finder does.
+                if picked.contains(where: \.isTrash) { confirmingTrash = true }
+                else { Task { await clean() } }
             }
         }
+        .confirmationDialog("Empty the Trash?", isPresented: $confirmingTrash) {
+            Button("Empty the Trash", role: .destructive) { Task { await clean() } }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Emptying the Trash deletes those items for good — they can't be put back. Everything else you ticked is moved to the Trash and can be.")
+        }
         .task { await scan() }
+    }
+
+    private var picked: [CacheCategory] {
+        visible.filter { selected.contains($0.id) }
+    }
+
+    /// Everything that Select All would tick — the Trash is deliberately not
+    /// part of it, so the button doesn't sit on "Deselect All" forever.
+    private var allSelected: Bool {
+        let selectable = visible.filter { !$0.isTrash }
+        return !selectable.isEmpty && selectable.allSatisfy { selected.contains($0.id) }
     }
 
     private var summary: String {
@@ -118,12 +142,16 @@ struct CleanTab: View {
 
     private func clean() async {
         isCleaning = true
-        let picked = visible.filter { selected.contains($0.id) }
+        let picked = self.picked
         let freed = await CacheCleaner.clean(picked)
         sizes = await CacheCleaner.measure(categories)
         selected.subtract(picked.filter { (sizes[$0.id] ?? 0) == 0 }.map(\.id))
         isCleaning = false
-        result = "Freed \(SystemStats.format(freed))"
+        // Only the Trash gives the space back immediately; everything else is
+        // now IN the Trash, so "freed" would be a claim the disk doesn't back.
+        result = picked.contains { !$0.isTrash }
+            ? "Moved \(SystemStats.format(freed)) to the Trash — empty it to get the space back"
+            : "Emptied \(SystemStats.format(freed))"
         playSound()
     }
 }

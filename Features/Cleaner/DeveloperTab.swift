@@ -23,8 +23,8 @@ struct DeveloperTab: View {
             CleanerListHeader(total: SystemStats.format(totalBytes),
                               caption: "across \(items.count) build folder\(items.count == 1 ? "" : "s")",
                               hasRows: !items.isEmpty,
-                              allSelected: !items.isEmpty && selected.count >= items.count) {
-                selected = selected.isEmpty ? Set(items.map(\.id)) : []
+                              allSelected: !items.isEmpty && selected.count >= items.count) { selectAll in
+                selected = selectAll ? Set(items.map(\.id)) : []
             }
 
             Divider()
@@ -76,9 +76,10 @@ struct DeveloperTab: View {
 
     private func scan() async {
         items = await ProjectJunkScanner.scanInBackground()
-        // A folder called `build` or `dist` might be somebody's source; those
-        // are listed but never pre-ticked.
-        selected = Set(items.filter { $0.kind.safeToPreselect }.map(\.id))
+        // A folder called `build` or `dist` might be somebody's source, and a
+        // dot-directory straight under ~ is a tool's home rather than a
+        // project's output — both are listed, neither is pre-ticked.
+        selected = Set(items.filter(\.safeToPreselect).map(\.id))
         isScanning = false
     }
 

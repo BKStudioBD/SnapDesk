@@ -92,10 +92,12 @@ struct CleanerActionBar: View {
                 .truncationMode(.tail)
             Spacer(minLength: 8)
             if isBusy { ProgressView().controlSize(.small) }
+            // Deliberately NOT .defaultAction: in three of the four tabs this
+            // button deletes, and Return arriving from a stray focus should
+            // never be what starts that.
             Button(title, action: action)
                 .buttonStyle(.borderedProminent)
                 .disabled(!isEnabled || isBusy)
-                .keyboardShortcut(.defaultAction)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -105,12 +107,18 @@ struct CleanerActionBar: View {
 }
 
 /// The heading over a list: the total, what it covers, and select-all.
+///
+/// The button's label and its action read the SAME value. They used to be
+/// computed separately — "is everything ticked" for the label, "is nothing
+/// ticked" for the action — so with a partial selection it said Select All and
+/// cleared instead.
 struct CleanerListHeader: View {
     let total: String
     let caption: String
     let hasRows: Bool
     let allSelected: Bool
-    let toggleAll: () -> Void
+    /// `true` = select everything, `false` = clear.
+    let setAll: (Bool) -> Void
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
@@ -124,7 +132,7 @@ struct CleanerListHeader: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button(allSelected ? "Deselect All" : "Select All", action: toggleAll)
+            Button(allSelected ? "Deselect All" : "Select All") { setAll(!allSelected) }
                 .disabled(!hasRows)
         }
         .padding(.horizontal, 16)

@@ -37,6 +37,26 @@ struct UninstallTab: View {
     }
 
     private var list: some View {
+        VStack(spacing: 0) {
+            // An inline field, not `.searchable`: this filters ONE of the four
+            // tabs, and .searchable would put it in the window's title bar
+            // (which this window doesn't have a toolbar for), where it would
+            // look like it applied to all of them.
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("Search apps", text: $search)
+                    .textFieldStyle(.roundedBorder)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+
+            Divider()
+
+            content
+        }
+    }
+
+    @ViewBuilder private var content: some View {
         Group {
             if isLoadingApps {
                 ProgressView("Reading your applications…")
@@ -74,7 +94,6 @@ struct UninstallTab: View {
                 .alternatingRowBackgrounds()
             }
         }
-        .searchable(text: $search, placement: .toolbar, prompt: "Search apps")
     }
 }
 
