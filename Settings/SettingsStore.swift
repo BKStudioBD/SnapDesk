@@ -67,6 +67,11 @@ final class SettingsStore: ObservableObject {
 
     /// Called whenever any hotkey changes (set by AppCoordinator).
     var onHotkeysChanged: (() -> Void)?
+    /// Actions that used to be menu-bar items and now live in Settings. They are
+    /// closures rather than `NSApp.sendAction` because the coordinator is not in
+    /// the responder chain — a selector sent to nil never reaches it.
+    var onCheckForUpdates: (() -> Void)?
+    var onShowWelcome: (() -> Void)?
     /// When true, hotkey `didSet` skips the re-register callback — used to
     /// batch a multi-key change (e.g. reset-to-defaults) into one re-register
     /// instead of six.

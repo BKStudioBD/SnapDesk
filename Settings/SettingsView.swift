@@ -90,6 +90,11 @@ private struct GeneralTab: View {
                 Toggle("Launch SnapDesk at login", isOn: $settings.launchAtLogin)
                 Text("Keeps SnapDesk ready in the menu bar after every restart.")
                     .font(.caption).foregroundStyle(.secondary)
+                LabeledContent("Setup") {
+                    Button("Welcome & Permissions…") { settings.onShowWelcome?() }
+                }
+                Text("The first-run tour, plus live Screen Recording and Accessibility checks with a Grant button for each.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section {
                 Toggle("Check for updates on launch", isOn: $settings.autoCheckUpdates)
@@ -136,10 +141,12 @@ private struct GeneralTab: View {
         .glassForm()
     }
 
-    /// Route to the coordinator's checker via the menu action, so the alert and
-    /// the notification behave exactly as they do from the menu bar.
+    /// The coordinator owns the check (it shows the alert and the notification).
+    /// It hands Settings a closure at launch — `NSApp.sendAction(to: nil)` would
+    /// walk a responder chain the coordinator isn't part of and quietly do
+    /// nothing.
     private func checkNow() {
-        NSApp.sendAction(Selector(("checkForUpdates")), to: nil, from: nil)
+        settings.onCheckForUpdates?()
     }
 }
 

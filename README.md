@@ -86,7 +86,8 @@ Every shortcut is rebindable live in **Settings → Shortcuts** (click, press a 
 
 
 ### 🧰 Everything else
-- **Welcome & Setup window** — first-run tour + permission checklist.
+- **Welcome & Setup window** — first-run tour + permission checklist; reopen any time from Settings → General → *Setup*.
+- **A menu bar you can read at a glance** — the capture actions, then Settings. Shortcuts, the update check and the setup window all live inside Settings rather than crowding the menu.
 - **Settings dashboard** — grouped sidebar (General / Shortcuts / Capture: Screenshot·Recording·OCR·Color / Data: Clipboard / About: Help·About), every feature fully configurable.
 - **Built-in Help** — all shortcuts and per-feature guides inside the app.
 - **Launch at login**; two custom feedback sounds — a rising pair when content comes IN (capture, copy, save), its falling mirror when it goes OUT (paste) — each with a test button, or silent mode.

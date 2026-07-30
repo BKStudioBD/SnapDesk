@@ -38,6 +38,10 @@ final class AppCoordinator: NSObject {
 
         // Re-register hotkeys whenever the user rebinds one.
         settings.onHotkeysChanged = { [weak self] in self?.registerHotkeys() }
+        // Update check and the welcome/permissions window are Settings buttons
+        // now, not menu items — the menu stays the capture actions plus Settings.
+        settings.onCheckForUpdates = { [weak self] in self?.checkForUpdates() }
+        settings.onShowWelcome = { [weak self] in self?.showWelcome() }
         // Text stack lives in the settings object so Settings can switch it; the
         // menu-bar state and the notification are this object's job either way.
         settings.onOCRStackModeChanged = { [weak self] on, carried in
@@ -110,9 +114,9 @@ final class AppCoordinator: NSObject {
                                  #selector(scrollingCapture), settings.scrollHotkey,
                                  scrolling ? "stop.circle.fill" : "arrow.up.and.down.text.horizontal"))
         menu.addItem(.separator())
-        menu.addItem(plainItem("Check for Updates…", #selector(checkForUpdates), "arrow.down.circle"))
-        menu.addItem(plainItem("Welcome & Setup…", #selector(showWelcome), "hand.wave"))
-        menu.addItem(plainItem("Shortcuts & Help…", #selector(openHelp), "questionmark.circle"))
+        // Everything that isn't a capture action lives in Settings: shortcuts,
+        // the update check, and the welcome/permissions window each have a home
+        // there. The menu stays what you reach for mid-task.
         menu.addItem(plainItem("Settings…", #selector(openSettings), "gearshape"))
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit SnapDesk", action: #selector(quit), keyEquivalent: "q")
@@ -509,11 +513,6 @@ final class AppCoordinator: NSObject {
         NSApp.activate(ignoringOtherApps: true)
         alert.window.orderFrontRegardless()
         alert.runModal()
-    }
-
-    @objc func openHelp() {
-        settings.selectedSection = "Help"
-        openSettings()
     }
 
     @objc func showWelcome() {
