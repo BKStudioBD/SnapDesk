@@ -531,7 +531,7 @@ private struct ColorTab: View {
                     ForEach(ColorFormat.allCases) { Text($0.rawValue).tag($0) }
                 }
                 Toggle("Uppercase hex", isOn: $settings.uppercaseHex)
-                Toggle("Keep sampling (pick multiple)", isOn: $settings.colorContinuous)
+                    .disabled(settings.colorFormat != .hex)
                 Toggle("Show notification", isOn: $settings.colorNotify)
             }
             Section("Recent colors") {
@@ -701,9 +701,8 @@ private struct HelpTab: View {
             }
             Section("Color  (\(settings.colorHotkey.displayString))") {
                 row("Pick", "Magnified eyedropper; copies in your chosen format.")
-                row("Formats", "HEX · RGB · RGBA · HSL · CSS var · SwiftUI · NSColor")
+                row("Formats", "HEX or RGB — Settings → Color.")
                 row("Recent", "Settings → Color keeps the last 16 picks — click a swatch to copy it again.")
-                row("Loop", "“Keep sampling” picks several colors in a row.")
             }
             Section("OCR  (\(settings.ocrHotkey.displayString))") {
                 row("Grab", "Drag over text → copied to the clipboard.")

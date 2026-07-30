@@ -10,7 +10,7 @@ Everything runs from a crisp menu-bar icon. No Dock icon, no main window.
 |---|---|---|
 | ⌃1 | 📸 **Capture & Annotate** | Select a region (or click a window to snap), annotate in place, copy/save/pin |
 | ⌃2 | 🔤 **Grab Text (OCR)** | Drag over any text on screen → recognized on-device and copied instantly |
-| ⌃3 | 🎨 **Pick a Color** | Magnified eyedropper → copies HEX / RGB / RGBA / HSL / CSS / SwiftUI / NSColor |
+| ⌃3 | 🎨 **Pick a Color** | Magnified eyedropper → copies the color as HEX or RGB |
 | ⌃4 | 📋 **Clipboard History** | Searchable history of copied text & images — pin, filter, paste back |
 | ⌃5 | 🎥 **Record Screen** | Region or full-screen video with audio, captions, effects and privacy blur |
 | ⌃6 | 📜 **Scrolling Capture** | Scroll through a long page → stitched into one tall image |
@@ -52,8 +52,7 @@ Every shortcut is rebindable live in **Settings → Shortcuts** (click, press a 
 
 ### 🎨 Color Picker (⌃3)
 - System magnified eyedropper loupe over every pixel on screen.
-- **Copy format:** HEX / RGB / RGBA / HSL / CSS variable / SwiftUI `Color` / `NSColor` code — with uppercase-hex toggle.
-- **Keep sampling** mode: pick color after color until Esc — great for building palettes.
+- **Copy format:** `#RRGGBB` or `rgb(r, g, b)` — with an uppercase-hex toggle.
 - **Recent colors** palette lives in Settings — the last 16 picks, click any swatch to re-copy it later. Optional notification per pick.
 
 ### 📋 Clipboard History (⌃4)

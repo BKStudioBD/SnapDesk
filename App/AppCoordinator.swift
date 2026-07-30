@@ -423,10 +423,6 @@ final class AppCoordinator: NSObject {
             self.settings.addRecentColor(color.hexString(uppercase: self.settings.uppercaseHex))
             if self.settings.colorNotify { Notifier.info("Color copied", value) }
             self.playSoundIfEnabled()
-            // Continuous mode: reopen the eyedropper for rapid sampling.
-            if self.settings.colorContinuous {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { self.pickColor() }
-            }
         }
     }
 
