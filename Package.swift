@@ -82,8 +82,6 @@ let package = Package(
                 "Features/Clipboard/Snippet.swift",
                 "Features/Clipboard/SnippetStore.swift",
                 "Features/Clipboard/TextTransform.swift",
-                "Features/ColorPicker/ColorContrast.swift",
-                "Features/ColorPicker/ColorPickerService.swift",
                 "Features/ColorPicker/ColorHex.swift",
                 "Features/OCR/OCRService.swift",
                 "Features/Recording/AudioLevelMeter.swift",

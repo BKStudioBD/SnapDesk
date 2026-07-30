@@ -523,29 +523,13 @@ private struct OCRTab: View {
 
 private struct ColorTab: View {
     @EnvironmentObject var settings: SettingsStore
-    /// The pair being contrast-checked. Defaults to the two most recent picks so
-    /// the section is useful the moment it appears.
-    @State private var foreground = "#000000"
-    @State private var background = "#FFFFFF"
-
-    private var ratio: Double {
-        ColorContrast.ratio(NSColor(hex: foreground) ?? .black,
-                            NSColor(hex: background) ?? .white)
-    }
 
     var body: some View {
         Form {
-            Section("Copy") {
-                Picker("Format", selection: $settings.colorFormat) {
-                    ForEach(ColorFormat.allCases) { Text($0.rawValue).tag($0) }
-                }
-                Toggle("Uppercase hex", isOn: $settings.uppercaseHex)
-                Toggle("Keep sampling (pick multiple)", isOn: $settings.colorContinuous)
-                Toggle("Show notification", isOn: $settings.colorNotify)
-            }
-            Section("Recent colors") {
+            Section {
                 if settings.recentColors.isEmpty {
-                    Text("No colors picked yet").foregroundStyle(.secondary).font(.caption)
+                    Text("No colors picked yet — press \(settings.colorHotkey.displayString) and click anywhere on screen.")
+                        .foregroundStyle(.secondary).font(.caption)
                 } else {
                     LazyVGrid(columns: Array(repeating: GridItem(.fixed(28)), count: 8), spacing: 8) {
                         ForEach(settings.recentColors, id: \.self) { hex in
@@ -567,78 +551,15 @@ private struct ColorTab: View {
                             .accessibilityLabel("Copy color \(hex)")
                         }
                     }
-                    LabeledContent("Export palette") {
-                        Menu("Copy as…") {
-                            ForEach(PaletteFormat.allCases) { format in
-                                Button(format.rawValue) {
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(
-                                        format.text(for: settings.recentColors), forType: .string)
-                                    if settings.playSound { Sounds.playIn() }
-                                }
-                            }
-                        }
-                        .fixedSize()
-                    }
-                }
-            }
-
-            Section {
-                colorField("Foreground", $foreground)
-                colorField("Background", $background)
-                LabeledContent("Contrast") {
-                    HStack(spacing: 10) {
-                        // Live sample, so the number is never the only signal.
-                        Text("Aa")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Color(hex: foreground))
-                            .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(RoundedRectangle(cornerRadius: 5).fill(Color(hex: background)))
-                            .overlay(RoundedRectangle(cornerRadius: 5).stroke(.secondary.opacity(0.3)))
-                        Text(ColorContrast.formatted(ratio)).monospacedDigit()
-                    }
-                }
-                let passing = ColorContrast.passing(ratio)
-                ForEach(ColorContrast.Level.allCases, id: \.rawValue) { level in
-                    let ok = passing.contains(level)
-                    Label {
-                        Text("\(level.rawValue) — needs \(ColorContrast.formatted(level.threshold))")
-                    } icon: {
-                        Image(systemName: ok ? "checkmark.circle.fill" : "xmark.circle")
-                            .foregroundStyle(ok ? Color.green : Color.secondary)
-                    }
-                    .font(.caption)
-                    // Never colour-only: the symbol shape carries the verdict too.
-                    .accessibilityLabel("\(level.rawValue): \(ok ? "passes" : "fails")")
                 }
             } header: {
-                Text("Contrast check")
+                Text("Recent colors")
             } footer: {
-                Text("WCAG 2.1 contrast between any two colors — paste a hex or pick from Recent above. AA text is the everyday bar; UI shapes covers icons, borders and focus rings.")
+                Text("Picking copies the color's hex. Click a swatch to copy it again — the last 16 picks are kept.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
         .glassForm()
-    }
-
-    /// Hex field with a live swatch, and a menu to fill it from Recent colors.
-    private func colorField(_ label: String, _ binding: Binding<String>) -> some View {
-        LabeledContent(label) {
-            HStack(spacing: 8) {
-                RoundedRectangle(cornerRadius: 5).fill(Color(hex: binding.wrappedValue))
-                    .frame(width: 22, height: 22)
-                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(.secondary.opacity(0.3)))
-                TextField("#RRGGBB", text: binding).frame(width: 90).monospaced()
-                if settings.recentColors.isEmpty == false {
-                    Menu("Recent") {
-                        ForEach(settings.recentColors, id: \.self) { hex in
-                            Button(hex) { binding.wrappedValue = hex }
-                        }
-                    }
-                    .fixedSize()
-                }
-            }
-        }
     }
 }
 
@@ -777,11 +698,8 @@ private struct HelpTab: View {
                 row("More", "Right-click for Copy / Paste / Star / Delete.")
             }
             Section("Color  (\(settings.colorHotkey.displayString))") {
-                row("Pick", "Magnified eyedropper; copies in your chosen format.")
-                row("Formats", "HEX · RGB · RGBA · HSL · CSS var · SwiftUI · NSColor")
-                row("Contrast", "Settings → Color checks any two colors against WCAG 2.1 — AA/AAA text and UI-shape thresholds.")
-                row("Export", "Recent colors → CSS variables, Tailwind config, SwiftUI or a plain hex list.")
-                row("Loop", "“Keep sampling” picks several colors in a row.")
+                row("Pick", "Magnified eyedropper; the hex is copied.")
+                row("Recent", "Settings → Color keeps the last 16 picks — click a swatch to copy it again.")
             }
             Section("OCR  (\(settings.ocrHotkey.displayString))") {
                 row("Grab", "Drag over text → copied to the clipboard.")

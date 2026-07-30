@@ -10,7 +10,7 @@ Everything runs from a crisp menu-bar icon. No Dock icon, no main window.
 |---|---|---|
 | ⌃1 | 📸 **Capture & Annotate** | Select a region (or click a window to snap), annotate in place, copy/save/pin |
 | ⌃2 | 🔤 **Grab Text (OCR)** | Drag over any text on screen → recognized on-device and copied instantly |
-| ⌃3 | 🎨 **Pick a Color** | Magnified eyedropper → copies HEX / RGB / RGBA / HSL / CSS / SwiftUI / NSColor |
+| ⌃3 | 🎨 **Pick a Color** | Magnified eyedropper → copies the hex, and keeps the last 16 picks |
 | ⌃4 | 📋 **Clipboard History** | Searchable history of copied text & images — pin, filter, paste back |
 | ⌃5 | 🎥 **Record Screen** | Region or full-screen video with audio, captions, effects and privacy blur |
 | ⌃6 | 📜 **Scrolling Capture** | Scroll through a long page → stitched into one tall image |
@@ -51,12 +51,8 @@ Every shortcut is rebindable live in **Settings → Shortcuts** (click, press a 
 - Options: trim surrounding whitespace, notification confirming the copy.
 
 ### 🎨 Color Picker (⌃3)
-- System magnified eyedropper loupe over every pixel on screen.
-- **Copy format:** HEX / RGB / RGBA / HSL / CSS variable / SwiftUI `Color` / `NSColor` code — with uppercase-hex toggle.
-- **Keep sampling** mode: pick color after color until Esc — great for building palettes.
-- **Recent colors** palette lives in Settings — click any swatch to re-copy it later. Optional notification per pick.
-- **Contrast check** — any two colors against WCAG 2.1, with AA / AAA text and UI-shape verdicts and a live sample.
-- **Palette export** — recent colors as CSS variables, a Tailwind config block, SwiftUI, or a plain hex list.
+- System magnified eyedropper loupe over every pixel on screen; the hex is copied the moment you click.
+- **Recent colors** — the last 16 picks live in Settings → Color; click any swatch to copy it again.
 
 ### 📋 Clipboard History (⌃4)
 - Solid card list with **All / Text / Images / Pinned** filters and live search.
@@ -175,7 +171,7 @@ Support/     Permissions, paster, notifier, sounds, diagnostics
 ./test-tools.sh  # headless render test of every annotation tool → PNGs
 ```
 
-`./test.sh` type-checks every source **and runs the unit suite**: `swift test` — Swift Testing, **190 tests in 27 suites, about a second**. It needs no microphone, no screen recording and no permission of any kind, and it never writes to the real pasteboard.
+`./test.sh` type-checks every source **and runs the unit suite**: `swift test` — Swift Testing, **182 tests in 26 suites, about a second**. It needs no microphone, no screen recording and no permission of any kind, and it never writes to the real pasteboard.
 
 What it pins down, chosen so every bug that actually shipped stays fixed:
 
@@ -184,7 +180,7 @@ What it pins down, chosen so every bug that actually shipped stays fixed:
 | Clipboard classification / preview | links vs prose, `#`-required hex, bounded previews |
 | Pasteboard text | trailing-newline trim (a paste lands where the caret is), byte-accurate size cap |
 | Persist snapshot | clear-on-quit writes **no** unpinned plaintext, pinned survive the cap, aggregate byte budget |
-| Hex + contrast | parse/format round-trip, sRGB luminance, WCAG bands, palette export formats |
+| Hex | parse/format round-trip, malformed input refused, channel order not reversed |
 | Hotkeys | glyph order, menu equivalents, JSON round-trip, Shift-only combos refused |
 | OCR escalation | wide thin strips (over 40:1), tiny text, 1× captures, blank frames read empty, reading order |
 | OCR layout | table → TSV on a real grid, **prose never turned into tabs**, code mode keeps identifiers |
