@@ -66,7 +66,18 @@ final class MicCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, 
         if noiseCancellation {
             NSLog("SnapDesk: voice processing unavailable on \(device.localizedName) — recording raw mic")
         }
-        try startRawCapture(device: device, queue: queue)
+        do {
+            try startRawCapture(device: device, queue: queue)
+        } catch {
+            // The disconnect observer is registered BEFORE the device is opened, and
+            // callers only reach for `stop()` on a capture that actually started —
+            // so a failed open left the observer behind for the life of the app. It
+            // then told whoever unplugged a microphone, at any point afterwards,
+            // that "the recording continues without your voice" when nothing was
+            // being recorded at all.
+            stop()
+            throw error
+        }
     }
 
     func stop() {
@@ -87,7 +98,20 @@ final class MicCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, 
     /// orange mic indicator stays lit, which reads as "still recording my voice".
     func setPaused(_ paused: Bool) {
         if let engine {
-            Self.control.async { paused ? engine.pause() : try? engine.start() }
+            Self.control.async {
+                guard !paused else { engine.pause(); return }
+                do {
+                    try engine.start()
+                } catch {
+                    // A resume that fails leaves the voice track dead for the whole
+                    // rest of the take, and `try?` said nothing — the recorder found
+                    // out on playback, which is the failure this file exists to
+                    // avoid. It happens when the device changed while paused.
+                    NSLog("SnapDesk: audio engine resume failed: \(error)")
+                    Notifier.error("Microphone didn't come back",
+                                   "The rest of this recording has no voice. Stop and start a new take to get it back.")
+                }
+            }
             return
         }
         Self.control.async { [session] in
@@ -259,11 +283,24 @@ final class MicCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, 
 
     private func startRawCapture(device: AVCaptureDevice, queue: DispatchQueue) throws {
         let input = try AVCaptureDeviceInput(device: device)
-        guard session.canAddInput(input) else { throw Err.setup }
+        // One atomic reconfiguration. Unbatched, AVCaptureSession applies each add
+        // on its own and walks the device through a full reconfiguration twice —
+        // pure added spin-up latency on the exact path both callers hop off the main
+        // thread to keep out of the way. Committed BEFORE startRunning(): a session
+        // may not be started from inside a configuration block.
+        session.beginConfiguration()
+        guard session.canAddInput(input) else {
+            session.commitConfiguration()
+            throw Err.setup
+        }
         session.addInput(input)
         output.setSampleBufferDelegate(self, queue: queue)
-        guard session.canAddOutput(output) else { throw Err.setup }
+        guard session.canAddOutput(output) else {
+            session.commitConfiguration()
+            throw Err.setup
+        }
         session.addOutput(output)
+        session.commitConfiguration()
         // startRunning() is slow (device spin-up) — never block the main thread.
         Self.control.async { [session] in session.startRunning() }
     }

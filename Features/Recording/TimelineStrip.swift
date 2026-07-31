@@ -205,6 +205,12 @@ final class TimelineStripView: NSView {
             selection = nil
             onSelectionChanged?(nil)
             onSeek?(time(at: p.x))
+        } else if selection != nil {
+            // ⌫ cuts the selection — but AppKit never hands first-responder status
+            // to a plain NSView on its own, so the key went to the player and the
+            // shortcut did nothing at all. Claim focus only once there IS something
+            // to delete, so a plain click-to-seek leaves the player's own keys alone.
+            window?.makeFirstResponder(self)
         }
         drag = .none
     }
@@ -246,22 +252,45 @@ enum TimelineExporter {
             throw NSError(domain: "SnapDesk", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "No video track."])
         }
-        let compVideo = comp.addMutableTrack(withMediaType: .video,
-                                             preferredTrackID: kCMPersistentTrackID_Invalid)
-        if let transform = try? await srcVideo.load(.preferredTransform) {
-            compVideo?.preferredTransform = transform   // keep rotation metadata
+        // Not optional-chained: the caller REPLACES the user's recording with what
+        // comes back here, so a composition that quietly ended up without a video
+        // track would export an empty movie, report success, and overwrite the take.
+        guard let compVideo = comp.addMutableTrack(withMediaType: .video,
+                                                   preferredTrackID: kCMPersistentTrackID_Invalid) else {
+            throw NSError(domain: "SnapDesk", code: 3,
+                          userInfo: [NSLocalizedDescriptionKey: "Couldn't build the trimmed video."])
         }
-        let compAudios: [AVMutableCompositionTrack] = audioTracks.compactMap { _ in
+        if let transform = try? await srcVideo.load(.preferredTransform) {
+            compVideo.preferredTransform = transform   // keep rotation metadata
+        }
+        // Paired with `audioTracks` BY INDEX below, so a track that couldn't be
+        // added has to keep its slot rather than shift every later one onto the
+        // wrong source.
+        let compAudios: [AVMutableCompositionTrack?] = audioTracks.map { _ in
             comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
         }
+        // The audio track is routinely SHORTER than the picture — it begins at the
+        // first mixed chunk and ends at the stop flush, while the video spans the
+        // whole take — so a kept range measured from the ASSET duration can reach
+        // past its end. Clip to what each track actually holds, and let a real
+        // failure surface: the `try?` this replaces turned a rejected insert into a
+        // SILENT video that then overwrote the recording, without a word.
+        var audioRanges: [CMTimeRange] = []
+        for track in audioTracks { audioRanges.append(try await track.load(.timeRange)) }
         var cursor = CMTime.zero
         for seg in kept.sorted(by: { $0.lowerBound < $1.lowerBound }) {
             let range = CMTimeRange(
                 start: CMTime(seconds: seg.lowerBound, preferredTimescale: 600),
                 end: CMTime(seconds: seg.upperBound, preferredTimescale: 600))
-            try compVideo?.insertTimeRange(range, of: srcVideo, at: cursor)
-            for (i, a) in audioTracks.enumerated() where i < compAudios.count {
-                try? compAudios[i].insertTimeRange(range, of: a, at: cursor)
+            try compVideo.insertTimeRange(range, of: srcVideo, at: cursor)
+            for (i, a) in audioTracks.enumerated() {
+                guard let target = compAudios[i] else { continue }
+                let clipped = range.intersection(audioRanges[i])
+                guard clipped.isValid, clipped.duration > .zero else { continue }
+                // Clipping the FRONT of a range must not slide the audio forward:
+                // keep it where it belongs inside the segment.
+                try target.insertTimeRange(clipped, of: a,
+                                           at: CMTimeAdd(cursor, CMTimeSubtract(clipped.start, range.start)))
             }
             cursor = cursor + range.duration
         }
@@ -270,6 +299,7 @@ enum TimelineExporter {
         // Re-encode is the SAFE choice for multi-segment cuts: passthrough
         // represents cuts as edit lists that freeze/glitch on non-Apple players
         // (Chrome, Windows). Passthrough stays as a last-resort fallback only.
+        var lastError: Error?
         for preset in [AVAssetExportPresetHighestQuality, AVAssetExportPresetPassthrough] {
             guard let ex = AVAssetExportSession(asset: comp, presetName: preset) else { continue }
             ex.outputURL = out
@@ -285,8 +315,14 @@ enum TimelineExporter {
             await ex.export()
             poll.cancel()
             if ex.status == .completed { return out }
+            lastError = ex.error
         }
-        throw NSError(domain: "SnapDesk", code: 2,
-                      userInfo: [NSLocalizedDescriptionKey: "Export failed."])
+        // Say WHY. Throwing away the session's own error left "Export failed." as
+        // the whole story, so a full disk and an unplayable source read identically
+        // and neither one told the user what to do next. The half-written output has
+        // to go too — a long take leaves hundreds of megabytes nothing points at.
+        try? FileManager.default.removeItem(at: out)
+        throw lastError ?? NSError(domain: "SnapDesk", code: 2,
+                                   userInfo: [NSLocalizedDescriptionKey: "Export failed."])
     }
 }

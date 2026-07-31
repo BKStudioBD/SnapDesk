@@ -127,7 +127,17 @@ enum SubtitleBurner {
             cur.append(seg)
         }
         flush()
-        return out.filter { !$0.text.isEmpty }
+        let grouped = out.filter { !$0.text.isEmpty }
+        // Clamp every line to where the NEXT one starts. A group is flushed on word
+        // count or elapsed span at least as often as on a pause, so the +0.2 s
+        // reading tail routinely runs past the following caption's start — and both
+        // pills are drawn in the same place, so the overlap rendered one line of
+        // text on top of another. Burned into the file, permanently.
+        return grouped.enumerated().map { index, line in
+            guard index + 1 < grouped.count else { return line }
+            return Line(text: line.text, start: line.start,
+                        end: min(line.end, grouped[index + 1].start))
+        }
     }
 
     // MARK: - Burning
@@ -136,7 +146,15 @@ enum SubtitleBurner {
     /// original — the video the user keeps IS the captioned one.
     static func burnInPlace(url: URL, lines: [Line]) async throws {
         let tmp = try await burn(url: url, lines: lines)
-        _ = try FileManager.default.replaceItemAt(url, withItemAt: tmp)
+        do {
+            _ = try FileManager.default.replaceItemAt(url, withItemAt: tmp)
+        } catch {
+            // replaceItemAt consumes the temp file only on success. A failure here
+            // leaves a full second copy of the recording in /tmp with nothing
+            // pointing at it — gigabytes for a long take.
+            try? FileManager.default.removeItem(at: tmp)
+            throw error
+        }
     }
 
     static func burn(url: URL, lines: [Line]) async throws -> URL {
@@ -169,7 +187,12 @@ enum SubtitleBurner {
         export.outputFileType = .mov
         export.videoComposition = composition
         await export.export()
-        guard export.status == .completed else { throw export.error ?? Err.exportFailed }
+        guard export.status == .completed else {
+            // A failed export still wrote whatever it got through — the same dead
+            // weight in /tmp, on the path that runs after every captioned take.
+            try? FileManager.default.removeItem(at: out)
+            throw export.error ?? Err.exportFailed
+        }
         return out
     }
 
