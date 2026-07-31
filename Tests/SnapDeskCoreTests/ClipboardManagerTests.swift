@@ -155,6 +155,22 @@ struct PersistSnapshotTests {
         #expect(out.first?.pinned == true, "pinned are written first")
     }
 
+    @Test("Starred rows are preferred over recents, but still have a ceiling",
+          .tags(.regression))
+    func pinnedAreNotExemptFromTheCeiling() {
+        // Pinned rows used to skip the byte budget entirely, so starring enough
+        // big pastes grew the plist without bound — and every launch decoded it
+        // before the menu bar appeared. Each row caps at 512 KB, so ~70 of them
+        // are needed to pass the ceiling.
+        let big = String(repeating: "p", count: 600_000)
+        let items = (0..<70).map { _ in text(big, pinned: true) }
+        let out = ClipboardManager.persistSnapshot(items, cap: 200, pinnedOnly: false)
+        let bytes = out.reduce(0) { $0 + $1.text.utf8.count }
+        #expect(out.count < items.count, "the ceiling has to bite somewhere")
+        #expect(bytes < 40_000_000, "the plist can't grow without bound")
+        #expect(out.isEmpty == false, "starred rows are still written first")
+    }
+
     @Test("A single huge item is capped so one paste can't bloat the plist")
     func capsGiantItems() throws {
         let huge = String(repeating: "x", count: 1_000_000)

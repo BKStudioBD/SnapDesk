@@ -58,6 +58,21 @@ final class ClipboardWindowController: NSWindowController {
         super.init(window: window)
 
         window.delegate = self
+
+        // The paste target was captured once, when the window opened. But this
+        // window floats, doesn't hide on deactivate, and stays clickable while
+        // the user switches apps: open the history over Mail, ⌘-Tab to Slack,
+        // click a row — and the paste went into Mail, activating it. Track the
+        // front app for as long as the window is up. (Never SnapDesk itself:
+        // that would paste into the history window.)
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let self, self.window?.isVisible == true,
+                  let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
+            self.previousApp = app
+        }
         window.contentViewController = makeHosting()
     }
 
@@ -181,6 +196,9 @@ struct ClipboardHistoryView: View {
     /// Keyboard cursor into the filtered rows. A clipboard manager is a
     /// keyboard tool: reach for the mouse and it's already slower than ⌘V.
     @State private var selected = 0
+    /// The row `selected` points at, by id, so the cursor can be put back on the
+    /// same row after the list re-sorts.
+    @State private var selectedID: UUID?
     /// Multi-row selection for merge — ids, not indexes. See `ClipboardSelection`.
     @State private var selection = ClipboardSelection()
     @State private var sheet: ClipboardSheet?
@@ -234,6 +252,9 @@ struct ClipboardHistoryView: View {
                     // Keep the keyboard cursor on screen as it moves.
                     .onChange(of: selected) {
                         guard rows.indices.contains(selected) else { return }
+                        // Remember WHICH row the cursor is on, not just where it
+                        // sat — see the re-anchor below.
+                        selectedID = rows[selected].id
                         withAnimation(.easeOut(duration: 0.12)) {
                             proxy.scrollTo(rows[selected].id, anchor: .center)
                         }
@@ -254,8 +275,25 @@ struct ClipboardHistoryView: View {
         // multi-selection was pruned, so after ↓↓↓ and a search that narrows to
         // one row, `selected` still pointed at row 3: nothing was highlighted
         // and ↵ did nothing.
-        .onChange(of: search) { selection.prune(to: filtered.map(\.id)); selected = 0 }
-        .onChange(of: filter) { selection.prune(to: filtered.map(\.id)); selected = 0 }
+        .onChange(of: search) { selection.prune(to: filtered.map(\.id)); moveCursorToTop(filtered) }
+        .onChange(of: filter) { selection.prune(to: filtered.map(\.id)); moveCursorToTop(filtered) }
+        // The list re-sorts under the person: a copy arrives every half second and
+        // lands at the top, a star floats a row up. The cursor is an INDEX, so it
+        // used to stay in slot 8 while a different row slid into it — and ↵ pasted,
+        // ⌘⌫ deleted, that row instead. Follow the row itself. `ClipboardSelection`
+        // already works by id for exactly this reason.
+        .onChange(of: rows.map(\.id)) { _, ids in
+            guard let selectedID else { return }
+            if let index = ids.firstIndex(of: selectedID) { selected = index }
+            else { selected = min(selected, max(0, ids.count - 1)) }
+        }
+    }
+
+    /// Cursor back to the first row, id included — a plain `selected = 0` left the
+    /// remembered id pointing at a row that is no longer in the list.
+    private func moveCursorToTop(_ rows: [ClipboardItem]) {
+        selected = 0
+        selectedID = rows.first?.id
     }
 
     // MARK: - Multi-selection
@@ -874,8 +912,10 @@ private struct ClipboardRow: View {
                         ForEach(options) { transform in
                             Button(transform.rawValue) {
                                 guard let out = transform.apply(to: raw) else { return }
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(out, forType: .string)
+                                // Through the manager, so the change is claimed:
+                                // a direct pasteboard write came back through the
+                                // poll half a second later as a brand new row.
+                                manager.writeToPasteboard(out)
                                 if settings.playSound { Sounds.playIn() }
                             }
                         }

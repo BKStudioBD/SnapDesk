@@ -65,15 +65,60 @@ enum TextTransform: String, CaseIterable, Identifiable {
 
     /// Transforms worth offering for this item — a JSON pretty-print on a plain
     /// sentence is noise, and an image has no text at all.
+    ///
+    /// This runs while ROWS RENDER — SwiftUI builds a row's context menu as part
+    /// of `body`, not on right-click — so it has to stay cheap. It used to run
+    /// four whole transforms, `JSONSerialization` among them, across the full
+    /// item for every visible row on every keystroke in the search field, and a
+    /// history row holds up to 1 MB. These answer the same question by LOOKING at
+    /// the text instead of rewriting it.
     static func available(for text: String) -> [TextTransform] {
         allCases.filter { transform in
             switch transform {
-            case .prettyJSON, .urlDecode, .plain, .trimLines:
-                // Only when they'd actually change something.
-                return transform.apply(to: text).map { $0 != text } ?? false
+            case .plain:
+                // Something for a collapse to actually do.
+                return text.contains(where: \.isNewline) || text.contains("  ")
+                    || text.first?.isWhitespace == true || text.last?.isWhitespace == true
+            case .trimLines:
+                return hasLineEdgeWhitespace(text)
+            case .urlDecode:
+                return text.contains("%")
+            case .prettyJSON:
+                return looksLikeJSON(text)
             default:
                 return true
             }
         }
+    }
+
+    /// Whitespace that `trimLines` would strip: at the start or end of any line,
+    /// newlines themselves excluded.
+    private static func hasLineEdgeWhitespace(_ text: String) -> Bool {
+        func isEdge(_ c: Character) -> Bool { c.isWhitespace && !c.isNewline }
+        var atLineStart = true
+        var previous: Character?
+        for character in text {
+            if character.isNewline {
+                if let previous, isEdge(previous) { return true }
+                atLineStart = true
+            } else {
+                if atLineStart, isEdge(character) { return true }
+                atLineStart = false
+            }
+            previous = character
+        }
+        if let previous, isEdge(previous) { return true }
+        return false
+    }
+
+    /// Parsing is the expensive half, so it only happens for text that starts
+    /// like JSON and is small enough to be worth confirming. A huge blob is
+    /// offered optimistically and `apply` makes the real decision when picked.
+    private static func looksLikeJSON(_ text: String) -> Bool {
+        guard let first = text.first(where: { !$0.isWhitespace }),
+              first == "{" || first == "[" else { return false }
+        guard text.utf8.count <= 32_768 else { return true }
+        guard let data = text.data(using: .utf8) else { return false }
+        return (try? JSONSerialization.jsonObject(with: data)) != nil
     }
 }

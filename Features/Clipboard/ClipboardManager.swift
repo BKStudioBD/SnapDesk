@@ -53,6 +53,16 @@ final class ClipboardManager: ObservableObject {
         "com.apple.notes.sharedTextEncoded",
     ]
 
+    /// Every app that held focus since the previous tick, plus the one holding it
+    /// now. The ignored-apps check used to read `frontmostApplication` at poll
+    /// time — up to ~0.7 s after the copy — so the normal move, copy a password
+    /// then ⌘-Tab straight to the browser you're pasting into, showed the BROWSER
+    /// as frontmost and the secret went into history anyway. Anything that held
+    /// focus inside that window counts: dropping one copy is recoverable, a
+    /// password in the history plist is not.
+    private var frontmostSincePoll: Set<String> = []
+    private var activationObserver: NSObjectProtocol?
+
     init() {
         lastChangeCount = pasteboard.changeCount
         loadPersisted()
@@ -67,12 +77,25 @@ final class ClipboardManager: ObservableObject {
         // mode stalls there and copies made meanwhile get lost.
         RunLoop.main.add(t, forMode: .common)
         timer = t
+        // Who held focus between two ticks, not just at the tick. See
+        // `frontmostSincePoll`.
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil, queue: .main
+        ) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            if let id = app?.bundleIdentifier { self?.frontmostSincePoll.insert(id) }
+        }
         poll()
     }
 
     func stop() {
         timer?.invalidate()
         timer = nil
+        if let activationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(activationObserver)
+            self.activationObserver = nil
+        }
         // Optionally wipe unpinned history when the app quits.
         if settings?.clearOnQuit == true {
             items = Self.retainedOnQuit(items)
@@ -82,9 +105,25 @@ final class ClipboardManager: ObservableObject {
 
     // MARK: - Polling
 
+    /// Everyone who held focus since the last tick, plus whoever holds it now —
+    /// and then the window starts again. Cleared on EVERY tick, copy or not, so
+    /// an app that was frontmost ten seconds ago can't suppress a copy made
+    /// somewhere else now.
+    private func takeFocusHolders() -> Set<String> {
+        var holders = frontmostSincePoll
+        frontmostSincePoll.removeAll()
+        if let now = NSWorkspace.shared.frontmostApplication?.bundleIdentifier {
+            holders.insert(now)
+            // Focus hasn't changed since, so it still counts for the next tick.
+            frontmostSincePoll.insert(now)
+        }
+        return holders
+    }
+
     private func poll() {
         // Time-based auto-delete runs every tick (cheap), even with no new copy.
         purgeExpired()
+        let focusHolders = takeFocusHolders()
 
         guard pasteboard.changeCount != lastChangeCount else { return }
         lastChangeCount = pasteboard.changeCount
@@ -103,10 +142,10 @@ final class ClipboardManager: ObservableObject {
         if settings?.ignoreUniversalClipboard == true,
            !presentTypes.isDisjoint(with: Self.universalClipboardTypes) { return }
 
-        // Skip copies coming from a user-ignored frontmost app.
+        // Skip copies made while a user-ignored app had focus — at any point
+        // since the last tick, not just right now.
         if let ignore = settings?.ignoreApps, !ignore.isEmpty,
-           let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
-           ignore.contains(front) { return }
+           !Set(ignore).isDisjoint(with: focusHolders) { return }
 
         if let string = pasteboard.string(forType: .string),
            !string.isEmpty {
@@ -345,6 +384,19 @@ final class ClipboardManager: ObservableObject {
         persist()
     }
 
+    /// Put text on the pasteboard as OUR OWN write — no new history row.
+    ///
+    /// The row transforms ("Copy as → lowercase") used to write the pasteboard
+    /// directly, which the poll then read back 0.5 s later and filed as a fresh
+    /// copy: three transforms on one row added three entries, evicting three real
+    /// captures. Claiming the change count here is what makes a transform act on
+    /// the way OUT only, as its menu promises.
+    func writeToPasteboard(_ text: String) {
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        lastChangeCount = pasteboard.changeCount
+    }
+
     /// Adds text composed inside SnapDesk — today, the merge of several rows.
     ///
     /// Goes through `ingest` so it obeys the same duplicate rule, byte cap and trim
@@ -410,6 +462,10 @@ final class ClipboardManager: ObservableObject {
     /// Total on-disk budget for history text (UTF-8 bytes). Bounds both the
     /// plist size and the synchronous decode at launch.
     private static let persistByteBudget = 8_388_608   // 8 MB
+    /// Absolute ceiling once pinned rows are counted too. Four times the budget:
+    /// high enough that no realistic set of starred snippets reaches it, finite
+    /// so the file can't grow forever.
+    private static let pinnedByteCeiling = persistByteBudget * 4
 
     /// Debounced: rapid copies and clicks must never hitch the UI on a write.
     private func persist() {
@@ -496,6 +552,11 @@ final class ClipboardManager: ObservableObject {
             guard let p = persisted(item) else { continue }
             bytes += p.text.utf8.count
             if bytes > persistByteBudget && !p.pinned { continue }
+            // Pinned rows are preferred over recents, but they are not exempt
+            // from having a ceiling at all: they were, so starring enough big
+            // pastes grew the plist without bound and every launch decoded it
+            // synchronously before the menu bar appeared. Newest pinned win.
+            if bytes > pinnedByteCeiling { break }
             out.append(p)
         }
         return out
