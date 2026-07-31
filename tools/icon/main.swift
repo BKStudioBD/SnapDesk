@@ -25,6 +25,22 @@ enum Palette {
     ]
 }
 
+// MARK: - Apple's macOS icon grid
+
+/// The shape every macOS app icon is expected to be, as fractions of the canvas.
+///
+/// Apple templates it at 1024 pt: an 824 pt rounded square, corner radius
+/// 185.4 pt, centred, with the rest transparent. Those three numbers are what
+/// make an icon sit at the same visual size as its neighbours in the Dock,
+/// Launchpad and Finder, and a hand-picked margin is exactly how an icon ends up
+/// looking slightly too big beside every system app.
+enum Grid {
+    /// 1024 pt canvas, 824 pt of artwork, so 100 pt of margin on each side.
+    static let margin: CGFloat = 100.0 / 1024.0
+    /// 185.4 pt of the 824 pt plate.
+    static let cornerRadius: CGFloat = 185.4 / 824.0
+}
+
 // MARK: - Drawing
 
 /// Draws the icon into the current graphics context at `side` × `side` points.
@@ -33,29 +49,30 @@ enum Palette {
 func drawIcon(side: CGFloat) {
     let canvas = NSRect(x: 0, y: 0, width: side, height: side)
 
-    // Rounded-square plate. The macOS grid leaves a margin around the artwork,
-    // an icon drawn edge to edge sits visibly larger than its neighbours.
-    let plate = canvas.insetBy(dx: side * 0.085, dy: side * 0.085)
+    // Rounded-square plate, on Apple's macOS icon grid: an 824 pt square inside
+    // a 1024 pt canvas, corner radius 185.4 pt. An icon drawn edge to edge sits
+    // visibly larger than its neighbours in the Dock, and one drawn to its own
+    // invented margin sits at its own size next to every system app.
+    let plate = canvas.insetBy(dx: side * Grid.margin, dy: side * Grid.margin)
     let platePath = NSBezierPath(roundedRect: plate,
-                                 xRadius: plate.width * 0.2237,
-                                 yRadius: plate.width * 0.2237)
+                                 xRadius: plate.width * Grid.cornerRadius,
+                                 yRadius: plate.width * Grid.cornerRadius)
     NSGradient(starting: Palette.backgroundTop, ending: Palette.backgroundBottom)?
         .draw(in: platePath, angle: -90)   // top → bottom
 
-    // The bracket ring, in the same geometry as the menu-bar mark. The radius is
-    // to the bracket CORNERS; the stroke hangs half outside that, which is what
-    // the rect has to account for.
-    let lineWidth = side * 0.0254
-    // 0.245 rather than the old square's 0.213: a heptagon's corners sit closer
-    // to its centre than a square's do, so matching the ring's apparent size
-    // means pushing the vertices out.
-    let half = side * 0.245 + lineWidth / 2
+    // Everything inside is measured against the PLATE, not the canvas, so the
+    // mark keeps its proportions whatever the grid says the margin should be.
+    // Measured against the canvas, a change of margin silently resizes the mark.
+    let lineWidth = plate.width * 0.0306
+    // A heptagon's corners sit closer to its centre than a square's do, so
+    // matching the ring's apparent size means pushing the vertices out.
+    let half = plate.width * 0.2952 + lineWidth / 2
     let ring = NSRect(x: canvas.midX - half, y: canvas.midY - half,
                       width: half * 2, height: half * 2)
     NSColor.white.setStroke()
     MenuBarIcon.bracketsPath(in: ring, lineWidth: lineWidth, armRatio: 0.34).stroke()
 
-    drawWheel(in: canvas, radius: side * 0.085)
+    drawWheel(in: canvas, radius: plate.width * 0.1024)
 }
 
 /// The four-quadrant colour wheel at the centre: the one part of the mark that
