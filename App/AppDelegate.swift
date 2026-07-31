@@ -11,6 +11,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // instance is taking over, so this (temporary) one must stop now.
         guard InstallHelper.ensureProperLocation() else { return }
 
+        // Only NOW is the bundle at the path it will keep, so this is the first
+        // safe moment to take the first-run launch-at-login opt-in: the settings
+        // store is built with the coordinator, long before the move above.
+        coordinator.settings.completeFirstRunSetup()
+
         // Record whether Screen Recording was granted BEFORE anything can
         // change it — a grant that arrives later needs a relaunch to work,
         // and ensureScreenRecording() uses this snapshot to know that.

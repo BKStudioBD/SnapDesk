@@ -63,7 +63,11 @@ enum RecordingQuality: String, CaseIterable, Identifiable {
 /// All user preferences, persisted to UserDefaults. Each property writes itself
 /// on change (`didSet`). Hotkey changes fire `onHotkeysChanged` — updates live.
 final class SettingsStore: ObservableObject {
-    private let d = UserDefaults.standard
+    /// Injected so a test can hand in its own suite. Bound to
+    /// `UserDefaults.standard` this was untestable in the only way that
+    /// matters: constructing a store to check the parsing and the caps would
+    /// have written into the running user's real preferences.
+    private let d: UserDefaults
 
     /// Called whenever any hotkey changes (set by AppCoordinator).
     var onHotkeysChanged: (() -> Void)?
@@ -141,6 +145,10 @@ final class SettingsStore: ObservableObject {
 
     // MARK: General
     @Published var launchAtLogin: Bool { didSet { applyLaunchAtLogin(launchAtLogin) } }
+    /// Set while `applyLaunchAtLogin` is putting the switch back after a refused
+    /// registration — the correction writes `launchAtLogin`, whose `didSet` calls
+    /// straight back in here.
+    private var correctingLaunchAtLogin = false
     @Published var playSound: Bool { didSet { d.set(playSound, forKey: "shot.sound") } }
     // Retired setting: SnapDesk ships exactly two sounds now — in (capture/copy)
     // and out (paste) — so there is no sound to pick. Key dropped in `init`.
@@ -291,7 +299,8 @@ final class SettingsStore: ObservableObject {
         return [("Automatic", "auto")] + (listed.isEmpty ? fallback : listed)
     }()
 
-    init() {
+    init(defaults: UserDefaults = .standard) {
+        d = defaults
         // Defaults: Control+1/2/3/4 (capture / OCR / color / clipboard).
         let ctrl = UInt32(controlKey)
         screenshotHotkey = Self.loadHotkey("hk.shot", d)  ?? Hotkey(keyCode: UInt32(kVK_ANSI_1), modifiers: ctrl)
@@ -383,15 +392,6 @@ final class SettingsStore: ObservableObject {
             launchAtLogin = false
         }
 
-        // First run: opt into launch-at-login so the app is ready after every
-        // restart (user can turn it off in Settings → General).
-        // NOTE: didSet does NOT fire during init, so register explicitly.
-        if d.object(forKey: "firstRunDone") == nil {
-            d.set(true, forKey: "firstRunDone")
-            launchAtLogin = true
-            applyLaunchAtLogin(true)
-        }
-
         // One-time migration: move people OFF the old Ctrl+Opt+letter defaults
         // onto Control+1..4 — but ONLY where the binding is still that exact old
         // default. A binding the user changed themselves is theirs; overwriting
@@ -412,6 +412,21 @@ final class SettingsStore: ObservableObject {
                     oldDefault: Hotkey(keyCode: UInt32(kVK_ANSI_4), modifiers: ctrlOpt),
                     newDefault: Hotkey(keyCode: UInt32(kVK_ANSI_4), modifiers: ctrl))
         }
+    }
+
+    /// First run: opt into launch-at-login so SnapDesk is there after a restart
+    /// (Settings → General turns it off).
+    ///
+    /// Deliberately NOT done in `init`: the store is built before the app has
+    /// been moved to /Applications, and SMAppService registers whatever path it
+    /// is asked from — so a downloaded build registered its Downloads or
+    /// translocated path, and the moved copy then found the flag already set and
+    /// never registered at all. Off a stable path we register nothing and leave
+    /// the flag alone, so the /Applications launch still gets its turn.
+    func completeFirstRunSetup() {
+        guard InstallHelper.isInApplications, d.object(forKey: "firstRunDone") == nil else { return }
+        d.set(true, forKey: "firstRunDone")
+        launchAtLogin = true   // didSet registers the login item
     }
 
     /// Migrate one hotkey to a new default only if it still holds the old
@@ -525,7 +540,21 @@ final class SettingsStore: ObservableObject {
             if enabled { try SMAppService.mainApp.register() }
             else if SMAppService.mainApp.status == .enabled { try SMAppService.mainApp.unregister() }
         } catch {
+            // A refused registration used to leave the switch sitting ON with
+            // nothing registered — the user restarts, SnapDesk isn't there, and
+            // Settings still claims it will be. Put the switch back where the
+            // system actually is and say what happened. (`launchAtLogin`'s didSet
+            // calls back in here, so re-entering with the same value would loop:
+            // only correct it when it actually disagrees.)
             NSLog("SnapDesk: launch-at-login change failed: \(error)")
+            guard !correctingLaunchAtLogin else { return }
+            correctingLaunchAtLogin = true
+            defer { correctingLaunchAtLogin = false }
+            let registered = SMAppService.mainApp.status == .enabled
+            if launchAtLogin != registered { launchAtLogin = registered }
+            Notifier.error(enabled ? "Couldn't turn on launch at login"
+                                   : "Couldn't turn off launch at login",
+                           "macOS refused the change. Open System Settings → General → Login Items to set it there.")
         }
     }
 }

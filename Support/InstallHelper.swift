@@ -66,16 +66,28 @@ enum InstallHelper {
         let src = URL(fileURLWithPath: Bundle.main.bundlePath)
         let dest = URL(fileURLWithPath: appsDir).appendingPathComponent(src.lastPathComponent)
 
+        // Copy BESIDE the target and swap only once the copy is complete.
+        // Deleting the installed app first (the old order) meant a copy that then
+        // failed — no write access, full disk, source ejected — left the user with
+        // no SnapDesk at all.
+        let staged = URL(fileURLWithPath: appsDir)
+            .appendingPathComponent(".\(src.lastPathComponent).incoming-\(UUID().uuidString)")
         do {
+            try fm.copyItem(at: src, to: staged)
             // Replace any older copy (e.g. a previous version already installed).
-            // Removing a running bundle is fine — the process keeps its open
+            // Replacing a running bundle is fine — the process keeps its open
             // files; enforceSingleInstance in the new copy quits the old one.
-            if fm.fileExists(atPath: dest.path) { try? fm.removeItem(at: dest) }
-            try fm.copyItem(at: src, to: dest)
+            if fm.fileExists(atPath: dest.path) {
+                _ = try fm.replaceItemAt(dest, withItemAt: staged)
+            } else {
+                try fm.moveItem(at: staged, to: dest)
+            }
             stripQuarantine(at: dest.path)
             relaunch(at: dest)
             return true
         } catch {
+            // Never leave a half-copied bundle sitting in /Applications.
+            try? fm.removeItem(at: staged)
             let a = NSAlert()
             a.messageText = "Couldn't move SnapDesk"
             a.informativeText = "Please drag SnapDesk into your Applications folder manually, then open it from there.\n\n\(error.localizedDescription)"
@@ -106,8 +118,10 @@ enum InstallHelper {
     private static func relaunch(at dest: URL) {
         let cfg = NSWorkspace.OpenConfiguration()
         cfg.createsNewApplicationInstance = true
-        NSWorkspace.shared.openApplication(at: dest, configuration: cfg) { _, _ in
-            DispatchQueue.main.async { NSApp.terminate(nil) }
+        NSWorkspace.shared.openApplication(at: dest, configuration: cfg) { _, error in
+            DispatchQueue.main.async {
+                quitOnceRunning(error, nextStep: "Open SnapDesk from your Applications folder to finish.")
+            }
         }
     }
 
@@ -118,8 +132,23 @@ enum InstallHelper {
         let url = URL(fileURLWithPath: Bundle.main.bundlePath)
         let cfg = NSWorkspace.OpenConfiguration()
         cfg.createsNewApplicationInstance = true
-        NSWorkspace.shared.openApplication(at: url, configuration: cfg) { _, _ in
-            DispatchQueue.main.async { NSApp.terminate(nil) }
+        NSWorkspace.shared.openApplication(at: url, configuration: cfg) { _, error in
+            DispatchQueue.main.async {
+                quitOnceRunning(error, nextStep: "Quit SnapDesk and open it again to finish.")
+            }
         }
+    }
+
+    /// Quit ONLY once the replacement process is actually up. Terminating on a
+    /// launch that never happened (Gatekeeper block, damaged bundle, the copy
+    /// still being written) is indistinguishable from a successful handover: the
+    /// app just disappears — and after the updater has swapped the bundle
+    /// underneath us there is nothing left running to explain why.
+    private static func quitOnceRunning(_ error: Error?, nextStep: String) {
+        guard let error else { NSApp.terminate(nil); return }
+        let a = NSAlert()
+        a.messageText = "Couldn't reopen SnapDesk"
+        a.informativeText = "SnapDesk is still running, so nothing is lost. \(nextStep)\n\n\(error.localizedDescription)"
+        a.runModal()
     }
 }

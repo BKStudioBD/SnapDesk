@@ -45,3 +45,97 @@ struct UpdaterVersionTests {
         #expect(Updater.currentVersion.isEmpty == false)
     }
 }
+
+/// Picking the asset decides WHICH file replaces the app. Taking any `.zip` sent
+/// everyone a dSYM or symbols archive the day a release shipped one.
+struct UpdaterAssetTests {
+    private func asset(_ name: String, _ url: String = "https://example.invalid/f.zip") -> [String: Any] {
+        ["name": name, "browser_download_url": url]
+    }
+
+    @Test("The app archive is picked by name, not by extension")
+    func picksNamedAsset() throws {
+        // dSYMs first on purpose: GitHub's order is not ours to rely on.
+        let url = try #require(Updater.appZipURL(in: [
+            asset("SnapDesk-dSYMs.zip", "https://example.invalid/dsyms.zip"),
+            asset("SnapDesk.zip", "https://example.invalid/app.zip"),
+        ]))
+        #expect(url.absoluteString == "https://example.invalid/app.zip")
+    }
+
+    @Test("A release without the app archive yields nothing rather than the wrong file")
+    func rejectsOtherArchives() {
+        #expect(Updater.appZipURL(in: [asset("SnapDesk-dSYMs.zip"), asset("symbols.zip")]) == nil)
+        #expect(Updater.appZipURL(in: []) == nil)
+        // Name matches but the asset carries no URL — still nothing to download.
+        #expect(Updater.appZipURL(in: [["name": "SnapDesk.zip"]]) == nil)
+    }
+
+    @Test("Asset-name matching ignores case")
+    func matchesCaseInsensitively() {
+        #expect(Updater.appZipURL(in: [asset("snapdesk.zip")]) != nil)
+    }
+}
+
+/// The signature policy is what stands between a user and someone else's app. It
+/// also decides whether a legitimate update is refused, so both directions are
+/// asserted here — no codesign process involved.
+struct UpdaterSignatureTests {
+    private let developerID = """
+    Executable=/Applications/SnapDesk.app/Contents/MacOS/SnapDesk
+    Identifier=com.snapdesk.app
+    Signature size=8981
+    Authority=Developer ID Application: BK Studio (ABCDE12345)
+    Authority=Developer ID Certification Authority
+    Authority=Apple Root CA
+    TeamIdentifier=ABCDE12345
+    """
+    private let adhoc = """
+    Executable=/Applications/SnapDesk.app/Contents/MacOS/SnapDesk
+    Identifier=com.snapdesk.app
+    CodeDirectory v=20400 size=1234 flags=0x2(adhoc) hashes=38+7
+    Signature=adhoc
+    TeamIdentifier=not set
+    """
+
+    @Test("The signing identity is the FIRST Authority line")
+    func readsAuthority() {
+        #expect(Updater.parseSigner(developerID)
+                == .authority("Developer ID Application: BK Studio (ABCDE12345)"))
+    }
+
+    @Test("An ad-hoc bundle reads as ad-hoc, not as unsigned")
+    func readsAdhoc() {
+        // It prints no Authority line at all; calling that "unsigned" made the
+        // updater blame every download for the running copy's own signature.
+        #expect(Updater.parseSigner(adhoc) == .adhoc)
+    }
+
+    @Test("Output with neither an authority nor an ad-hoc marker reads as nothing")
+    func readsNothingUseful() {
+        #expect(Updater.parseSigner("") == nil)
+        #expect(Updater.parseSigner("code object is not signed at all") == nil)
+    }
+
+    @Test("Only the same authority may replace us")
+    func acceptsMatchingAuthority() {
+        let mine = Updater.Signer.authority("Developer ID Application: BK Studio (ABCDE12345)")
+        #expect(Updater.signatureRefusal(running: mine, download: mine) == nil)
+        #expect(Updater.signatureRefusal(running: mine,
+                                         download: .authority("Developer ID Application: Someone Else (ZZZZZ99999)"))
+                == .wrongSigner)
+        // Signed by nobody is not the same signer, and no signature at all is
+        // reported as exactly that.
+        #expect(Updater.signatureRefusal(running: mine, download: .adhoc) == .wrongSigner)
+        #expect(Updater.signatureRefusal(running: mine, download: nil) == .unsigned)
+    }
+
+    @Test("An ad-hoc copy blames itself, not the download")
+    func adhocSelfIsHonest() {
+        let theirs = Updater.Signer.authority("Developer ID Application: BK Studio (ABCDE12345)")
+        #expect(Updater.signatureRefusal(running: .adhoc, download: theirs) == .noIdentity)
+        #expect(Updater.signatureRefusal(running: .adhoc, download: .adhoc) == .noIdentity)
+        // Unreadable own signature is the same story: nothing to compare against.
+        #expect(Updater.signatureRefusal(running: nil, download: theirs) == .noIdentity)
+    }
+}

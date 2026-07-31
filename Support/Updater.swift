@@ -14,13 +14,19 @@ import AppKit
 /// SECURITY: a downloaded bundle is never trusted on the strength of the URL. It
 /// must (a) carry a valid signature and (b) be signed by the SAME authority as the
 /// copy already running, or it is deleted and the update refused. Without (b) any
-/// validly-signed app could be swapped in.
+/// validly-signed app could be swapped in. An ad-hoc signature names nobody, so a
+/// copy signed that way has no identity to hold a download to and refuses to
+/// self-update — saying that, rather than blaming the download.
 enum Updater {
     /// `owner/repo` — the only place releases are ever fetched from.
     static let repository = "BKStudioBD/SnapDesk"
+    /// The one asset an update is ever installed from. A release can also carry
+    /// dSYMs or a symbols archive, so "whichever .zip comes first" is a coin flip
+    /// that hands users the wrong file.
+    static let assetName = "SnapDesk.zip"
 
-    enum Err: LocalizedError {
-        case network, noRelease, noAsset, unpackFailed, unsigned, wrongSigner, replaceFailed
+    enum Err: LocalizedError, Equatable {
+        case network, noRelease, noAsset, unpackFailed, unsigned, wrongSigner, replaceFailed, noIdentity
         var errorDescription: String? {
             switch self {
             case .network:       "Couldn't reach GitHub."
@@ -30,6 +36,7 @@ enum Updater {
             case .unsigned:      "The download isn't validly signed — refusing to install it."
             case .wrongSigner:   "The download is signed by someone else — refusing to install it."
             case .replaceFailed: "Couldn't replace the installed app."
+            case .noIdentity:    "This copy of SnapDesk has no signing identity to check the download against — please install the update manually."
             }
         }
     }
@@ -88,13 +95,22 @@ enum Updater {
         guard isNewer(version, than: currentVersion) else { return nil }
 
         let assets = json["assets"] as? [[String: Any]] ?? []
-        guard let zip = assets.compactMap({ asset -> URL? in
-            guard let name = asset["name"] as? String, name.hasSuffix(".zip"),
-                  let link = asset["browser_download_url"] as? String else { return nil }
-            return URL(string: link)
-        }).first else { throw Err.noAsset }
+        guard let zip = appZipURL(in: assets) else { throw Err.noAsset }
 
         return Release(version: version, notes: (json["body"] as? String) ?? "", zip: zip)
+    }
+
+    /// The app archive among a release's assets, matched by NAME rather than by
+    /// a `.zip` extension — a release that also ships dSYMs or a symbols archive
+    /// would otherwise install whichever one GitHub happened to list first.
+    static func appZipURL(in assets: [[String: Any]]) -> URL? {
+        for asset in assets {
+            guard let name = asset["name"] as? String,
+                  name.caseInsensitiveCompare(assetName) == .orderedSame,
+                  let link = asset["browser_download_url"] as? String else { continue }
+            return URL(string: link)
+        }
+        return nil
     }
 
     // MARK: - Install
@@ -102,7 +118,14 @@ enum Updater {
     /// Download, verify and swap in the new build, then relaunch.
     @MainActor
     static func install(_ release: Release) async throws {
-        let (downloaded, _) = try await URLSession.shared.download(from: release.zip)
+        let (downloaded, response) = try await URLSession.shared.download(from: release.zip)
+        // A 404, a 500 or a captive portal's login page is still written to disk
+        // as a perfectly good file. Handing that to ditto blames the release for
+        // an archive that was never an archive, so check the status first.
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            try? FileManager.default.removeItem(at: downloaded)
+            throw Err.network
+        }
         // `download(from:)` hands back a temp file that is deleted when we return
         // — move it somewhere we control first.
         let work = FileManager.default.temporaryDirectory
@@ -134,10 +157,11 @@ enum Updater {
         // any validly-signed app someone managed to serve us.
         let running = Bundle.main.bundleURL
         let signers = await BackgroundWork.run {
-            (mine: signingAuthority(of: running), theirs: signingAuthority(of: newApp))
+            (mine: signer(of: running), theirs: signer(of: newApp))
         }
-        guard let mine = signers.mine, let theirs = signers.theirs else { throw Err.unsigned }
-        guard mine == theirs else { throw Err.wrongSigner }
+        if let refusal = signatureRefusal(running: signers.mine, download: signers.theirs) {
+            throw refusal
+        }
 
         // Replace the bundle we're running from. The live process keeps its own
         // inode, so this is safe; the new code takes effect on relaunch.
@@ -166,9 +190,18 @@ enum Updater {
         return process.terminationStatus == 0
     }
 
-    /// The first `Authority=` line from `codesign -dv`, which identifies the
-    /// signer ("Developer ID Application: …" or the local ad-hoc identity).
-    private static func signingAuthority(of app: URL) -> String? {
+    /// How a bundle is signed, as `codesign -dv` reports it.
+    enum Signer: Equatable {
+        /// A named signing identity — "Developer ID Application: …" or a local
+        /// certificate. This is the only thing worth comparing.
+        case authority(String)
+        /// Signed with no identity at all. Anyone can produce one, so it proves
+        /// the bundle is intact and nothing whatsoever about who made it.
+        case adhoc
+    }
+
+    /// The signer of a bundle, or nil when codesign says nothing usable.
+    private static func signer(of app: URL) -> Signer? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
         process.arguments = ["-dv", app.path]
@@ -180,8 +213,37 @@ enum Updater {
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         guard let text = String(data: data, encoding: .utf8) else { return nil }
-        return text.components(separatedBy: .newlines)
-            .first { $0.hasPrefix("Authority=") }
-            .map { String($0.dropFirst("Authority=".count)) }
+        return parseSigner(text)
+    }
+
+    /// Read the signer out of `codesign -dv` output. An ad-hoc bundle prints
+    /// `Signature=adhoc` and NO `Authority=` line at all, so looking only for an
+    /// Authority reads a perfectly signed local build as unsigned.
+    static func parseSigner(_ codesignOutput: String) -> Signer? {
+        var adhoc = false
+        for line in codesignOutput.components(separatedBy: .newlines) {
+            if line.hasPrefix("Authority=") {
+                return .authority(String(line.dropFirst("Authority=".count)))
+            }
+            if line.hasPrefix("Signature=adhoc") { adhoc = true }
+        }
+        return adhoc ? .adhoc : nil
+    }
+
+    /// Why a download may NOT replace the running copy — nil when it may.
+    ///
+    /// The test is identity, not mere validity: only the same authority that
+    /// signed us gets to replace us. When we have no identity of our own there is
+    /// nothing to compare against, and the honest answer is to say so instead of
+    /// calling the download unsigned.
+    static func signatureRefusal(running: Signer?, download: Signer?) -> Err? {
+        switch (running, download) {
+        case let (.authority(mine)?, .authority(theirs)?):
+            return mine == theirs ? nil : .wrongSigner
+        // An identified copy is never replaced by a bundle signed by nobody.
+        case (.authority?, .adhoc?): return .wrongSigner
+        case (.authority?, nil):     return .unsigned
+        default:                     return .noIdentity
+        }
     }
 }
