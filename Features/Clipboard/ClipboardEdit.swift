@@ -2,7 +2,7 @@ import Foundation
 
 /// Edit-before-paste.
 ///
-/// The history is a log of what was copied and is never rewritten — the same rule
+/// The history is a log of what was copied and is never rewritten. The same rule
 /// `TextTransform` follows. So an edited paste travels on a THROWAWAY item that is
 /// routed to the pasteboard and then dropped on the floor.
 enum ClipboardEdit {
@@ -11,9 +11,10 @@ enum ClipboardEdit {
 
     /// The item an edited paste travels on.
     ///
-    /// `original` is only read. The id is deliberately NOT reused: `copyToPasteboard(movingToTop:)`,
-    /// `togglePin` and `delete` all match rows by id, so an edited copy carrying
-    /// the stored row's id could be promoted, starred or deleted in its place —
+    /// `original` is only read. The id is deliberately NOT reused:
+    /// `copyToPasteboard(movingToTop:)`, `togglePin` and `delete` all match rows
+    /// by id, so an edited copy carrying
+    /// the stored row's id could be promoted, starred or deleted in its place,
     /// and a `movingToTop` match would reorder history around a row that was never
     /// stored. Returns nil when there is nothing to paste, or when the row is an
     /// image.

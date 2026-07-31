@@ -44,7 +44,7 @@ private struct WelcomeView: View {
             VStack(spacing: 6) {
                 Image(systemName: "viewfinder").font(.system(size: 44)).foregroundStyle(.tint)
                 Text("SnapDesk").font(.title.bold())
-                Text("Capture · Annotate · OCR · Color · Clipboard — one lightweight, on-device menu-bar app.")
+                Text("Capture · Annotate · OCR · Color · Clipboard. One lightweight, on-device menu-bar app.")
                     .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
             .padding(.top, 6)
@@ -89,7 +89,7 @@ private struct WelcomeView: View {
             refresh()
             // Never stack a second poller on the first. The controller is cached
             // and the window is only ordered out, so a reopen that doesn't pair
-            // with a matching onDisappear would otherwise orphan the old timer —
+            // with a matching onDisappear would otherwise orphan the old timer,
             // and an orphan here polls TCC every 1.5s for the app's whole life.
             pollTimer?.invalidate()
             let t = Timer(timeInterval: 1.5, repeats: true) { _ in refresh() }

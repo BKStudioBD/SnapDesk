@@ -5,7 +5,7 @@ import AVFoundation
 /// the user drags to select ANY range, cuts it (middle cuts included), adjusts
 /// the selection by its edge handles, and exports the kept parts as one video.
 ///
-/// Pure view — owns no AVPlayer. The preview window feeds it duration/playhead
+/// Pure view: owns no AVPlayer. The preview window feeds it duration/playhead
 /// and reacts to callbacks.
 final class TimelineStripView: NSView {
     // MARK: - Model (seconds)
@@ -36,7 +36,7 @@ final class TimelineStripView: NSView {
     // MARK: - Thumbnails
     private var thumbs: [CGImage] = []
     private var thumbGen: AVAssetImageGenerator?
-    /// Bumped per load — a stale (pre-export) load must not overwrite a fresh one.
+    /// Bumped per load: a stale (pre-export) load must not overwrite a fresh one.
     private var thumbGeneration = 0
 
     func loadThumbnails(from asset: AVAsset, count: Int = 16) {
@@ -206,7 +206,7 @@ final class TimelineStripView: NSView {
             onSelectionChanged?(nil)
             onSeek?(time(at: p.x))
         } else if selection != nil {
-            // ⌫ cuts the selection — but AppKit never hands first-responder status
+            // ⌫ cuts the selection. But AppKit never hands first-responder status
             // to a plain NSView on its own, so the key went to the player and the
             // shortcut did nothing at all. Claim focus only once there IS something
             // to delete, so a plain click-to-seek leaves the player's own keys alone.
@@ -269,9 +269,9 @@ enum TimelineExporter {
         let compAudios: [AVMutableCompositionTrack?] = audioTracks.map { _ in
             comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
         }
-        // The audio track is routinely SHORTER than the picture — it begins at the
+        // The audio track is routinely SHORTER than the picture. It begins at the
         // first mixed chunk and ends at the stop flush, while the video spans the
-        // whole take — so a kept range measured from the ASSET duration can reach
+        // whole take. So a kept range measured from the ASSET duration can reach
         // past its end. Clip to what each track actually holds, and let a real
         // failure surface: the `try?` this replaces turned a rejected insert into a
         // SILENT video that then overwrote the recording, without a word.
@@ -320,7 +320,7 @@ enum TimelineExporter {
         // Say WHY. Throwing away the session's own error left "Export failed." as
         // the whole story, so a full disk and an unplayable source read identically
         // and neither one told the user what to do next. The half-written output has
-        // to go too — a long take leaves hundreds of megabytes nothing points at.
+        // to go too: a long take leaves hundreds of megabytes nothing points at.
         try? FileManager.default.removeItem(at: out)
         throw lastError ?? NSError(domain: "SnapDesk", code: 2,
                                    userInfo: [NSLocalizedDescriptionKey: "Export failed."])

@@ -6,7 +6,7 @@ import ScreenCaptureKit
 /// global hotkey bindings. One instance lives for the whole app session.
 ///
 /// Subclasses NSObject so NSMenu target/action validation (`respondsToSelector:`)
-/// works — otherwise the menu-bar items get auto-disabled (greyed) and clicks
+/// works. Otherwise the menu-bar items get auto-disabled (greyed) and clicks
 /// don't dispatch, even though the global hotkeys still fire.
 final class AppCoordinator: NSObject {
     let settings = SettingsStore()
@@ -27,7 +27,7 @@ final class AppCoordinator: NSObject {
         FolderAccess.restore(key: "recdir")
         FolderAccess.restore(key: "shotdir")
         // Register SnapDesk in the Accessibility list WITHOUT a launch-time
-        // dialog — we only prompt when the user actually triggers paste.
+        // dialog: we only prompt when the user actually triggers paste.
         Permissions.ensureAccessibility(prompt: false)
         clipboard.attach(settings: settings)
         clipboard.start()
@@ -39,7 +39,7 @@ final class AppCoordinator: NSObject {
         // Re-register hotkeys whenever the user rebinds one.
         settings.onHotkeysChanged = { [weak self] in self?.registerHotkeys() }
         // Update check and the welcome/permissions window are Settings buttons
-        // now, not menu items — the menu stays the capture actions plus Settings.
+        // now, not menu items. The menu stays the capture actions plus Settings.
         settings.onCheckForUpdates = { [weak self] in self?.checkForUpdates() }
         settings.onShowWelcome = { [weak self] in self?.showWelcome() }
         // Text stack lives in the settings object so Settings can switch it; the
@@ -91,7 +91,7 @@ final class AppCoordinator: NSObject {
         let menu = NSMenu()
         menu.addItem(featureItem("Capture & Annotate", #selector(captureAndAnnotate), settings.screenshotHotkey, "camera.viewfinder"))
         menu.addItem(featureItem("Grab Text (OCR)", #selector(ocrCapture), settings.ocrHotkey, "text.viewfinder"))
-        // "Grab again" and the text stack are NOT here on purpose — they live in
+        // "Grab again" and the text stack are NOT here on purpose. They live in
         // Settings → OCR with their own switch and shortcuts. Their shortcuts
         // still work globally, and an active stack shows in the menu-bar title
         // (see `refreshStatusTitle`), so a collect mode is never invisible.
@@ -143,7 +143,7 @@ final class AppCoordinator: NSObject {
 
     /// The ONE writer of the menu-bar title, so two features can't fight over it.
     /// A running recording's timer wins; otherwise an active text stack shows a
-    /// count in the accent colour — the stack has no menu item any more, and a
+    /// count in the accent colour. The stack has no menu item any more, and a
     /// collect mode you can't see is a collect mode you forget is on. A bullet
     /// stands in until the first grab, so "on but empty" still reads as on.
     private func refreshStatusTitle() {
@@ -186,7 +186,7 @@ final class AppCoordinator: NSObject {
 
     // MARK: - Actions
 
-    /// True while a freeze-capture is queued/in flight — spamming ⌃1 must not
+    /// True while a freeze-capture is queued/in flight: spamming ⌃1 must not
     /// launch five full multi-display captures.
     private var screenshotInFlight = false
     private var ocrInFlight = false
@@ -210,7 +210,7 @@ final class AppCoordinator: NSObject {
                 defer { self.screenshotInFlight = false }
                 // "Hide desktop icons while capturing" was advertised for THIS flow
                 // and never reached it: the cover was raised only by
-                // `RegionSelector`, which this flow doesn't use — it freezes every
+                // `RegionSelector`, which this flow doesn't use. It freezes every
                 // display and the user crops the frozen frame. So the icons (and
                 // every filename on the desktop) were baked into the saved and
                 // copied image while the switch said they wouldn't be. The hold
@@ -221,7 +221,7 @@ final class AppCoordinator: NSObject {
                 defer { DesktopCover.release() }
                 // `raise()` only orders the windows in. A capture that beats the
                 // window server to compositing them contains the very icons the
-                // cover exists to hide, so give it a frame or two — and only when
+                // cover exists to hide, so give it a frame or two. And only when
                 // there is actually a cover to wait for.
                 if DesktopCover.isRaised {
                     try? await Task.sleep(nanoseconds: 120_000_000)
@@ -249,12 +249,12 @@ final class AppCoordinator: NSObject {
     }
 
     /// The last area OCR read, kept as a display ID + rect rather than an
-    /// NSScreen — those go stale across a display reconfiguration, and re-reading
+    /// NSScreen: those go stale across a display reconfiguration, and re-reading
     /// a stale screen would grab the wrong monitor silently.
     private var lastOCRArea: (displayID: CGDirectDisplayID, rect: CGRect)?
 
     @objc func ocrCapture() {
-        // One OCR at a time — overlapping tasks race on the clipboard and the
+        // One OCR at a time: overlapping tasks race on the clipboard and the
         // slower, OLDER selection can overwrite the newer result. Beep rather
         // than swallow: a dead-feeling hotkey reads as a broken app.
         guard !ocrInFlight else { NSSound.beep(); return }
@@ -265,10 +265,10 @@ final class AppCoordinator: NSObject {
         // shareable-content IPC the capture needs the moment they let go.
         prewarmOCR()
         CaptureService.warmShareableContent()
-        // OCR: no full-screen dim — only the dragged area tints dark.
+        // OCR dims only the dragged area, never the whole screen.
         RegionSelector.selectRegion(dim: .selectionOnly) { [weak self] selection in
             guard let self, let selection else { return }
-            // Remember it BEFORE recognizing, so "again" works even on a miss —
+            // Remember it BEFORE recognizing, so "again" works even on a miss:
             // a bad first read is the most likely reason to want a retry.
             if let displayID = selection.screen.displayID {
                 self.lastOCRArea = (displayID, selection.rectInScreenPoints)
@@ -278,17 +278,17 @@ final class AppCoordinator: NSObject {
     }
 
     /// Re-read the last area with no drag. The winning move for a live-updating
-    /// panel — a log line, a build number, a total that just changed.
+    /// panel: a log line, a build number, a total that just changed.
     @objc func ocrRepeatCapture() {
         guard !ocrInFlight else { NSSound.beep(); return }
         guard let area = lastOCRArea else {
             Notifier.info("No previous area",
-                          "Grab text once with \(settings.ocrHotkey.displayString) first — then this repeats it.")
+                          "Grab text once with \(settings.ocrHotkey.displayString) first. Then this repeats it.")
             return
         }
         guard let screen = NSScreen.screens.first(where: { $0.displayID == area.displayID }) else {
             Notifier.info("That display is gone",
-                          "The last area was on a monitor that's no longer connected — grab a new one.")
+                          "The last area was on a monitor that's no longer connected. Grab a new one.")
             return
         }
         guard Permissions.ensureScreenRecording() else { return }
@@ -333,7 +333,7 @@ final class AppCoordinator: NSObject {
                 let text = try await OCRService.recognizeText(in: image,
                                                              options: self.settings.ocrOptions)
                 // Whitespace-only counts as a miss too (with trim off, Vision
-                // fragments can join to pure whitespace — "copied nothing").
+                // fragments can join to pure whitespace: "copied nothing").
                 if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     self.reportOCRMiss(selection: selection, image: image)
                 } else {
@@ -343,8 +343,8 @@ final class AppCoordinator: NSObject {
                 // localizedDescription here is Vision/ScreenCaptureKit
                 // developer text; the log keeps it, the user gets an
                 // instruction like every other message in this flow.
-                NSLog("SnapDesk: OCR failed — \(error)")
-                Notifier.error("OCR failed", "Couldn't read that area — try again.")
+                NSLog("SnapDesk: OCR failed. \(error)")
+                Notifier.error("OCR failed", "Couldn't read that area. Try again.")
             }
         }
     }
@@ -360,7 +360,7 @@ final class AppCoordinator: NSObject {
             // instead of showing "Text copied" for a failed copy.
             NSPasteboard.general.clearContents()
             guard NSPasteboard.general.setString(payload, forType: .string) else {
-                Notifier.error("Copy failed", "Couldn't write to the clipboard — try again.")
+                Notifier.error("Copy failed", "Couldn't write to the clipboard. Try again.")
                 return
             }
         }
@@ -369,7 +369,7 @@ final class AppCoordinator: NSObject {
         if stacking { settings.ocrStackAppend(text) }
         if settings.ocrNotify {
             // Notification bodies are shown on the LOCK SCREEN and kept in
-            // Notification Center, so don't put the recognized text there — an
+            // Notification Center, so don't put the recognized text there: an
             // OCR'd password or private message would outlive the copy. A count
             // confirms the grab worked; the text itself is on the clipboard.
             let chars = text.count
@@ -385,7 +385,7 @@ final class AppCoordinator: NSObject {
 
     private func reportOCRMiss(selection: RegionSelection, image: CGImage) {
         // A frame with no contrast at all didn't come from the screen the user
-        // is looking at — macOS hands out a window-less frame, with NO error,
+        // is looking at. macOS hands out a window-less frame, with NO error,
         // when the Screen Recording grant has lapsed (it re-confirms
         // periodically). Saying "no text found" there blames the user for an
         // OS-side problem they can actually fix.
@@ -401,13 +401,13 @@ final class AppCoordinator: NSObject {
         ], image: blank ? nil : image)   // blank frames aren't worth saving
         if blank {
             Notifier.error("Nothing on that frame",
-                           "macOS handed SnapDesk an empty screen — its Screen Recording access likely lapsed. Quit and reopen SnapDesk, then try again.")
+                           "macOS handed SnapDesk an empty screen. Its Screen Recording access likely lapsed. Quit and reopen SnapDesk, then try again.")
         } else {
             // Notifier beeps by itself when notifications are denied, so a miss
             // is never fully silent. Advise a ROOMIER selection, not a tighter
-            // one — the #1 empty result is a strip so thin it clips the glyph
+            // one. The #1 empty result is a strip so thin it clips the glyph
             // tops and bottoms, and "tighter" makes that worse.
-            Notifier.info("No text found", "Select a little more around the text — give the line some room top and bottom.")
+            Notifier.info("No text found", "Select a little more around the text. Give the line some room top and bottom.")
         }
     }
 
@@ -432,7 +432,7 @@ final class AppCoordinator: NSObject {
     }
 
     @objc func showClipboard() {
-        // Remember the app the user was in so a click-to-paste can target it —
+        // Remember the app the user was in so a click-to-paste can target it,
         // but never record SnapDesk itself (⌃4 pressed twice would otherwise
         // paste into our own panel).
         var prev = NSWorkspace.shared.frontmostApplication
@@ -487,7 +487,7 @@ final class AppCoordinator: NSObject {
     }
 
     /// Ask before downloading anything. An update replaces the app on disk, so it
-    /// is never silent — even with automatic checks on.
+    /// is never silent, even with automatic checks on.
     @MainActor
     private func confirmUpdate(_ release: Updater.Release) -> Bool {
         let alert = NSAlert()
@@ -577,7 +577,7 @@ final class AppCoordinator: NSObject {
                     self.playSoundIfEnabled()
                     self.presentRecording(url)
                 } else if session?.wasDiscarded == false {
-                    // Real failure (disk full / capture error) — never silent.
+                    // Real failure (disk full / capture error), never silent.
                     Notifier.error("Recording failed",
                                    "The video couldn't be saved (disk full or capture error).")
                 }
@@ -587,9 +587,9 @@ final class AppCoordinator: NSObject {
     }
 
     /// Post-recording pipeline: optional on-device captions burned INTO the
-    /// video itself (one file — no separate copy), THEN the Drive copy and the
+    /// video itself (one file, no separate copy), THEN the Drive copy and the
     /// preview. Captions rewrite the file in place, so uploading must wait for
-    /// them — otherwise Drive gets the caption-less version.
+    /// them. Otherwise Drive gets the caption-less version.
     private func presentRecording(_ url: URL) {
         guard settings.recordSubtitles else {
             uploadToDriveIfEnabled(url)
@@ -605,10 +605,10 @@ final class AppCoordinator: NSObject {
                 if !added { Notifier.info("No speech detected", "Saved without captions.") }
             } catch let e as SubtitleBurner.Err where e == .unavailable {
                 Notifier.info("Captions unavailable",
-                              "On-device speech for \(langLabel) isn't installed — saved without captions.")
+                              "On-device speech for \(langLabel) isn't installed. Saved without captions.")
             } catch {
                 Notifier.error("Captions failed",
-                               "Couldn't transcribe — the recording is saved without captions.")
+                               "Couldn't transcribe. The recording is saved without captions.")
             }
             // Upload the FINAL file (captioned if it worked), after captions run.
             self.uploadToDriveIfEnabled(url)
@@ -617,16 +617,16 @@ final class AppCoordinator: NSObject {
     }
 
     /// Copy the finished recording into the Google Drive desktop app's sync
-    /// folder — Google's own app does the uploading, SnapDesk stays offline.
+    /// folder: Google's own app does the uploading, SnapDesk stays offline.
     private func uploadToDriveIfEnabled(_ url: URL) {
         guard settings.uploadToDrive else { return }
         DriveUpload.upload(url) { ok in
             if ok {
                 Notifier.info("Uploading to Google Drive",
-                              "Copied to My Drive → SnapDesk Recordings — Drive syncs it now.")
+                              "Copied to My Drive → SnapDesk Recordings. Drive syncs it now.")
             } else {
                 Notifier.error("Drive upload failed",
-                               "Google Drive folder not found — is the Google Drive app set up?")
+                               "Google Drive folder not found. Is the Google Drive app set up?")
             }
         }
     }
@@ -639,8 +639,8 @@ final class AppCoordinator: NSObject {
         session.onFinished = { url in
             previous?(url)
             // Never on this turn of the run loop. When the session hasn't
-            // started recording yet — during the countdown, or the pre-record
-            // bar — `stop()` runs the finish handler INLINE, so the reply would
+            // started recording yet (during the countdown, or the pre-record
+            // bar), `stop()` runs the finish handler INLINE, so the reply would
             // reach AppKit before applicationShouldTerminate had returned
             // .terminateLater, and AppKit drops it: the app then hangs until
             // the watchdog fires.
@@ -673,7 +673,7 @@ final class AppCoordinator: NSObject {
             : MenuBarIcon.image()
         statusItem?.button?.imagePosition = .imageLeft
         if !recording { recordingTick = nil }
-        // Never clear the title directly — the text stack may still own it.
+        // Never clear the title directly. The text stack may still own it.
         refreshStatusTitle()
         statusItem?.menu = buildMenu()
     }
@@ -705,7 +705,7 @@ final class AppCoordinator: NSObject {
 
 
     /// Everything this coordinator confirms is content ARRIVING (an OCR grab, a
-    /// color, a finished recording, a clean) — so it is always the in-sound.
+    /// color, a finished recording, a clean). So it is always the in-sound.
     private func playSoundIfEnabled() {
         guard settings.playSound else { return }
         Sounds.playIn()

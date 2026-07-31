@@ -2,8 +2,8 @@ import CoreGraphics
 
 /// The interactive crop rectangle: pure geometry, no view.
 ///
-/// Every rule that keeps a crop sane — it never leaves the image, an edge dragged
-/// past its opposite stops instead of flipping, and it can't collapse to nothing —
+/// Every rule that keeps a crop sane. It never leaves the image, an edge dragged
+/// past its opposite stops instead of flipping, and it can't collapse to nothing:
 /// lives here so it can be tested without an overlay window on screen. An inverted
 /// or zero-area rect reaches the compositor as a negative-size crop, which returns
 /// no image at all and looks to the user like the shot was lost.
@@ -19,18 +19,18 @@ struct CropBox {
     private static let bottomHandles: Set<Int> = [0, 1, 2]
     private static let topHandles: Set<Int> = [5, 6, 7]
 
-    /// The area the crop may not leave — the image's rect on screen, in points.
+    /// The area the crop may not leave. The image's rect on screen, in points.
     let limit: CGRect
     private(set) var rect: CGRect
 
-    /// True once the box has actually been aimed — rubber-banded, resized by a
+    /// True once the box has actually been aimed: rubber-banded, resized by a
     /// handle, or slid.
     ///
     /// The default box is inset 8% on every side so it reads as a box rather than as
     /// the image's own border, which means confirming an UNTOUCHED one is not a
     /// no-op: it keeps 84% × 84% and throws away 29% of the pixels. The Crop button
-    /// both starts and confirms, so a second click — or the double-click people give
-    /// toolbar buttons, or C then ↵ — silently cut the edges off the very window
+    /// both starts and confirms, so a second click (or the double-click people give
+    /// toolbar buttons, or C then ↵) silently cut the edges off the very window
     /// being captured, with nothing to show it had happened. The confirm path checks
     /// this and treats an untouched box as "never mind".
     private(set) var wasDragged = false
@@ -99,7 +99,7 @@ struct CropBox {
         rect = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
 
-    /// Slide the whole box without resizing it — it stops at the image edge.
+    /// Slide the whole box without resizing it. It stops at the image edge.
     mutating func move(by delta: CGSize) {
         wasDragged = true
         var r = rect.offsetBy(dx: delta.width, dy: delta.height)

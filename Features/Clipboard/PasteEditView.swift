@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Edit-before-paste: the row's text, changed once, on its way to the pasteboard.
 ///
-/// The stored history entry is NOT rewritten — the same rule the "Copy as"
+/// The stored history entry is NOT rewritten. The same rule the "Copy as"
 /// transforms follow, because the history is a log of what was copied.
 struct PasteEditView: View {
     /// Seeded once; the editor owns the text from then on. A Binding back into the

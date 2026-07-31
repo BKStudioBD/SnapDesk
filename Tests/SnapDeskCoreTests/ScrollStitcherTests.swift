@@ -5,7 +5,7 @@ import CoreGraphics
 /// The scrolling-capture stitcher.
 ///
 /// A seam bug here is invisible at capture time and only shows up when someone
-/// reads the saved image later — a band of content repeated, or a band missing.
+/// reads the saved image later: a band of content repeated, or a band missing.
 /// Everything below is synthetic pixels, so it needs no screen and no
 /// permission.
 struct ScrollStitcherTests {
@@ -39,7 +39,7 @@ struct ScrollStitcherTests {
     }
 
     /// Rows `from..<from+height` of `page`, the way a scrolled screenshot sees
-    /// them — CGImage crops from the TOP.
+    /// them: CGImage crops from the TOP.
     private func window(_ page: CGImage, from: Int, height: Int) throws -> CGImage {
         try #require(page.cropping(to: CGRect(x: 0, y: from, width: page.width, height: height)))
     }
@@ -79,7 +79,7 @@ struct ScrollStitcherTests {
         let source = try page(height: 400)
         let header = try window(source, from: 0, height: 40)
         // Three frames scrolled to different places, each wearing the same
-        // 40-row header — a site nav bar.
+        // 40-row header: a site nav bar.
         let sigs = try [80, 160, 240].map { start -> [Float] in
             let body = try window(source, from: start, height: 160)
             let composed = try #require(CGContext(data: nil, width: source.width, height: 200,
@@ -139,7 +139,7 @@ struct ScrollStitcherTests {
 
     // MARK: - Stitching
 
-    @Test("Two overlapping frames stitch back to the original height — no band repeated",
+    @Test("Two overlapping frames stitch back to the original height. No band repeated",
           .tags(.regression))
     func stitchingDoesNotDuplicateTheOverlap() throws {
         let source = try page(height: 300)
@@ -168,7 +168,7 @@ struct ScrollStitcherTests {
     @Test("One unalignable frame does not take the rest of the page with it",
           .tags(.regression))
     func aMissMidChainKeepsTheFramesAfterIt() throws {
-        // Frame 2 lands on content frame 1 shares nothing with — the page jumped.
+        // Frame 2 lands on content frame 1 shares nothing with. The page jumped.
         // Frame 3 overlaps frame 2 normally. The chain used to stay anchored on
         // frame 1, so frame 3 was another scroll step further away, missed too,
         // and every frame after the first miss was dropped: a "full page" one
@@ -183,9 +183,9 @@ struct ScrollStitcherTests {
                 "the fixture only proves anything if that jump really is unalignable")
         let stitched = try #require(ScrollStitcher.stitch(frames: frames, signatures: sigs))
         // 200 (first) + 200 (the unalignable frame, seamed in) + 100 (frame 3's
-        // new rows) — anything near 200 means the tail was dropped again.
+        // new rows): anything near 200 means the tail was dropped again.
         #expect(stitched.height >= 480,
-                "frames after the miss were dropped — got \(stitched.height) rows")
+                "frames after the miss were dropped. Got \(stitched.height) rows")
         #expect(stitched.height <= 520, "got \(stitched.height) rows")
     }
 
@@ -202,7 +202,7 @@ struct ScrollStitcherTests {
     @Test("A frame whose signature came back empty doesn't crash Done", .tags(.regression))
     func stitchSurvivesAnUnmeasuredFirstFrame() throws {
         // `rowSignature` returns an empty array when its downsample context can't
-        // be allocated, and the frame is stored regardless — an empty signature
+        // be allocated, and the frame is stored regardless: an empty signature
         // compares as "changed", so the dedup never drops it. Dividing the frame's
         // height by that row count made the row scale infinite, and converting the
         // header to pixels one line later trapped on the NaN: one failed
@@ -214,7 +214,7 @@ struct ScrollStitcherTests {
         let sigs: [[Float]] = [[], ScrollStitcher.rowSignature(frames[1])]
         let stitched = try #require(ScrollStitcher.stitch(frames: frames, signatures: sigs))
         #expect(stitched.width == 120)
-        // Nothing to align against, so the second frame is seamed on whole — what
+        // Nothing to align against, so the second frame is seamed on whole: what
         // matters is that both frames survive rather than the capture being lost.
         #expect(stitched.height == 400, "got \(stitched.height) rows")
     }

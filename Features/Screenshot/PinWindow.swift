@@ -1,7 +1,7 @@
 import AppKit
 
 /// A captured image "pinned" as a floating, always-on-top window on the desktop
-/// — handy for reference while you work. Drag to move, ⌘C to copy,
+///: handy for reference while you work. Drag to move, ⌘C to copy,
 /// Esc / double-click / ⌘W to close.
 final class PinWindow: NSWindowController {
     private static var pins: Set<PinWindow> = []
@@ -24,7 +24,7 @@ final class PinWindow: NSWindowController {
     init(cg: CGImage, scale sourceScale: CGFloat?, playSound: Bool) {
         self.cg = cg
         self.playSoundOnCopy = playSound
-        // The SOURCE screen's scale — sizing by NSScreen.main halves/doubles
+        // The SOURCE screen's scale: sizing by NSScreen.main halves/doubles
         // pins that came from a display with a different DPI.
         let scale = sourceScale ?? NSScreen.main?.backingScaleFactor ?? 2
         self.sourceScale = scale
@@ -75,7 +75,7 @@ final class PinWindow: NSWindowController {
         // the clipboard and still say "Copied".
         guard pb.writeObjects([NSImage(cgImage: cg,
             size: NSSize(width: CGFloat(cg.width) / s, height: CGFloat(cg.height) / s))]) else {
-            Notifier.error("Copy failed", "Couldn't write the pinned image to the clipboard.")
+            Notifier.error("Copy failed", "Couldn't write the pinned image to the clipboard. Try the copy again.")
             return
         }
         if playSoundOnCopy { Sounds.playIn() }

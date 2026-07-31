@@ -4,7 +4,7 @@ import CoreGraphics
 /// much two consecutive frames overlap, and paste the new rows into one tall
 /// image.
 ///
-/// Split out of `ScrollCapture` because it is pure — CGImages in, a CGImage out,
+/// Split out of `ScrollCapture` because it is pure: CGImages in, a CGImage out,
 /// no window, no permission, no Vision. That is what lets it be tested, and the
 /// stitcher is the part most worth testing: a seam bug silently duplicates or
 /// drops content, and nobody notices until they read the screenshot later.
@@ -53,7 +53,7 @@ enum ScrollStitcher {
         return s / Float(bandsPerRow)
     }
 
-    /// Mean abs diff between two whole signatures — "did the content change at
+    /// Mean abs diff between two whole signatures: "did the content change at
     /// all", which is what decides whether a frame is worth keeping.
     static func meanDiff(_ a: [Float], _ b: [Float]) -> Float {
         guard a.count == b.count, !a.isEmpty else { return .infinity }
@@ -62,7 +62,7 @@ enum ScrollStitcher {
         return s / Float(a.count)
     }
 
-    /// Row contrast (max band spread) — flat rows (whitespace) carry no
+    /// Row contrast (max band spread): flat rows (whitespace) carry no
     /// alignment information and are down-weighted in matching.
     @inline(__always)
     static func rowContrast(_ a: [Float], _ r: Int) -> Float {
@@ -104,7 +104,7 @@ enum ScrollStitcher {
         let minO = max(12, h / 20)
         // Starts at h, not h-1: a frame that did not scroll at all overlaps
         // COMPLETELY, and stopping one row short meant the best it could report
-        // was a one-row shift — which scores badly and lands the matcher on some
+        // was a one-row shift, which scores badly and lands the matcher on some
         // unrelated offset, appending a band of content the image already has.
         var o = h
         while o >= minO {
@@ -150,7 +150,7 @@ enum ScrollStitcher {
     /// `offsets` are scroll amounts measured during capture (Vision
     /// registration); `visionOffset` is the fallback for a pair that has none.
     /// It is a closure rather than a direct call so this file stays free of
-    /// Vision — and so a test can drive the stitcher with no offsets at all.
+    /// Vision. And so a test can drive the stitcher with no offsets at all.
     static func stitch(frames: [CGImage], signatures: [[Float]], offsets: [Int?] = [],
                        visionOffset: ((CGImage, CGImage) -> Int?)? = nil) -> CGImage? {
         guard let first = frames.first else { return nil }
@@ -171,7 +171,7 @@ enum ScrollStitcher {
         // Row ranges of each frame to append (frame, fromRow).
         var pieces: [(CGImage, Int)] = [(first, 0)]
         var total = first.height
-        var ref = 0   // last appended frame — skipped frames must not shift the chain
+        var ref = 0   // last appended frame; skipped frames must not shift the chain
         for i in 1..<frames.count {
             let h = min(rows(signatures[ref]), rows(signatures[i]))
             // 1) Registration candidate (precomputed during capture), verified
@@ -197,7 +197,7 @@ enum ScrollStitcher {
             // minus any sticky header, and re-anchor the chain on it. Dropping it
             // and leaving `ref` on the last APPENDED frame orphaned the chain: the
             // next frame is one more step further away, so it missed too, and
-            // EVERY frame after the first miss was silently dropped — "ready" over
+            // EVERY frame after the first miss was silently dropped: "ready" over
             // an image that stops partway down the page. One visible seam is worth
             // far less than everything below it.
             let from = overlap.map { max(Int(Float($0) * scaleY), headerPx) } ?? headerPx
@@ -206,7 +206,7 @@ enum ScrollStitcher {
             pieces.append((frames[i], from))
             total += add
             ref = i
-            // Cap by BYTES too (w×total×4) — 60k rows of a wide capture would
+            // Cap by BYTES too (w×total×4): 60k rows of a wide capture would
             // be a ~gigabyte single allocation.
             if total > 60_000 || total * w * 4 > 700_000_000 { break }
         }
@@ -216,7 +216,7 @@ enum ScrollStitcher {
                                   bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue |
                                               CGBitmapInfo.byteOrder32Little.rawValue) else { return nil }
         // CG origin bottom-left; lay pieces top-down. Draw ONLY each frame's
-        // new rows [from..h) — drawing the full frame would stamp its top rows
+        // new rows [from..h): drawing the full frame would stamp its top rows
         // (incl. any sticky header) over the previous piece at every seam.
         var yTop = 0
         for (img, from) in pieces {

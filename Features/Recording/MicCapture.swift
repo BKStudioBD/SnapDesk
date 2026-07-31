@@ -2,17 +2,17 @@ import AVFoundation
 import CoreAudio
 
 /// Microphone capture for screen recordings. Hands CMSampleBuffers stamped on the
-/// HOST TIME clock — the same timebase ScreenCaptureKit uses — to the recorder's
+/// HOST TIME clock, the same timebase ScreenCaptureKit uses, to the recorder's
 /// queue, so voice lines up with picture without any correction.
 ///
 /// Two backends:
 ///
-///  * **Voice** (default) — `AVAudioEngine` with Apple's Voice Processing I/O
+///  * **Voice** (default): `AVAudioEngine` with Apple's Voice Processing I/O
 ///    enabled: real-time **noise suppression, echo cancellation and automatic
 ///    gain control**, the same processing FaceTime uses. This is the only way to
 ///    get Apple-grade noise cancellation on a capture path; `AVCaptureSession`
 ///    exposes no equivalent.
-///  * **Raw** — plain `AVCaptureSession`, used when the user turns noise
+///  * **Raw**: plain `AVCaptureSession`, used when the user turns noise
 ///    cancellation off, and as an automatic fallback if voice processing refuses
 ///    to start on this device (it does on some aggregate/virtual inputs). Falling
 ///    back beats recording silence.
@@ -64,13 +64,13 @@ final class MicCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, 
             return
         }
         if noiseCancellation {
-            NSLog("SnapDesk: voice processing unavailable on \(device.localizedName) — recording raw mic")
+            NSLog("SnapDesk: voice processing unavailable on \(device.localizedName). Recording raw mic")
         }
         do {
             try startRawCapture(device: device, queue: queue)
         } catch {
             // The disconnect observer is registered BEFORE the device is opened, and
-            // callers only reach for `stop()` on a capture that actually started —
+            // callers only reach for `stop()` on a capture that actually started,
             // so a failed open left the observer behind for the life of the app. It
             // then told whoever unplugged a microphone, at any point afterwards,
             // that "the recording continues without your voice" when nothing was
@@ -94,7 +94,7 @@ final class MicCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, 
     }
 
     /// Suspend/resume capture for a recording pause. Without this the mic keeps
-    /// running while every sample is thrown away — wasted CPU, and the system's
+    /// running while every sample is thrown away: wasted CPU, and the system's
     /// orange mic indicator stays lit, which reads as "still recording my voice".
     func setPaused(_ paused: Bool) {
         if let engine {
@@ -104,7 +104,7 @@ final class MicCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, 
                     try engine.start()
                 } catch {
                     // A resume that fails leaves the voice track dead for the whole
-                    // rest of the take, and `try?` said nothing — the recorder found
+                    // rest of the take, and `try?` said nothing. The recorder found
                     // out on playback, which is the failure this file exists to
                     // avoid. It happens when the device changed while paused.
                     NSLog("SnapDesk: audio engine resume failed: \(error)")
@@ -121,11 +121,11 @@ final class MicCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, 
 
     /// Serializes session start/stop so they can never execute out of order:
     /// two `.global()` blocks have NO ordering guarantee, so a stop issued moments
-    /// after a start could run FIRST and then be undone by the late start —
+    /// after a start could run FIRST and then be undone by the late start,
     /// leaving the microphone live until the app quits.
     private static let control = DispatchQueue(label: "com.snapdesk.mic.control", qos: .userInitiated)
 
-    /// Tell the user if their mic is yanked mid-recording — otherwise they narrate
+    /// Tell the user if their mic is yanked mid-recording. Otherwise they narrate
     /// a whole video into nothing and only find out afterwards.
     private func watchForDisconnect(of device: AVCaptureDevice) {
         disconnectObserver = NotificationCenter.default.addObserver(
@@ -143,7 +143,7 @@ final class MicCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, 
     private func startVoiceEngine(device: AVCaptureDevice) -> Bool {
         let engine = AVAudioEngine()
         let input = engine.inputNode
-        // Point the AUHAL at the user's chosen mic BEFORE enabling processing —
+        // Point the AUHAL at the user's chosen mic BEFORE enabling processing;
         // the unit reconfigures around the device.
         if let unit = input.audioUnit, let id = Self.audioDeviceID(forUID: device.uniqueID) {
             var deviceID = id
@@ -158,7 +158,7 @@ final class MicCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, 
             return false
         }
         input.isVoiceProcessingAGCEnabled = true
-        // Don't duck the audio we're also recording — ducking would pump the
+        // Don't duck the audio we're also recording: ducking would pump the
         // system-audio track every time the user speaks.
         var ducking = AVAudioVoiceProcessingOtherAudioDuckingConfiguration()
         ducking.duckingLevel = .min
@@ -205,7 +205,7 @@ final class MicCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, 
             return buffer
         }
         guard error == nil, out.frameLength > 0 else { return }
-        // AVAudioTime.hostTime is mach-absolute — the same clock ScreenCaptureKit
+        // AVAudioTime.hostTime is mach-absolute. The same clock ScreenCaptureKit
         // stamps its buffers on, so no offset correction is needed anywhere.
         let pts = CMClockMakeHostTimeFromSystemUnits(when.hostTime)
         if let sb = Self.sampleBuffer(from: out, at: pts) { onSample(sb) }
@@ -267,7 +267,7 @@ final class MicCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, 
             // `Unmanaged`, not `CFString?`: forming a raw pointer to an optional
             // OBJECT reference is undefined (the compiler warns). Unmanaged is a
             // trivial pointer wrapper, which is what CoreAudio actually writes.
-            // kAudioDevicePropertyDeviceUID returns a +1 object — hence *Retained*.
+            // kAudioDevicePropertyDeviceUID returns a +1 object: hence *Retained*.
             var cfUID: Unmanaged<CFString>?
             var uidSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
             let ok = withUnsafeMutablePointer(to: &cfUID) { ptr in
@@ -284,7 +284,7 @@ final class MicCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, 
     private func startRawCapture(device: AVCaptureDevice, queue: DispatchQueue) throws {
         let input = try AVCaptureDeviceInput(device: device)
         // One atomic reconfiguration. Unbatched, AVCaptureSession applies each add
-        // on its own and walks the device through a full reconfiguration twice —
+        // on its own and walks the device through a full reconfiguration twice:
         // pure added spin-up latency on the exact path both callers hop off the main
         // thread to keep out of the way. Committed BEFORE startRunning(): a session
         // may not be started from inside a configuration block.
@@ -301,7 +301,7 @@ final class MicCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, 
         }
         session.addOutput(output)
         session.commitConfiguration()
-        // startRunning() is slow (device spin-up) — never block the main thread.
+        // startRunning() is slow (device spin-up), never block the main thread.
         Self.control.async { [session] in session.startRunning() }
     }
 

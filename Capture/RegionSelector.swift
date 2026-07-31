@@ -41,7 +41,7 @@ enum RegionSelector {
         // selection-only) overlay was still alive from a previous attempt.
         dispatchPrecondition(condition: .onQueue(.main))
         // Never open a capture overlay above a modal alert (e.g. the permission
-        // "Restart SnapDesk" dialog) — the screen-level overlay would cover the
+        // "Restart SnapDesk" dialog). The screen-level overlay would cover the
         // alert and eat every click while the modal session ignores them.
         guard NSApp.modalWindow == nil else { completion(nil); return }
         if let stale = session {
@@ -76,7 +76,7 @@ enum RegionSelector {
             // Icons off the desktop BEFORE the overlay appears, so they never
             // blink away underneath the dim (and never reach a shot).
             DesktopCover.raise()
-            // From here the clock belongs to the USER — reading the prompt, moving a
+            // From here the clock belongs to the USER: reading the prompt, moving a
             // window out of the way, then dragging carefully. Hold the cover open
             // for as long as the overlay is up, or the app's own 20 s ceiling fires
             // mid-selection and the icons reappear behind a live overlay.
@@ -91,7 +91,7 @@ enum RegionSelector {
                 window.orderFrontRegardless()
                 windows.append(window)
             }
-            // Make key the overlay on the screen the mouse is on — NOT the last
+            // Make key the overlay on the screen the mouse is on, NOT the last
             // one ordered (crosshair cursor rects and Esc only work in the key
             // window). Non-activating panel: key without stealing app focus, and
             // immune to macOS's cooperative-activation denial (which used to
@@ -110,12 +110,12 @@ enum RegionSelector {
         /// The selection is driven by EVENT MONITORS, not per-window mouse
         /// routing. The window server can route a click through/past a freshly
         /// ordered transparent overlay (registration takes a beat; hit-testing
-        /// is pixel-alpha based) — with monitors the very first click after the
+        /// is pixel-alpha based), with monitors the very first click after the
         /// hotkey ALWAYS starts the drag, no matter which window macOS picked.
         private func installMonitors() {
             let mask: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseDragged, .leftMouseUp]
             // Normal path: the event reached one of our overlay windows. Swallow
-            // it (return nil) — the view no longer handles mouse events itself.
+            // it (return nil). The view no longer handles mouse events itself.
             if let m = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] e in
                 guard let self, let w = e.window as? SelectionWindow else { return e }
                 self.route(e, at: w.convertPoint(toScreen: e.locationInWindow))
@@ -142,7 +142,7 @@ enum RegionSelector {
         /// The view a key press should steer: the one being dragged, else the one
         /// holding a selection the arrows have taken over, else the one under the
         /// mouse. Without the middle case the arrow keys would go dead the moment
-        /// the mouse button came up — which is exactly when they're wanted.
+        /// the mouse button came up, which is exactly when they're wanted.
         private var keyView: SelectionView? {
             if let activeView { return activeView }
             let views = windows.compactMap { $0.contentView as? SelectionView }
@@ -208,7 +208,7 @@ enum RegionSelector {
             DesktopCover.selectionEnded()
             if let screen, let rect, rect.width > 2, rect.height > 2 {
                 // The pixels are grabbed AFTER this returns, so the desktop cover
-                // has to outlive the callback — CaptureService drops it the
+                // has to outlive the callback: CaptureService drops it the
                 // instant it has the frame, and this is only the ceiling.
                 DesktopCover.lower(after: 3)
                 completion(RegionSelection(screen: screen, rectInScreenPoints: rect))
@@ -222,7 +222,7 @@ enum RegionSelector {
 
 // MARK: - Overlay window
 
-// NSPanel + .nonactivatingPanel: becomes key WITHOUT activating SnapDesk —
+// NSPanel + .nonactivatingPanel becomes key WITHOUT activating SnapDesk, and
 // an accessory app's NSApp.activate() can be silently denied by macOS 14+
 // (no recent user interaction), which left a plain NSWindow overlay with no
 // key window at all: no crosshair, dead Esc, "the hotkey did nothing".
@@ -244,7 +244,7 @@ private final class SelectionWindow: NSPanel {
         level = .screenSaver
         ignoresMouseEvents = false
         hasShadow = false
-        hidesOnDeactivate = false        // NSPanel default is true — overlay must survive
+        hidesOnDeactivate = false        // NSPanel default is true; the overlay must survive
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
 
         let view = SelectionView(frame: screen.frame)
@@ -261,7 +261,7 @@ private final class SelectionWindow: NSPanel {
         contentView = view
         // Without this the WINDOW is first responder and Esc/F pressed before
         // the first click are silently discarded (the invisible OCR overlay
-        // then stays up eating clicks — "sometimes it just doesn't work").
+        // then stays up eating clicks: "sometimes it just doesn't work").
         makeFirstResponder(view)
     }
 
@@ -299,11 +299,11 @@ private final class SelectionView: NSView {
 
     override var acceptsFirstResponder: Bool { true }
     // First click starts the drag immediately even if the overlay just appeared
-    // and isn't the active window yet — no "click once to focus" dead click.
+    // and isn't the active window yet, no "click once to focus" dead click.
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     // Multi-display: cursor rects (crosshair) and Esc only live in the KEY
-    // window. Follow the mouse — whichever screen's overlay it enters grabs
+    // window. Follow the mouse: whichever screen's overlay it enters grabs
     // key (cheap for a non-activating panel, no app focus change).
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -326,27 +326,27 @@ private final class SelectionView: NSView {
 
 
 
-    // Renders via draw(_:) — the .copy clear there is load-bearing; do not
+    // Renders via draw(_:). The .copy clear there is load-bearing; do not
     // switch this view to updateLayer.
 
     override func draw(_ dirtyRect: NSRect) {
-        // Reset the dirty area to fully transparent FIRST — without this, moving
+        // Reset the dirty area to fully transparent FIRST, without this, moving
         // the selection leaves stale dim/clear pixels behind ("black patches"
         // that break up during the drag).
         NSColor.clear.set()
         dirtyRect.fill(using: .copy)
 
         // Full-screen dim: the whole screen darkens…
-        // (.selectionOnly — OCR — leaves the screen untouched instead.)
+        // (.selectionOnly, OCR, leaves the screen untouched instead.)
         if dimStyle == .full {
             NSColor.snapDim.setFill()
             bounds.fill(using: .sourceOver)
         } else {
             // The window server routes clicks THROUGH fully transparent pixels
-            // of a borderless window — an all-clear overlay shows the crosshair
+            // of a borderless window: an all-clear overlay shows the crosshair
             // but the mouseDown lands in the app underneath and the drag never
             // starts. A ~1% fill is invisible yet makes every pixel hit-testable.
-            // FLOOR: must stay ≥ 0.01 — alpha quantizes to an 8-bit byte and
+            // FLOOR: must stay ≥ 0.01: alpha quantizes to an 8-bit byte and
             // anything that rounds to 0/255 silently becomes click-through again
             // (0.001 fails, 0.015 ≈ 4/255 verified working).
             NSColor.black.withAlphaComponent(0.015).setFill()
@@ -366,7 +366,7 @@ private final class SelectionView: NSView {
             NSColor.clear.set()
             currentRect.fill(using: .copy)
         } else {
-            // selectionOnly: ONLY the dragged area darkens — screen stays live.
+            // selectionOnly darkens ONLY the dragged area; the screen stays live.
             NSColor.snapTint.setFill()
             currentRect.fill(using: .sourceOver)
         }
@@ -403,7 +403,7 @@ private final class SelectionView: NSView {
             text.append(NSAttributedString(
                 string: "  " + pixels,
                 attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
-                             // 7.9:1 on the chip — quieter than the point figure,
+                             // 7.9:1 on the chip: quieter than the point figure,
                              // still well clear of the 4.5:1 floor.
                              .foregroundColor: NSColor(white: 0.72, alpha: 1)]))
         }
@@ -433,7 +433,7 @@ private final class SelectionView: NSView {
     /// captures immediately, so the arrows are reachable only while the button is
     /// still down (the first arrow press latches the selection, and Return then
     /// captures it). The old wording promised drag-then-fine-tune, which cannot be
-    /// done — people released the button to reach the arrow keys and the capture had
+    /// done: people released the button to reach the arrow keys and the capture had
     /// already fired with the imprecise rect, every time.
     private static let dragHint =
         "Drag to select   ·   Arrows fine-tune before you let go   ·   F = full screen   ·   Esc to cancel"
@@ -492,7 +492,7 @@ private final class SelectionView: NSView {
     }
 
     // Mouse input arrives from the Session's event monitors (NOT AppKit window
-    // routing — see installMonitors) so the first click always registers, even
+    // routing: see installMonitors) so the first click always registers, even
     // when the window server hasn't hit-tested the fresh overlay yet.
 
     func beginDrag(at p: NSPoint) {
@@ -511,7 +511,7 @@ private final class SelectionView: NSView {
     }
 
     func updateDrag(to p: NSPoint) {
-        // A latched selection belongs to the arrow keys — a mouse still moving
+        // A latched selection belongs to the arrow keys: a mouse still moving
         // (or still held) must not drag it back out from under them.
         guard !keyboardDriven, let start = startPoint else { return }
         pointer = p
@@ -521,18 +521,18 @@ private final class SelectionView: NSView {
             .intersection(bounds)   // clamp to this screen
         // Invalidate only around old ∪ new (covers grow AND shrink re-dim) plus
         // the readout's last frame and margin for the border overhang and a chip
-        // that flipped or slid along an edge — full-screen invalidation redrew
+        // that flipped or slid along an edge: full-screen invalidation redrew
         // the entire display every mouse move.
         setNeedsDisplay(old.union(currentRect).union(lastReadout).insetBy(dx: -220, dy: -44))
     }
 
     func endDrag(at p: NSPoint) {
         // Arrows have taken over: releasing must not snap the rect back to the
-        // mouse, and must not capture — Return does that now.
+        // mouse, and must not capture: Return does that now.
         guard !keyboardDriven else { startPoint = nil; return }
         updateDrag(to: p)
         let rect = currentRect
-        // A stray click (no real drag) must NOT cancel the whole flow — the
+        // A stray click (no real drag) must NOT cancel the whole flow. The
         // session stays alive; Esc is the explicit cancel.
         guard rect.width > 2, rect.height > 2 else {
             reset()
@@ -551,7 +551,7 @@ private final class SelectionView: NSView {
 
     /// Drop a selection this view is still holding, because a drag on another
     /// display owns the flow now. Without this a keyboard-latched selection stays
-    /// drawn on the first screen while a second one is being dragged — two
+    /// drawn on the first screen while a second one is being dragged, two
     /// selections on screen, one of them a lie.
     func clearPending() {
         guard startPoint != nil || currentRect.width > 0 else { return }
@@ -610,7 +610,7 @@ private final class SelectionView: NSView {
     // Fallback + beep suppression: the Session's local keyDown monitor
     // normally consumes Esc/F before dispatch, so this fires only if that
     // monitor failed to install. It must also stay to swallow every OTHER
-    // key — without the override, stray keypresses while the overlay is up
+    // key, without the override, stray keypresses while the overlay is up
     // reach noResponderFor(_:) and trigger the system beep.
     override func keyDown(with event: NSEvent) {
         if event.keyCode == OverlayKey.escape {

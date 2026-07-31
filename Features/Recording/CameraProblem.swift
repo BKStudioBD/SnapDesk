@@ -5,13 +5,13 @@ import Foundation
 /// Every one of these used to be a bare `return` inside `FrameDecorator`: no
 /// device, a device another app had already claimed, an output the session
 /// refused. The bubble simply never appeared, on screen or in the video, and
-/// nothing said why — which reads as "the camera is broken". Each case carries
+/// nothing said why, which reads as "the camera is broken". Each case carries
 /// the sentence the user needs, and the mapping is pure so it can be checked
 /// without a camera attached.
 ///
 /// None of these stop the recording: the screen keeps being captured, only the
-/// bubble is missing. Every message says so, because the alternative — a scary
-/// notification mid-recording — makes people stop a take that was fine.
+/// bubble is missing. Every message says so, because the alternative (a scary
+/// notification mid-recording) makes people stop a take that was fine.
 enum CameraProblem: String, CaseIterable, Equatable {
     /// No video device at all: no built-in camera, nothing plugged in.
     case noDevice
@@ -23,7 +23,7 @@ enum CameraProblem: String, CaseIterable, Equatable {
     /// with the phone asleep, and virtual cameras whose host app isn't running,
     /// both land here.
     case noFrames
-    /// The camera went away mid-recording — unplugged, or lid closed on a
+    /// The camera went away mid-recording: unplugged, or lid closed on a
     /// display that owned it.
     case disconnected
     /// AVFoundation reported a runtime error on the session.
@@ -39,7 +39,7 @@ enum CameraProblem: String, CaseIterable, Equatable {
     }
 
     /// True when the camera died in the middle of a take, which deserves the
-    /// louder alert. A camera that never opened is just information — the user
+    /// louder alert. A camera that never opened is just information. The user
     /// hasn't lost anything they had.
     var isDisruption: Bool { self == .disconnected || self == .runtimeError }
 
@@ -48,7 +48,7 @@ enum CameraProblem: String, CaseIterable, Equatable {
         case .noDevice:
             "No webcam is connected, so the bubble is off. The screen is still being recorded."
         case .busy:
-            "Another app is using the camera — quit it and record again. The screen is still being recorded."
+            "Another app is using the camera. Quit it and record again. The screen is still being recorded."
         case .rejected:
             "This camera couldn't be used for the bubble. The screen is still being recorded."
         case .noFrames:

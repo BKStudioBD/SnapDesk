@@ -1,19 +1,19 @@
 import AppKit
 
 /// Records ONLY the failures: every OCR that recognized nothing, with the facts
-/// needed to tell the four causes apart afterwards — bad selection, an empty
+/// needed to tell the four causes apart afterwards: bad selection, an empty
 /// frame handed over by a lapsed Screen Recording grant, a Vision blind spot, or
 /// a wrong-region crop.
 ///
 /// `log show` returns nothing for this app (ad-hoc-signed accessory, no logging
 /// subsystem), so a plain file is the only thing readable after the fact.
-/// Writes nothing on success — a working install never touches the disk here.
+/// Writes nothing on success: a working install never touches the disk here.
 ///
-/// PRIVACY: a missed frame can contain whatever was on screen — a password
+/// PRIVACY: a missed frame can contain whatever was on screen. A password
 /// manager, a banking page. So the artifacts live under the user's own
 /// `~/Library/Logs/SnapDesk` (home is 0700; no other local user can read it),
 /// each file is created 0600, and only the few most recent shots are kept.
-/// World-readable `/tmp` — the old home — is never touched.
+/// World-readable `/tmp`, the old home, is never touched.
 enum MissLog {
     /// Per-user, not world-readable. Created 0700 on first use.
     static let directory: URL = {
@@ -30,12 +30,12 @@ enum MissLog {
     /// - Parameters:
     ///   - facts: short `key=value` pairs; keep them cheap to compute.
     ///   - image: the exact frame OCR gave up on. Saved as a PNG beside the log
-    ///     so a miss can be inspected after the fact — the only way to tell a
+    ///     so a miss can be inspected after the fact. The only way to tell a
     ///     genuine Vision miss from a mis-drag onto something with no text.
     static func record(_ facts: [String: String], image: CGImage? = nil) {
         let stamp = ISO8601DateFormatter().string(from: Date())
         let front = NSWorkspace.shared.frontmostApplication?.localizedName ?? "?"
-        // CGImage is safe to hand to another thread; encode there, not here —
+        // CGImage is safe to hand to another thread; encode there, not here:
         // an .accurate-pass frame is multi-megapixel and PNG encoding is heavy.
         queue.async {
             ensureDirectory()

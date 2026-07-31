@@ -5,12 +5,12 @@ import Foundation
 /// The rules that decide what a destructive feature is allowed to touch.
 ///
 /// Nothing here deletes: every test works on a scratch directory and checks the
-/// DECISION — what the cleaner would remove, and what the scanner would tick —
+/// DECISION: what the cleaner would remove, and what the scanner would tick,
 /// which is where the damage would come from.
 struct CleanerSafetyTests {
 
     /// Symlinks resolved: the temporary directory is `/var/…`, which is itself a
-    /// link to `/private/var/…`, and the scanner reports the resolved path — so
+    /// link to `/private/var/…`, and the scanner reports the resolved path. So
     /// an unresolved root here fails a comparison the app gets right.
     private func scratch() throws -> URL {
         let url = FileManager.default.temporaryDirectory
@@ -79,8 +79,8 @@ struct CleanerSafetyTests {
     @Test("A per-app row is skipped whole while its app runs", .tags(.regression))
     func skipsARunningAppsWholeRow() {
         // The bug this pins: the row lists what is INSIDE Slack's cache folder,
-        // so the per-item guard is asked about `Cache` and `GPUCache` — names
-        // that match no bundle id ever — and a running Slack lost the cache it
+        // so the per-item guard is asked about `Cache` and `GPUCache`: names
+        // that match no bundle id ever. And a running Slack lost the cache it
         // was holding open.
         let running: Set<String> = ["com.tinyspeck.slackmacgap"]
         let folder = URL(fileURLWithPath: "/tmp/Caches/com.tinyspeck.slackmacgap")
@@ -95,7 +95,7 @@ struct CleanerSafetyTests {
 
     // MARK: - What the build-folder scan would tick
 
-    @Test("A match stops the descent — the node_modules inside a node_modules is not its own row",
+    @Test("A match stops the descent. The node_modules inside a node_modules is not its own row",
           .tags(.regression))
     func stopsAtTheFirstMatch() throws {
         let root = try scratch()
@@ -144,7 +144,7 @@ struct CleanerSafetyTests {
         #expect(found.first?.url.path.hasSuffix("project/node_modules") == true)
     }
 
-    @Test("A dot-directory straight under the root is a tool's home — listed, never pre-ticked",
+    @Test("A dot-directory straight under the root is a tool's home. Listed, never pre-ticked",
           .tags(.regression))
     func neverPreTicksAGlobalToolHome() throws {
         let root = try scratch()

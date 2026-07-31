@@ -3,7 +3,7 @@ import Foundation
 @testable import SnapDeskCore
 
 /// The multi-row selection keeps IDS, not indexes, because the list re-sorts under
-/// the person constantly — a copy arrives, a star floats a row up, the search text
+/// the person constantly: a copy arrives, a star floats a row up, the search text
 /// changes. These pin the gestures, and the pruning that stops a merge from acting
 /// on a row nobody can see any more.
 struct ClipboardSelectionTests {
@@ -71,7 +71,7 @@ struct ClipboardSelectionTests {
         selection.apply(.extend, to: rows[2], in: rows)
         selection.prune(to: [rows[2], rows[3]])
         #expect(selection.ids == Set([rows[2]]), "row 0 and row 1 are gone from the list")
-        // The ANCHOR was row 0 — extending doesn't move it — and row 0 just vanished.
+        // The ANCHOR was row 0, extending doesn't move it, and row 0 just vanished.
         // A Shift-click reaching from a row nobody can see would select a run nobody
         // asked for, so the anchor has to go with it.
         #expect(selection.anchor == nil)

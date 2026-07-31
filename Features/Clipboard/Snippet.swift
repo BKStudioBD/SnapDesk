@@ -1,6 +1,6 @@
 import Foundation
 
-/// A named entry the person wrote themselves — a postal address, a support
+/// A named entry the person wrote themselves: a postal address, a support
 /// reply, a shell one-liner.
 ///
 /// Snippets sit in the same list as history but they are NOT history: the
@@ -9,7 +9,7 @@ import Foundation
 /// is content the person authored.
 struct Snippet: Identifiable, Equatable, Codable {
     let id: UUID
-    /// The row's label. Never empty — `init` falls back to the first line of the
+    /// The row's label. Never empty: `init` falls back to the first line of the
     /// body, since a nameless row is unfindable in a list of names.
     var title: String
     /// What actually gets pasted.
@@ -31,7 +31,7 @@ struct Snippet: Identifiable, Equatable, Codable {
     /// A name taken from the first non-blank line of the body.
     ///
     /// Bounded on purpose: a body can be a 256 KB paste, and `prefix(61)` before
-    /// any `count` keeps this off the slow path — the same reason
+    /// any `count` keeps this off the slow path. The same reason
     /// `ClipboardItem.preview` never walks a whole string.
     static func derivedTitle(from body: String) -> String {
         let line = body.split(whereSeparator: \.isNewline)

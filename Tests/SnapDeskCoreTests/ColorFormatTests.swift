@@ -5,7 +5,7 @@ import AppKit
 /// What the eyedropper actually puts on the clipboard.
 ///
 /// `ColorHexTests` covers `hexString(uppercase:)`, which is a SEPARATE
-/// implementation — `formatted(as:)` re-derives the same rounding on its own,
+/// implementation: `formatted(as:)` re-derives the same rounding on its own,
 /// and the rgb() branch had nothing checking it at all. A slip here pastes a
 /// wrong colour into someone's stylesheet, silently.
 struct ColorFormatTests {

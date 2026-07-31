@@ -7,7 +7,7 @@ import AppKit
 /// SnapDesk ships exactly TWO sounds, both synthesised for the app (no sourced
 /// audio): a rising pair for content coming IN (captured, copied, saved) and its
 /// falling mirror for content going OUT (pasted into another app). Two sounds,
-/// two meanings — the ear learns the direction without looking.
+/// two meanings. The ear learns the direction without looking.
 enum Sounds {
     /// Content arrived: capture, copy, save, finish.
     static func playIn() { play("SnapIn") }

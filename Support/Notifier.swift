@@ -6,7 +6,7 @@ enum Notifier {
     private static let center = UNUserNotificationCenter.current()
 
     /// Shows banners even while SnapDesk is the active app (default is to
-    /// suppress a foreground app's own notifications — every toast vanished).
+    /// suppress a foreground app's own notifications, every toast vanished).
     private final class Delegate: NSObject, UNUserNotificationCenterDelegate {
         static let shared = Delegate()
         func userNotificationCenter(_ center: UNUserNotificationCenter,
@@ -37,7 +37,7 @@ enum Notifier {
         if isError { content.sound = .defaultCritical }
         let request = UNNotificationRequest(identifier: UUID().uuidString,
                                             content: content, trigger: nil)
-        // Check authorization at POST time, not a launch-time snapshot — the
+        // Check authorization at POST time, not a launch-time snapshot. The
         // user can flip notifications off mid-session, and a silently dropped
         // "No text found" / "OCR failed" reads as "the app is broken".
         center.getNotificationSettings { settings in

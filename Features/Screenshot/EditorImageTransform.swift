@@ -5,7 +5,7 @@ import CoreGraphics
 enum EditorImageTransform: CaseIterable {
     case rotateLeft, rotateRight, flipHorizontal, flipVertical
 
-    /// Spoken/VoiceOver name — also what a failure notification says.
+    /// Spoken/VoiceOver name: also what a failure notification says.
     var label: String {
         switch self {
         case .rotateLeft: "Rotate left"
@@ -34,7 +34,7 @@ enum EditorImageTransform: CaseIterable {
 
     /// Where the transformed image should sit on screen, given the rect it occupies
     /// now. A quarter turn swaps the box's sides about its own centre, so the
-    /// pixels-per-point ratio survives — a rotated 2× capture is still 2×.
+    /// pixels-per-point ratio survives: a rotated 2× capture is still 2×.
     ///
     /// A box that would then hang off the display is shrunk to fit, keeping its
     /// aspect: everything the editor draws (the dim, the handles, the toolbars) is

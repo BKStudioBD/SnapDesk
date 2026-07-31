@@ -2,7 +2,7 @@ import AVFoundation
 import Speech
 import AppKit
 
-/// Burns automatic subtitles into a finished recording — fully on-device.
+/// Burns automatic subtitles into a finished recording: fully on-device.
 /// Pipeline: SFSpeechRecognizer (on-device when supported) transcribes the
 /// movie's audio → word segments grouped into caption lines → CATextLayers
 /// composited over the video (AVVideoCompositionCoreAnimationTool) → exported
@@ -23,7 +23,7 @@ enum SubtitleBurner {
     }
 
     /// Transcribe + burn IN PLACE: the captions are written into the recording
-    /// itself (the original file is replaced — no separate "subtitled" copy).
+    /// itself (the original file is replaced, no separate "subtitled" copy).
     /// `language` = BCP-47 code of the SPOKEN language (en-US / es-ES / de-DE…).
     /// Returns true when captions were added, false when there was no speech.
     static func process(url: URL, language: String = "en-US") async throws -> Bool {
@@ -47,7 +47,7 @@ enum SubtitleBurner {
 
         // Captions are on-device ONLY. If Apple's on-device model for this
         // language isn't installed, the alternative is uploading the whole audio
-        // track to Apple's speech servers — which would break SnapDesk's core
+        // track to Apple's speech servers, which would break SnapDesk's core
         // "100% on-device, never touches the network" promise silently. Refuse
         // instead: the recording is still saved, just without captions.
         guard recognizer.supportsOnDeviceRecognition else { throw Err.unavailable }
@@ -58,7 +58,7 @@ enum SubtitleBurner {
 
         // The recognition callback can fire on multiple threads and more than
         // once; the continuation must be resumed EXACTLY once. A plain Bool read
-        // across threads is a race — gate with a lock that atomically claims the
+        // across threads is a race: gate with a lock that atomically claims the
         // single resume.
         final class Once: @unchecked Sendable {
             private let lock = NSLock()
@@ -66,7 +66,7 @@ enum SubtitleBurner {
             func claim() -> Bool { lock.lock(); defer { lock.unlock() }; if done { return false }; done = true; return true }
         }
         /// Holds the recognition task so cancelling the surrounding Task can
-        /// reach it — the returned task was previously discarded outright.
+        /// reach it. The returned task was previously discarded outright.
         final class HeldTask: @unchecked Sendable {
             private let lock = NSLock()
             private var stored: SFSpeechRecognitionTask?
@@ -77,11 +77,11 @@ enum SubtitleBurner {
         }
         let once = Once()
         // The task has to be retained and cancellable. `Once` guarantees the
-        // continuation is resumed at most once — nothing guaranteed it was
+        // continuation is resumed at most once: nothing guaranteed it was
         // resumed at ALL: if the handler never delivered `isFinal` or an error
         // (recognizer released mid-transcription, or the task dropped), the
         // caller suspended forever and the finished recording simply never
-        // appeared — no preview window, no error, no file offered.
+        // appeared, no preview window, no error, no file offered.
         let held = HeldTask()
         let result: SFSpeechRecognitionResult? = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { c in
@@ -89,7 +89,7 @@ enum SubtitleBurner {
                     if let err {
                         guard once.claim() else { return }
                         // "No speech detected" is a NORMAL outcome for a silent
-                        // recording — return no lines instead of an error dialog.
+                        // recording: return no lines instead of an error dialog.
                         let ns = err as NSError
                         if ns.domain == "kAFAssistantErrorDomain" && (ns.code == 1110 || ns.code == 203) {
                             c.resume(returning: nil)
@@ -130,7 +130,7 @@ enum SubtitleBurner {
         let grouped = out.filter { !$0.text.isEmpty }
         // Clamp every line to where the NEXT one starts. A group is flushed on word
         // count or elapsed span at least as often as on a pause, so the +0.2 s
-        // reading tail routinely runs past the following caption's start — and both
+        // reading tail routinely runs past the following caption's start. And both
         // pills are drawn in the same place, so the overlap rendered one line of
         // text on top of another. Burned into the file, permanently.
         return grouped.enumerated().map { index, line in
@@ -143,7 +143,7 @@ enum SubtitleBurner {
     // MARK: - Burning
 
     /// Export a captioned copy to a temp file, then atomically replace the
-    /// original — the video the user keeps IS the captioned one.
+    /// original. The video the user keeps IS the captioned one.
     static func burnInPlace(url: URL, lines: [Line]) async throws {
         let tmp = try await burn(url: url, lines: lines)
         do {
@@ -151,7 +151,7 @@ enum SubtitleBurner {
         } catch {
             // replaceItemAt consumes the temp file only on success. A failure here
             // leaves a full second copy of the recording in /tmp with nothing
-            // pointing at it — gigabytes for a long take.
+            // pointing at it: gigabytes for a long take.
             try? FileManager.default.removeItem(at: tmp)
             throw error
         }
@@ -188,7 +188,7 @@ enum SubtitleBurner {
         export.videoComposition = composition
         await export.export()
         guard export.status == .completed else {
-            // A failed export still wrote whatever it got through — the same dead
+            // A failed export still wrote whatever it got through. The same dead
             // weight in /tmp, on the path that runs after every captioned take.
             try? FileManager.default.removeItem(at: out)
             throw export.error ?? Err.exportFailed

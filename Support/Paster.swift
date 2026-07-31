@@ -1,7 +1,7 @@
 import AppKit
 import Carbon.HIToolbox
 
-/// Pastes the current clipboard into another app by synthesizing ⌘V — the
+/// Pastes the current clipboard into another app by synthesizing ⌘V. The
 /// "Double-Click to Paste" behavior. Requires Accessibility permission (the app
 /// already registers for it); if missing, prompts and does nothing this time.
 enum Paster {
@@ -12,9 +12,9 @@ enum Paster {
     /// gracefully: we ALWAYS attempt the keystroke (AXIsProcessTrusted() caches
     /// stale `false` within a process, so gating on it would wrongly block paste
     /// right after the user grants permission). If access is missing we prompt
-    /// once and tell the user the item is copied — they can ⌘V manually.
+    /// once and tell the user the item is copied. They can ⌘V manually.
     /// Open the Accessibility pane at most once per session when paste is
-    /// blocked — the system's own prompt only appears the very first time ever.
+    /// blocked. The system's own prompt only appears the very first time ever.
     private static var openedAccessibilityPane = false
 
     static func paste(to target: NSRunningApplication?, activate: Bool) {
@@ -24,7 +24,7 @@ enum Paster {
         // every blocked paste yanked System Settings in front of whatever the
         // user was doing (and the first one opened it twice, because the block
         // below opened it again). SnapDesk is already registered in the
-        // Accessibility list — AppCoordinator does that silently at launch — so
+        // Accessibility list, AppCoordinator does that silently at launch, so
         // there is nothing to re-request on later attempts.
         let asking = !trusted && !openedAccessibilityPane
         if asking {
@@ -36,20 +36,20 @@ enum Paster {
             // thing telling the user the item is copied and why nothing was
             // pasted, and a second silent double-click reads as a broken app.
             if !trusted {
-                Notifier.info("Copied — allow paste once",
+                Notifier.info("Copied (allow paste once)",
                               asking
                               ? "Turn ON SnapDesk under Accessibility (Settings just opened), then double-click again. For now press ⌘V."
                               : "Turn ON SnapDesk under System Settings → Privacy & Security → Accessibility, then double-click again. For now press ⌘V.")
             }
         }
         if let target {
-            // Activation is async (heavy app / other Space) — a fixed delay can
+            // Activation is async (heavy app / other Space): a fixed delay can
             // fire ⌘V into the WRONG app. Wait for the target to actually become
             // active, with a timeout fallback. Even when `activate` is off we
             // still wait: closing the history window hands focus back to the
             // previous app by itself, and the HID tap that then becomes safe is
             // the ONLY delivery Chromium/Electron apps (Chrome, Discord, Slack…)
-            // reliably accept — they drop pid-targeted synthetic keystrokes,
+            // reliably accept. They drop pid-targeted synthetic keystrokes,
             // which is why pasting links "never worked" in exactly those apps.
             if activate { target.activate() }
             waitForActivation(of: target, timeout: activate ? 1.2 : 0.6) {
@@ -91,7 +91,7 @@ enum Paster {
     }
 
     /// Synthesize ⌘V. `target != nil` → post to that PID; else the HID tap
-    /// (frontmost app). NOTE: do NOT set keyboardSetUnicodeString here — a
+    /// (frontmost app). NOTE: do NOT set keyboardSetUnicodeString here. A
     /// ⌘-event carrying a unicode string is not recognized as the paste
     /// shortcut (verified empirically); plain virtual-key ⌘V works.
     private static func sendCommandV(_ target: NSRunningApplication?) {

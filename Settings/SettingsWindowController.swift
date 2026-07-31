@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// A real, app-owned settings window. The SwiftUI `Settings` scene is unreliable
-/// in menu-bar (`.accessory`) apps — it often refuses to open or focus — so we
+/// in menu-bar (`.accessory`) apps, it often refuses to open or focus, so we
 /// host `SettingsView` in a normal NSWindow we control directly.
 final class SettingsWindowController: NSWindowController {
     init(settings: SettingsStore) {
@@ -29,7 +29,7 @@ final class SettingsWindowController: NSWindowController {
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
         // Activation can be refused for an accessory app, and then this window
-        // opened BEHIND a full-screen frontmost app — the menu item and the
+        // opened BEHIND a full-screen frontmost app. The menu item and the
         // pre-record gear both looked dead. Force it visible, the same way the
         // welcome window and the permission alerts already do.
         window?.orderFrontRegardless()

@@ -8,7 +8,7 @@ import AVFoundation
 /// problem they don't have, and one that never reports clipping lets them narrate
 /// a whole tutorial into distortion.
 ///
-/// Pure value logic — synthetic samples, no device, no timer.
+/// Pure value logic: synthetic samples, no device, no timer.
 struct AudioLevelMeterTests {
 
     @Test("Nothing is published until a full window has arrived")
@@ -41,8 +41,8 @@ struct AudioLevelMeterTests {
     func measuresRMSAcrossEveryBufferInTheWindow() throws {
         // The bug: the sum of squares was read from the last buffer's parameter
         // (which shadowed the accumulator) while the frame count was the whole
-        // window's, so a window built from three 1024-frame mic buffers — the size
-        // both capture paths deliver — reported sqrt(1/3) of the real level. That is
+        // window's, so a window built from three 1024-frame mic buffers. The size
+        // both capture paths deliver: reported sqrt(1/3) of the real level. That is
         // a constant 4.8 dB under-read on a perfectly good microphone.
         var meter = AudioLevelMeter(windowFrames: 300)
         let third = [Float](repeating: 0.1, count: 100)
@@ -68,14 +68,14 @@ struct AudioLevelMeterTests {
         let reading = meter.accumulate([Float](repeating: 0, count: 10))
         let level = try #require(reading)
         // Nine tenths at 0.4: 0.4·sqrt(0.9) ≈ 0.3795. The shadowed-parameter bug
-        // reported 0 here — the window closed on a silent buffer.
+        // reported 0 here. The window closed on a silent buffer.
         #expect(abs(level.rms - 0.3795) < 0.001, "got \(level.rms)")
     }
 
     @Test("A clip keeps being reported for about a second", .tags(.regression))
     func holdsTheClipFlag() throws {
         // A clip that only lit the indicator for the 50 ms it happened in is a clip
-        // nobody sees — and clipping is the one input problem that cannot be
+        // nobody sees. And clipping is the one input problem that cannot be
         // repaired after the recording.
         var meter = AudioLevelMeter(windowFrames: 10, clipHoldWindows: 3)
         var window = [Float](repeating: 0.1, count: 10)
@@ -106,7 +106,7 @@ struct AudioLevelMeterTests {
         #expect(second.peak > 0, "but it must not snap straight to nothing either")
     }
 
-    @Test("Levels are drawn on a dB scale — linear amplitude barely moves the bar")
+    @Test("Levels are drawn on a dB scale. Linear amplitude barely moves the bar")
     func mapsToADBScale() {
         #expect(AudioLevel.fraction(of: 0) == 0)
         #expect(AudioLevel.fraction(of: 1) == 1)

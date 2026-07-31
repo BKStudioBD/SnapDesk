@@ -3,7 +3,7 @@ import AppKit
 /// On-disk home for clipboard image bytes, so a restart no longer loses every
 /// screenshot in history.
 ///
-/// PRIVACY: a clipboard image is whatever was on screen — a password manager, a
+/// PRIVACY: a clipboard image is whatever was on screen. A password manager, a
 /// banking page, a private message. So the directory is created 0700 and every
 /// file 0600, the same treatment `MissLog` gives its captured frames, and it lives
 /// under Application Support rather than world-readable `/tmp`.
@@ -29,7 +29,7 @@ final class ClipboardImageStore {
     let directory: URL
 
     /// `directory` is injectable so tests write into a temporary directory they
-    /// then remove — a test must never leave clipboard images on the disk of the
+    /// then remove: a test must never leave clipboard images on the disk of the
     /// person running the suite.
     init(directory: URL = ClipboardImageStore.defaultDirectory()) {
         self.directory = directory
@@ -50,10 +50,10 @@ final class ClipboardImageStore {
     /// Which image bytes are ALLOWED to exist on disk, in write order.
     ///
     /// - Parameter pinnedOnly: true when "clear history when SnapDesk quits" is
-    ///   on, and then nothing unpinned is returned at all — see the type comment.
+    ///   on, and then nothing unpinned is returned at all: see the type comment.
     static func plan(_ items: [ClipboardItem], pinnedOnly: Bool) -> [Entry] {
         // Pinned first so the budget never sacrifices a starred image for a recent
-        // one — the same rule `ClipboardManager.persistSnapshot` follows for text.
+        // one. The same rule `ClipboardManager.persistSnapshot` follows for text.
         let pinned = items.filter { $0.pinned }
         let unpinned = pinnedOnly ? [] : items.filter { !$0.pinned }
         var out: [Entry] = []
@@ -83,16 +83,16 @@ final class ClipboardImageStore {
     func data(for id: UUID) -> Data? { try? Data(contentsOf: url(for: id)) }
 
     /// Makes the directory hold EXACTLY the planned entries: writes what is
-    /// missing, and — when `prune` is set — deletes every other image file.
+    /// missing, and, when `prune` is set, deletes every other image file.
     ///
-    /// That second half is half the point. A file whose item is gone — deleted,
-    /// evicted by the cap, cleared, or unstarred while clear-on-quit is on — is a
+    /// That second half is half the point. A file whose item is gone (deleted,
+    /// evicted by the cap, cleared, or unstarred while clear-on-quit is on) is a
     /// leak of exactly the content this store is careful about, and it would
     /// otherwise survive every restart.
     ///
     /// `prune` has NO default on purpose. An empty plan used to be routed to
     /// `removeAll()`, so "I have nothing to write" silently meant "delete every
-    /// image the person has" — which is what a plan built before an asynchronous
+    /// image the person has", which is what a plan built before an asynchronous
     /// restore had merged its rows actually said. Deleting everything is now
     /// something a caller has to ask for in as many words.
     ///
@@ -114,7 +114,7 @@ final class ClipboardImageStore {
     }
 
     /// Deletes every stored image. Only the `.jpg` files this store writes are
-    /// touched — never the directory itself, never anything else inside it.
+    /// touched, never the directory itself, never anything else inside it.
     func removeAll() { pruneOrphans(keeping: []) }
 
     private func ensureDirectory() {

@@ -7,7 +7,7 @@ enum ColorFormat: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-/// Magnified eyedropper using Apple's native `NSColorSampler` — pixel-accurate,
+/// Magnified eyedropper using Apple's native `NSColorSampler`: pixel-accurate,
 /// works anywhere on screen, and needs no extra permission.
 enum ColorPickerService {
     static func pick(completion: @escaping (NSColor?) -> Void) {
@@ -21,7 +21,7 @@ enum ColorPickerService {
 extension NSColor {
     /// Formats the color in the requested representation, converted to sRGB.
     func formatted(as format: ColorFormat, uppercaseHex: Bool = true) -> String {
-        // Force-reading RGB components on a pattern/catalog color raises — bail
+        // Force-reading RGB components on a pattern/catalog color raises: bail
         // to a safe value rather than crash on an exotic sampled color.
         guard let c = usingColorSpace(.sRGB) else { return "#000000" }
         let r = Int((c.redComponent * 255).rounded())

@@ -13,7 +13,7 @@ struct CacheCatalogTests {
         #expect(trash.isTrash)
     }
 
-    @Test("Every other category is ticked — they are all caches something rebuilds")
+    @Test("Every other category is ticked. They are all caches something rebuilds")
     func othersAreDefault() {
         let rest = CacheCleaner.catalog(home: home).filter { !$0.isTrash }
         let allTicked = rest.allSatisfy { $0.defaultOn }
@@ -55,7 +55,7 @@ struct CacheCatalogTests {
     @Test("The owner is matched however the catalog spelled it")
     func ownerMatchIsCaseInsensitive() throws {
         // Running bundle ids arrive lowercased; the catalog writes them the way
-        // the app does — `com.google.Chrome`.
+        // the app does: `com.google.Chrome`.
         let chrome = try #require(CacheCleaner.catalog(home: home).first { $0.id == "chrome" })
         #expect(CacheCleaner.isOwnedByRunningApp(chrome, runningIDs: ["com.google.chrome"]))
         #expect(CacheCleaner.isOwnedByRunningApp(chrome, runningIDs: ["com.apple.safari"]) == false)
@@ -153,7 +153,7 @@ struct JunkRulesTests {
         #expect(kind.safeToPreselect == false)
     }
 
-    @Test("Matching is case-sensitive — Xcode's Build is not a bundler's build")
+    @Test("Matching is case-sensitive. Xcode's Build is not a bundler's build")
     func caseSensitivity() {
         #expect(JunkRules.kind(for: "Build") == nil)
         #expect(JunkRules.kind(for: "Node_Modules") == nil)
@@ -168,13 +168,13 @@ struct JunkRulesTests {
     @Test("The walk skips dotfile folders, so global caches are not mistaken for projects")
     func skipsDotDirectories() {
         // ~/.nvm and ~/.npm hold gigabytes that belong to the Clean tab, not
-        // here — and descending into them would attribute them to "a project".
+        // here. And descending into them would attribute them to "a project".
         #expect(JunkRules.shouldDescend(into: ".nvm") == false)
         #expect(JunkRules.shouldDescend(into: ".npm") == false)
         #expect(JunkRules.shouldDescend(into: ".git") == false)
     }
 
-    @Test("A dot-named junk folder is still FOUND — the name rule is asked first")
+    @Test("A dot-named junk folder is still FOUND. The name rule is asked first")
     func dotNamedJunkStillMatches() {
         // `.build` and `.venv` would be unreachable if the dot rule ran first,
         // which is exactly the bug this pins.
@@ -189,7 +189,7 @@ struct JunkRulesTests {
     func skipsPackages(_ name: String) {
         // An Electron app ships a REAL node_modules inside
         // Contents/Resources/app. It was found, ticked, and trashing it breaks
-        // the app for good — nothing rebuilds an app's own contents.
+        // the app for good: nothing rebuilds an app's own contents.
         #expect(JunkRules.isPackage(name))
         #expect(JunkRules.shouldDescend(into: name) == false)
     }

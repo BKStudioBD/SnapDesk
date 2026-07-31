@@ -19,7 +19,7 @@ enum ClipboardMerge {
     /// middle of the merged block. A piece that is nothing BUT newlines
     /// contributes nothing.
     ///
-    /// Image rows are skipped — they have no text to join — so merging a
+    /// Image rows are skipped, they have no text to join, so merging a
     /// selection that happens to include a screenshot still produces the text.
     /// Returns nil when nothing textual is left, so the caller adds no empty row.
     static func merged(_ items: [ClipboardItem]) -> String? {

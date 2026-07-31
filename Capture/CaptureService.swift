@@ -38,11 +38,11 @@ enum CaptureService {
         guard !pixelRect.isEmpty, let cropped = fullImage.cropping(to: pixelRect) else {
             throw CaptureError.cropFailed
         }
-        // cropping() SHARES the entire full-display backing store — a small crop
+        // cropping() SHARES the entire full-display backing store: a small crop
         // would pin ~59 MB on a 5K screen for as long as any caller holds it
         // (blur overlay for minutes, OCR through multi-second Vision passes).
         // Redraw into a right-sized buffer so only the crop's bytes survive.
-        // Near-full-frame crops (F-key full screen) share no meaningful excess —
+        // Near-full-frame crops (F-key full screen) share no meaningful excess:
         // skip the copy entirely. Real crops redraw OFF the main actor so a big
         // region never blocks the UI.
         if pixelRect.width * pixelRect.height >= 0.95 * bounds.width * bounds.height {
@@ -52,12 +52,12 @@ enum CaptureService {
         return copy ?? cropped
     }
 
-    /// True when the image carries no visible detail — every sampled pixel is
+    /// True when the image carries no visible detail, every sampled pixel is
     /// the same shade.
     ///
     /// This is how a capture FAILS SILENTLY on macOS: a process without Screen
     /// Recording rights is handed a frame with the windows stripped out (just
-    /// the desktop picture) and NO error — measured. So "Vision found no text"
+    /// the desktop picture) and NO error: measured. So "Vision found no text"
     /// and "the OS gave us an empty frame" are indistinguishable downstream,
     /// and the user gets "No text found" for text plainly on their screen.
     /// Cheap: one 16×16 downsample, no full-size scan.
@@ -67,7 +67,7 @@ enum CaptureService {
         // The context is used INSIDE the closure. `withUnsafeMutableBytes` only
         // guarantees the pointer for the duration of that call, so a context
         // built inside and drawn into afterwards writes through a pointer whose
-        // guarantee has expired — and this buffer is then read to decide whether
+        // guarantee has expired. And this buffer is then read to decide whether
         // a capture came back empty.
         let drawn = pixels.withUnsafeMutableBytes { buf -> Bool in
             guard let ctx = CGContext(data: buf.baseAddress, width: side, height: side,
@@ -85,7 +85,7 @@ enum CaptureService {
         for i in stride(from: 0, to: pixels.count, by: 4) {
             // Buffer is BGRA (byteOrder32Little + premultipliedFirst): the three
             // COLOUR bytes are at i, i+1, i+2; i+3 is alpha. The old code summed
-            // i+1…i+3, averaging in the constant alpha and dropping blue — so a
+            // i+1…i+3, averaging in the constant alpha and dropping blue. So a
             // solid blue frame read as "not blank". Sum the real B+G+R.
             let l = Int(pixels[i]) &+ Int(pixels[i + 1]) &+ Int(pixels[i + 2])
             let v = l / 3
@@ -127,7 +127,7 @@ enum CaptureService {
     /// the screen for the in-place annotation editor.
     @MainActor
     static func captureScreen(_ screen: NSScreen) async throws -> CGImage {
-        // The desktop cover only exists to be in THIS frame — the instant the
+        // The desktop cover only exists to be in THIS frame. The instant the
         // pixels are in hand the user's icons come back, on every path out of
         // here including a throw. `lowerAfterGrab` rather than `lower`: the
         // screenshot flow freezes EVERY display in a loop, and lowering after the
@@ -145,7 +145,7 @@ enum CaptureService {
         var content: SCShareableContent
         // A snapshot taken before the cover went up doesn't list it, and
         // filtering against one that doesn't know about it hands back a frame
-        // with the very icons the cover hides. Refetch in that case only — the
+        // with the very icons the cover hides. Refetch in that case only. The
         // warm-up during the drag normally already includes it.
         if let (c, at) = cachedContent, Date().timeIntervalSince(at) < 2,
            coverIDs.isSubset(of: Set(c.windows.map { $0.windowID })) {
@@ -156,16 +156,16 @@ enum CaptureService {
             cachedContent = (content, Date())
         }
 
-        // NO first-display fallback — capturing the wrong monitor and cropping
+        // NO first-display fallback: capturing the wrong monitor and cropping
         // it with the right monitor's rect delivers wrong content silently.
         // Display missing from a ≤2s-old cache right after plugging/unplugging a
-        // monitor? Refetch once before failing — the cache is stale, not the display.
+        // monitor? Refetch once before failing. The cache is stale, not the display.
         var scDisplay = content.displays.first(where: { $0.displayID == displayID })
         if scDisplay == nil {
             let fresh = try await SCShareableContent.excludingDesktopWindows(
                 false, onScreenWindowsOnly: false)
             cachedContent = (fresh, Date())
-            // Adopt the fresh snapshot wholesale — reading the display from one
+            // Adopt the fresh snapshot wholesale: reading the display from one
             // snapshot and our own app from another risks missing ourselves in
             // the stale list, which silently drops the self-exclusion below and
             // captures SnapDesk's own overlay into the image.
@@ -222,7 +222,7 @@ extension NSScreen {
     /// The CoreGraphics display ID backing this screen, or nil when
     /// deviceDescription no longer carries NSScreenNumber (stale NSScreen
     /// across a display reconfiguration). Deliberately NO CGMainDisplayID()
-    /// fallback — capturing the wrong monitor and cropping it with another
+    /// fallback: capturing the wrong monitor and cropping it with another
     /// screen's rect delivers wrong content silently.
     var displayID: CGDirectDisplayID? {
         (deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?

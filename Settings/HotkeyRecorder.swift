@@ -99,7 +99,7 @@ final class RecorderButton: NSButton {
             }
             return event
         }
-        // If the window loses focus while armed, stop — otherwise the next
+        // If the window loses focus while armed, stop. Otherwise the next
         // ⌘-combo anywhere in the app gets silently captured.
         blurObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didResignKeyNotification, object: window, queue: .main

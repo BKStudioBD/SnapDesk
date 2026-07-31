@@ -12,7 +12,7 @@ struct ClipboardMergeTests {
         ClipboardItem(kind: .text(s), date: Date(timeIntervalSince1970: 1_000_000 + offset))
     }
 
-    @Test("Oldest first — the order things were actually copied", .tags(.regression))
+    @Test("Oldest first. The order things were actually copied", .tags(.regression))
     func mergesInCopyOrder() {
         // Handed over newest-first, the way the window lists them.
         let rows = [text("C", at: 2), text("B", at: 1), text("A", at: 0)]

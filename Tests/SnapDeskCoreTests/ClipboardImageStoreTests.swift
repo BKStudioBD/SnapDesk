@@ -3,7 +3,7 @@ import AppKit
 import Foundation
 @testable import SnapDeskCore
 
-/// A clipboard image is whatever was on screen — a password manager, a banking
+/// A clipboard image is whatever was on screen: a password manager, a banking
 /// page, a private message. The text half of that promise was already pinned by
 /// `PersistSnapshotTests.pinnedOnlyModeWritesNoUnpinnedText`; the image half had no
 /// test at all, so deleting the `pinnedOnly` gate in `plan` would have started
@@ -24,7 +24,7 @@ struct ClipboardImageStorePlanTests {
         #expect(plan.count == 1)
         #expect(plan.first?.id == kept.id)
         #expect(plan.contains { $0.id == secret.id } == false,
-                "an unpinned screenshot must not be written at all — a crash never runs the quit path")
+                "an unpinned screenshot must not be written at all. A crash never runs the quit path")
     }
 
     @Test("Text rows are not images and never enter the plan")
@@ -46,14 +46,14 @@ struct ClipboardImageStorePlanTests {
           .tags(.regression))
     func pinnedFirstUnderTheBudget() {
         // Nine 4 MB items is 36 MB against a 32 MB directory budget, so something has
-        // to be dropped — and it must never be the starred one.
+        // to be dropped. And it must never be the starred one.
         let each = 4_000_000
         var items = (0..<8).map { _ in image(each) }
         let starred = image(each, pinned: true)
         items.append(starred)
         let plan = ClipboardImageStore.plan(items, pinnedOnly: false)
         #expect(plan.first?.id == starred.id, "pinned entries are planned first")
-        #expect(plan.count == 8, "got \(plan.count) — the 32 MB budget has to bite")
+        #expect(plan.count == 8, "got \(plan.count). The 32 MB budget has to bite")
         let total = plan.reduce(0) { $0 + $1.data.count }
         #expect(total <= ClipboardImageStore.byteBudget, "got \(total) bytes")
         #expect(plan.isEmpty == false, "the budget must not throw everything away")
@@ -106,7 +106,7 @@ struct ClipboardImageStoreDiskTests {
             #expect(mode(of: dir.path) == 0o700, "got \(String(describing: mode(of: dir.path)))")
             let file = store.url(for: a.id).path
             #expect(mode(of: file) == 0o600,
-                    "got \(String(describing: mode(of: file))) — Data.write uses the process umask")
+                    "got \(String(describing: mode(of: file))). Data.write uses the process umask")
         }
     }
 
@@ -126,7 +126,7 @@ struct ClipboardImageStoreDiskTests {
     @Test("An empty plan only deletes when the caller asks it to", .tags(.regression))
     func emptyPlanIsNotAutomaticallyDeleteEverything() throws {
         // An empty plan used to be routed to `removeAll()`, so "nothing to write"
-        // silently meant "delete every image the person has" — which is exactly what
+        // silently meant "delete every image the person has", which is exactly what
         // a plan built before the asynchronous image restore had merged its rows says.
         try withStore { store, dir in
             let a = entry(9)

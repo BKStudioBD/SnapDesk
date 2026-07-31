@@ -4,7 +4,7 @@ import CoreGraphics
 
 /// Crop / rotate / flip act on a picture the user is about to paste into a bug
 /// report, so a mirrored or resampled result is shipped before anyone notices.
-/// These build real CGImages with a different colour in every pixel — a transform
+/// These build real CGImages with a different colour in every pixel: a transform
 /// that transposes the wrong way round cannot coincidentally match.
 struct ImageTransformerTests {
 
@@ -27,7 +27,7 @@ struct ImageTransformerTests {
         return try #require(ctx.makeImage())
     }
 
-    /// RGBA bytes, row 0 first — the row order CGImage itself uses (top row first).
+    /// RGBA bytes, row 0 first. The row order CGImage itself uses (top row first).
     private func read(_ image: CGImage) throws -> [UInt8] {
         let w = image.width, h = image.height
         var buf = [UInt8](repeating: 0, count: w * h * 4)
@@ -57,7 +57,7 @@ struct ImageTransformerTests {
         }
     }
 
-    @Test("Rotating right moves the top-left pixel to the top-right — i.e. clockwise")
+    @Test("Rotating right moves the top-left pixel to the top-right, i.e. clockwise")
     func rotationGoesTheRightWay() throws {
         // The direction is the one thing a symmetry test can't catch, and a rotate
         // button that turns the wrong way is the whole feature being backwards.
@@ -110,7 +110,7 @@ struct ImageTransformerTests {
         #expect(flippedBack == original)
     }
 
-    @Test("Horizontal flips mirror columns and vertical ones mirror rows — not both")
+    @Test("Horizontal flips mirror columns and vertical ones mirror rows. Not both")
     func flipsMirrorOneAxisEach() throws {
         // Mirroring the wrong axis still round-trips, so the identity test above
         // can't tell the two apart on its own.

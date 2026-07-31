@@ -7,8 +7,8 @@ import AppKit
 /// Swift on Apple frameworks, no external dependencies" promise intact.
 ///
 /// PRIVACY: this is the ONLY code in the app that touches the network, and it is
-/// **off by default**. Nothing is sent — no identifiers, no telemetry, no version
-/// ping — it is a plain unauthenticated read of a public URL, and it only happens
+/// **off by default**. Nothing is sent, no identifiers, no telemetry, no version
+/// ping. It is a plain unauthenticated read of a public URL, and it only happens
 /// when the user turns automatic checks on or presses Check Now.
 ///
 /// SECURITY: a downloaded bundle is never trusted on the strength of the URL. It
@@ -16,9 +16,9 @@ import AppKit
 /// copy already running, or it is deleted and the update refused. Without (b) any
 /// validly-signed app could be swapped in. An ad-hoc signature names nobody, so a
 /// copy signed that way has no identity to hold a download to and refuses to
-/// self-update — saying that, rather than blaming the download.
+/// self-update: saying that, rather than blaming the download.
 enum Updater {
-    /// `owner/repo` — the only place releases are ever fetched from.
+    /// `owner/repo`. The only place releases are ever fetched from.
     static let repository = "BKStudioBD/SnapDesk"
     /// The one asset an update is ever installed from. A release can also carry
     /// dSYMs or a symbols archive, so "whichever .zip comes first" is a coin flip
@@ -33,16 +33,16 @@ enum Updater {
             case .noRelease:     "No published release found."
             case .noAsset:       "That release has no SnapDesk.zip to download."
             case .unpackFailed:  "The download couldn't be unpacked."
-            case .unsigned:      "The download isn't validly signed — refusing to install it."
-            case .wrongSigner:   "The download is signed by someone else — refusing to install it."
+            case .unsigned:      "The download isn't validly signed. Refusing to install it."
+            case .wrongSigner:   "The download is signed by someone else. Refusing to install it."
             case .replaceFailed: "Couldn't replace the installed app."
-            case .noIdentity:    "This copy of SnapDesk has no signing identity to check the download against — please install the update manually."
+            case .noIdentity:    "This copy of SnapDesk has no signing identity to check the download against. Please install the update manually."
             }
         }
     }
 
     struct Release {
-        let version: String        // "1.2.0" — the tag with any leading "v" removed
+        let version: String        // "1.2.0", the tag with any leading "v" removed
         let notes: String          // the release body, shown in What's New
         let zip: URL
     }
@@ -54,7 +54,7 @@ enum Updater {
     }
 
     /// True when `candidate` is a later version than `current`. Numeric,
-    /// component-wise — so "1.10.0" correctly beats "1.9.0", which a string
+    /// component-wise. So "1.10.0" correctly beats "1.9.0", which a string
     /// comparison gets backwards.
     static func isNewer(_ candidate: String, than current: String) -> Bool {
         func parts(_ s: String) -> [Int] {
@@ -101,7 +101,7 @@ enum Updater {
     }
 
     /// The app archive among a release's assets, matched by NAME rather than by
-    /// a `.zip` extension — a release that also ships dSYMs or a symbols archive
+    /// a `.zip` extension: a release that also ships dSYMs or a symbols archive
     /// would otherwise install whichever one GitHub happened to list first.
     static func appZipURL(in assets: [[String: Any]]) -> URL? {
         for asset in assets {
@@ -127,7 +127,7 @@ enum Updater {
             throw Err.network
         }
         // `download(from:)` hands back a temp file that is deleted when we return
-        // — move it somewhere we control first.
+        //: move it somewhere we control first.
         let work = FileManager.default.temporaryDirectory
             .appendingPathComponent("SnapDesk-update-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
@@ -139,8 +139,8 @@ enum Updater {
         // extended attributes, which an unzip that flattens them would break.
         //
         // Every Process below runs on the background queue. They are
-        // `waitUntilExit()` calls — an unzip and a `codesign --deep` over a
-        // whole bundle — and this function is @MainActor, so on the main thread
+        // `waitUntilExit()` calls: an unzip and a `codesign --deep` over a
+        // whole bundle. And this function is @MainActor, so on the main thread
         // they beachball the menu bar, the hotkeys and any live recording's
         // control bar for as long as they take.
         guard await BackgroundWork.run({ run("/usr/bin/ditto", ["-x", "-k", zip.path, work.path]) })
@@ -178,7 +178,7 @@ enum Updater {
     // MARK: - Shell helpers
 
     /// Run a tool, true on exit status 0. These are fixed absolute paths with
-    /// argument arrays — no shell, so nothing here can be injected into.
+    /// argument arrays, no shell, so nothing here can be injected into.
     private static func run(_ tool: String, _ arguments: [String]) -> Bool {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: tool)
@@ -192,7 +192,7 @@ enum Updater {
 
     /// How a bundle is signed, as `codesign -dv` reports it.
     enum Signer: Equatable {
-        /// A named signing identity — "Developer ID Application: …" or a local
+        /// A named signing identity: "Developer ID Application: …" or a local
         /// certificate. This is the only thing worth comparing.
         case authority(String)
         /// Signed with no identity at all. Anyone can produce one, so it proves
@@ -230,7 +230,7 @@ enum Updater {
         return adhoc ? .adhoc : nil
     }
 
-    /// Why a download may NOT replace the running copy — nil when it may.
+    /// Why a download may NOT replace the running copy: nil when it may.
     ///
     /// The test is identity, not mere validity: only the same authority that
     /// signed us gets to replace us. When we have no identity of our own there is

@@ -61,7 +61,7 @@ enum RecordingQuality: String, CaseIterable, Identifiable {
 }
 
 /// All user preferences, persisted to UserDefaults. Each property writes itself
-/// on change (`didSet`). Hotkey changes fire `onHotkeysChanged` — updates live.
+/// on change (`didSet`). Hotkey changes fire `onHotkeysChanged`: updates live.
 final class SettingsStore: ObservableObject {
     /// Injected so a test can hand in its own suite. Bound to
     /// `UserDefaults.standard` this was untestable in the only way that
@@ -73,14 +73,14 @@ final class SettingsStore: ObservableObject {
     var onHotkeysChanged: (() -> Void)?
     /// Actions that used to be menu-bar items and now live in Settings. They are
     /// closures rather than `NSApp.sendAction` because the coordinator is not in
-    /// the responder chain — a selector sent to nil never reaches it.
+    /// the responder chain: a selector sent to nil never reaches it.
     var onCheckForUpdates: (() -> Void)?
     var onShowWelcome: (() -> Void)?
-    /// When true, hotkey `didSet` skips the re-register callback — used to
+    /// When true, hotkey `didSet` skips the re-register callback: used to
     /// batch a multi-key change (e.g. reset-to-defaults) into one re-register
     /// instead of six.
     private var suppressHotkeyCallback = false
-    /// Transient nav state — which Settings section to show (deep-links Help).
+    /// Transient nav state, which Settings section to show (deep-links Help).
     @Published var selectedSection: String = "General"
 
     // MARK: Hotkeys (rebindable)
@@ -110,7 +110,7 @@ final class SettingsStore: ObservableObject {
     @Published var recordSystemAudio: Bool  { didSet { d.set(recordSystemAudio, forKey: "rec.audio") } }
     @Published var recordMic: Bool          { didSet { d.set(recordMic, forKey: "rec.mic") } }
     /// Apple Voice Processing on the mic: noise suppression + echo cancellation
-    /// + automatic gain. ON by default — a screen recording is a voice recording.
+    /// + automatic gain. ON by default: a screen recording is a voice recording.
     @Published var recordNoiseCancellation: Bool { didSet { d.set(recordNoiseCancellation, forKey: "rec.nc") } }
     /// AVCaptureDevice.uniqueID; "" = system default microphone.
     @Published var micDeviceID: String      { didSet { d.set(micDeviceID, forKey: "rec.micID") } }
@@ -146,16 +146,16 @@ final class SettingsStore: ObservableObject {
     // MARK: General
     @Published var launchAtLogin: Bool { didSet { applyLaunchAtLogin(launchAtLogin) } }
     /// Set while `applyLaunchAtLogin` is putting the switch back after a refused
-    /// registration — the correction writes `launchAtLogin`, whose `didSet` calls
+    /// registration. The correction writes `launchAtLogin`, whose `didSet` calls
     /// straight back in here.
     private var correctingLaunchAtLogin = false
     @Published var playSound: Bool { didSet { d.set(playSound, forKey: "shot.sound") } }
-    // Retired setting: SnapDesk ships exactly two sounds now — in (capture/copy)
-    // and out (paste) — so there is no sound to pick. Key dropped in `init`.
+    // Retired setting. SnapDesk ships exactly two sounds now: in (capture/copy)
+    // and out (paste). So there is no sound to pick. Key dropped in `init`.
     // Retired setting: the menu bar shows SnapDesk's one custom mark now, so
     // there is no style to pick. The old key is dropped in `init`.
     @Published var captureDelaySeconds: Int { didSet { d.set(captureDelaySeconds, forKey: "gen.delay") } }
-    /// Check GitHub Releases for a newer build on launch. **OFF by default** —
+    /// Check GitHub Releases for a newer build on launch. **OFF by default**:
     /// it is the only thing in SnapDesk that touches the network, so it stays a
     /// deliberate choice rather than something that happens to you.
     @Published var autoCheckUpdates: Bool { didSet { d.set(autoCheckUpdates, forKey: "gen.autoUpdate") } }
@@ -171,7 +171,7 @@ final class SettingsStore: ObservableObject {
     @Published var autoSaveEnabled: Bool        { didSet { d.set(autoSaveEnabled, forKey: "shot.autosave") } }
     @Published var autoSaveFolder: String       { didSet { d.set(autoSaveFolder, forKey: "shot.autodir") } }
     /// Cover the desktop icons with the wallpaper for the length of a capture.
-    /// Key is owned by `DesktopCover.settingKey` — it is read from there on the
+    /// Key is owned by `DesktopCover.settingKey`. It is read from there on the
     /// capture path, where there is no store instance to reach for.
     @Published var hideDesktopDuringCapture: Bool {
         didSet { d.set(hideDesktopDuringCapture, forKey: DesktopCover.settingKey) }
@@ -184,19 +184,19 @@ final class SettingsStore: ObservableObject {
     @Published var ocrNotify: Bool         { didSet { d.set(ocrNotify, forKey: "ocr.notify") } }
     /// "auto" or a BCP-47 code like "en-US".
     @Published var ocrLanguage: String     { didSet { d.set(ocrLanguage, forKey: "ocr.lang") } }
-    /// Which recognizer runs first — see `OCREngine`.
+    /// Which recognizer runs first: see `OCREngine`.
     @Published var ocrEngine: OCREngine    { didSet { d.set(ocrEngine.rawValue, forKey: "ocr.engine") } }
     /// Blank line between blocks the layout separates.
     @Published var ocrParagraphBreaks: Bool { didSet { d.set(ocrParagraphBreaks, forKey: "ocr.paras") } }
     /// Raw text the user typed: words to favour, one per line or comma-separated.
     /// Stored verbatim so the field round-trips exactly what they wrote.
     @Published var ocrCustomWordsText: String { didSet { d.set(ocrCustomWordsText, forKey: "ocr.words") } }
-    /// Language model off — identifiers survive instead of being "corrected".
+    /// Language model off: identifiers survive instead of being "corrected".
     @Published var ocrCodeMode: Bool       { didSet { d.set(ocrCodeMode, forKey: "ocr.code") } }
     /// Tab-separate columns when the layout really is a table.
     @Published var ocrTableMode: Bool      { didSet { d.set(ocrTableMode, forKey: "ocr.table") } }
 
-    // MARK: OCR text stack — session state, deliberately NOT persisted
+    // MARK: OCR text stack: session state, deliberately NOT persisted
     //
     // Several grabs collected into one clipboard payload. It lives here (not in
     // the coordinator) so Settings can own a real switch for it instead of a
@@ -230,7 +230,7 @@ final class SettingsStore: ObservableObject {
         onOCRStackChanged?()
     }
 
-    /// Empties the stack WITHOUT touching the clipboard — the collected text is
+    /// Empties the stack WITHOUT touching the clipboard. The collected text is
     /// the user's now, and wiping their clipboard from a "start over" control
     /// would be its own bug.
     func ocrStackClear() {
@@ -273,12 +273,12 @@ final class SettingsStore: ObservableObject {
     /// Bundle identifiers whose copies are never captured.
     @Published var ignoreApps: [String]       { didSet { d.set(ignoreApps, forKey: "clip.ignoreApps") } }
     // Retired setting: the two clicks now mean two different things, so there is
-    // nothing left to switch. One click pastes, two copy — see `ClipboardRow`.
+    // nothing left to switch. One click pastes, two copy: see `ClipboardRow`.
     // The old key is dropped in `init` so it can't linger in the plist.
     @Published var activateAfterPaste: Bool   { didSet { d.set(activateAfterPaste, forKey: "clip.actpaste") } }
 
     /// Available OCR languages (label, code), asked of Vision itself rather than
-    /// hardcoded — a newer macOS gains languages, and an older one must not be
+    /// hardcoded: a newer macOS gains languages, and an older one must not be
     /// offered ones it can't load. "auto" lets Vision detect the script.
     ///
     /// Lazy `static let`: the first read builds it once, when Settings opens.
@@ -334,8 +334,8 @@ final class SettingsStore: ObservableObject {
         cameraMirrored = d.object(forKey: "rec.camMirror") as? Bool ?? true
 
         playSound = d.object(forKey: "shot.sound") as? Bool ?? true
-        d.removeObject(forKey: "gen.soundName")   // retired — fixed in/out pair now
-        d.removeObject(forKey: "gen.iconStyle")   // retired — one custom mark now
+        d.removeObject(forKey: "gen.soundName")   // retired: fixed in/out pair now
+        d.removeObject(forKey: "gen.iconStyle")   // retired: one custom mark now
         captureDelaySeconds = d.object(forKey: "gen.delay") as? Int ?? 0
         autoCheckUpdates = d.object(forKey: "gen.autoUpdate") as? Bool ?? false
         lastUpdateCheck = d.object(forKey: "gen.lastUpdateCheck") as? Date
@@ -359,7 +359,7 @@ final class SettingsStore: ObservableObject {
         ocrCodeMode = d.object(forKey: "ocr.code") as? Bool ?? false
         ocrTableMode = d.object(forKey: "ocr.table") as? Bool ?? false
         // Retired setting: appending is now an explicit, visible mode (the text
-        // stack) that starts OFF every launch — never a silent preference that
+        // stack) that starts OFF every launch, never a silent preference that
         // glues a new grab onto whatever was on the clipboard before. Drop any
         // stored value so the old one can't linger in the plist.
         d.removeObject(forKey: "ocr.append")
@@ -383,7 +383,7 @@ final class SettingsStore: ObservableObject {
         autoDeleteHours = d.object(forKey: "clip.autodel") as? Int ?? 0
         ignoreUniversalClipboard = d.object(forKey: "clip.ignoreUC") as? Bool ?? false
         ignoreApps = d.stringArray(forKey: "clip.ignoreApps") ?? []
-        d.removeObject(forKey: "clip.dblpaste")   // retired — see the declaration above
+        d.removeObject(forKey: "clip.dblpaste")   // retired: see the declaration above
         activateAfterPaste = d.object(forKey: "clip.actpaste") as? Bool ?? true
 
         if #available(macOS 13.0, *) {
@@ -393,7 +393,7 @@ final class SettingsStore: ObservableObject {
         }
 
         // One-time migration: move people OFF the old Ctrl+Opt+letter defaults
-        // onto Control+1..4 — but ONLY where the binding is still that exact old
+        // onto Control+1..4. But ONLY where the binding is still that exact old
         // default. A binding the user changed themselves is theirs; overwriting
         // it (the old bug) silently threw away their choice.
         if d.object(forKey: "hk.defaultsV2") == nil {
@@ -419,7 +419,7 @@ final class SettingsStore: ObservableObject {
     ///
     /// Deliberately NOT done in `init`: the store is built before the app has
     /// been moved to /Applications, and SMAppService registers whatever path it
-    /// is asked from — so a downloaded build registered its Downloads or
+    /// is asked from. So a downloaded build registered its Downloads or
     /// translocated path, and the moved copy then found the flag already set and
     /// never registered at all. Off a stable path we register nothing and leave
     /// the flag alone, so the /Applications launch still gets its turn.
@@ -430,7 +430,7 @@ final class SettingsStore: ObservableObject {
     }
 
     /// Migrate one hotkey to a new default only if it still holds the old
-    /// default — a user-customized binding is left untouched.
+    /// default: a user-customized binding is left untouched.
     private func migrate(_ hk: inout Hotkey, _ key: String, oldDefault: Hotkey, newDefault: Hotkey) {
         guard hk == oldDefault else { return }
         hk = newDefault
@@ -440,7 +440,7 @@ final class SettingsStore: ObservableObject {
     // MARK: Presets
 
     /// Apply a named setup. Deliberately does NOT touch the things that are the
-    /// user's standing choice regardless of what they're recording — output
+    /// user's standing choice regardless of what they're recording: output
     /// folder, codec, quality, countdown, blur, noise cancellation.
     func apply(_ preset: RecordingPreset) {
         switch preset {
@@ -541,7 +541,7 @@ final class SettingsStore: ObservableObject {
             else if SMAppService.mainApp.status == .enabled { try SMAppService.mainApp.unregister() }
         } catch {
             // A refused registration used to leave the switch sitting ON with
-            // nothing registered — the user restarts, SnapDesk isn't there, and
+            // nothing registered. The user restarts, SnapDesk isn't there, and
             // Settings still claims it will be. Put the switch back where the
             // system actually is and say what happened. (`launchAtLogin`'s didSet
             // calls back in here, so re-entering with the same value would loop:

@@ -5,7 +5,7 @@ struct JunkKind: Sendable, Hashable {
     let directoryName: String
     let label: String
     let symbol: String
-    /// Ticked on sight. False for the ambiguous names — a folder called `build`
+    /// Ticked on sight. False for the ambiguous names: a folder called `build`
     /// or `dist` is a build product most of the time and somebody's source the
     /// rest of the time, and the cleaner never gambles with that difference.
     let safeToPreselect: Bool
@@ -17,8 +17,8 @@ struct JunkItem: Identifiable, Sendable, Hashable {
     let kind: JunkKind
     let size: UInt64
     /// A tool's home directory sitting straight under `~`, not a project's build
-    /// output: `~/.gradle`, `~/.venv`. Found and listed — it really is
-    /// reclaimable — but never pre-ticked, because `~/.gradle` also holds
+    /// output: `~/.gradle`, `~/.venv`. Found and listed. It really is
+    /// reclaimable. But never pre-ticked, because `~/.gradle` also holds
     /// `gradle.properties`, which is where signing passwords and registry
     /// tokens live precisely because it is NOT in the repo.
     var isGlobalHome: Bool = false
@@ -26,7 +26,7 @@ struct JunkItem: Identifiable, Sendable, Hashable {
 
     /// Whether the scan may tick this row for the user.
     var safeToPreselect: Bool { kind.safeToPreselect && !isGlobalHome }
-    /// "~/Dev/app" — the project the folder belongs to, which is what makes a
+    /// "~/Dev/app". The project the folder belongs to, which is what makes a
     /// row recognisable; the folder's own name is the same for hundreds of rows.
     var project: String {
         url.deletingLastPathComponent().path.replacingOccurrences(
@@ -56,7 +56,7 @@ enum JunkRules {
               symbol: "arrow.triangle.2.circlepath", safeToPreselect: true),
         .init(directoryName: ".gradle", label: "Gradle cache",
               symbol: "shippingbox", safeToPreselect: true),
-        // Ambiguous on purpose — found and listed, never pre-ticked.
+        // Ambiguous on purpose: found and listed, never pre-ticked.
         .init(directoryName: "build", label: "build folder",
               symbol: "questionmark.folder", safeToPreselect: false),
         .init(directoryName: "dist", label: "dist folder",
@@ -73,7 +73,7 @@ enum JunkRules {
 
     /// Extensions that make a directory ONE thing rather than a folder: an app,
     /// a framework, a plug-in. Their insides are shipped contents, not build
-    /// output — an Electron app carries a real `node_modules` under
+    /// output: an Electron app carries a real `node_modules` under
     /// `Contents/Resources/app`, and trashing it breaks that app for good, with
     /// nothing to rebuild it from.
     private static let packageExtensions: Set<String> = [
@@ -90,7 +90,7 @@ enum JunkRules {
     ///
     /// Every dotfile directory is skipped, which is what keeps a global cache
     /// like `~/.nvm` or `~/.npm` out of a scan that is supposed to be about
-    /// projects — the dot-named junk kinds are matched BEFORE this is asked, so
+    /// projects. The dot-named junk kinds are matched BEFORE this is asked, so
     /// `.build` and `.venv` are still found. Packages are skipped whole.
     /// `Library` and `Applications` belong to the Clean and Uninstall tabs, and
     /// following symlinks turns a walk into a loop.
@@ -101,7 +101,7 @@ enum JunkRules {
     }
 
     /// A dot-named match found directly inside a scan root is the TOOL's home,
-    /// not a project's build output — `~/.gradle` is Gradle itself, holding
+    /// not a project's build output: `~/.gradle` is Gradle itself, holding
     /// `gradle.properties` (signing passwords, registry tokens) beside the
     /// caches. Still listed and still removable; just never ticked for you.
     static func isGlobalHome(_ name: String, atDepth depth: Int) -> Bool {
@@ -132,7 +132,7 @@ enum ProjectJunkScanner {
             guard depth <= maxDepth else { continue }
             // No `.skipsPackageDescendants` here: that option exists for the
             // enumerator API and this walk is hand-rolled, so asking for it did
-            // nothing at all — the skip has to happen below, per child.
+            // nothing at all. The skip has to happen below, per child.
             guard let children = try? fm.contentsOfDirectory(
                 at: directory,
                 includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey, .isPackageKey])
@@ -149,7 +149,7 @@ enum ProjectJunkScanner {
                     found.append(JunkItem(url: child, kind: kind,
                                           size: CacheCleaner.size(ofItemAt: child),
                                           isGlobalHome: JunkRules.isGlobalHome(name, atDepth: depth)))
-                    continue                      // matched — do not descend into it
+                    continue                      // matched, so do not descend into it
                 }
                 // A package is asked of the file system as well as of the name:
                 // the name rule covers the extensions, the resource value covers
@@ -164,7 +164,7 @@ enum ProjectJunkScanner {
 
     /// Off the main actor, so a scan of a big home directory never holds up the
     /// window it is drawing into. It runs on a dispatch queue rather than a
-    /// detached task because the walk BLOCKS — see `BackgroundWork`.
+    /// detached task because the walk BLOCKS: see `BackgroundWork`.
     static func scanInBackground() async -> [JunkItem] {
         await BackgroundWork.run { scan() }
     }
@@ -176,7 +176,7 @@ enum ProjectJunkScanner {
         return [home]
     }
 
-    /// Move the given folders to the Trash — reversible, like every other
+    /// Move the given folders to the Trash: reversible, like every other
     /// destructive action in SnapDesk. Returns the bytes recovered.
     @discardableResult
     static func trash(_ items: [JunkItem]) -> UInt64 {
@@ -191,7 +191,7 @@ enum ProjectJunkScanner {
                 try FileManager.default.trashItem(at: item.url, resultingItemURL: nil)
                 freed += item.size
             } catch {
-                // Already gone, or in use — skip it.
+                // Already gone, or in use: skip it.
             }
         }
         return freed

@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Build folders that can be rebuilt from source — `node_modules`, DerivedData,
-/// `.build`, Pods and friends — found across the whole home directory.
+/// Build folders that can be rebuilt from source (`node_modules`, DerivedData,
+/// `.build`, Pods and friends), found across the whole home directory.
 ///
 /// Everything here goes to the Trash rather than being deleted, because a wrong
 /// guess about somebody's `build` folder has to be undoable. State lives in
@@ -17,8 +17,8 @@ struct DeveloperTab: View {
                               hasRows: !model.items.isEmpty,
                               allSelected: model.allSelected) { selectAll in
                 // Select All arms only what the scan was willing to tick itself.
-                // The rest — a `build` folder that might be somebody's source,
-                // `~/.gradle` with its signing passwords — stays for the person
+                // The rest (a `build` folder that might be somebody's source,
+                // `~/.gradle` with its signing passwords) stays for the person
                 // to choose one row at a time.
                 model.selected = selectAll
                     ? Set(model.items.filter(\.safeToPreselect).map(\.id))

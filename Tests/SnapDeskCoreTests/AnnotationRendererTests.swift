@@ -7,7 +7,7 @@ import AppKit
 ///
 /// The blur mapping is the one that matters. Blur exists to hide a password or a
 /// balance before a screenshot is shared, and it does its point→pixel maths in
-/// its own copy of the arithmetic `ImageTransformer` uses for crops — so if the
+/// its own copy of the arithmetic `ImageTransformer` uses for crops. So if the
 /// two ever drift, the redaction covers the wrong strip and nothing says so.
 struct AnnotationRendererTests {
 
@@ -48,7 +48,7 @@ struct AnnotationRendererTests {
                       CGRect(x: 0, y: 0, width: 30, height: 30),
                       CGRect(x: 55, y: 18, width: 44, height: 31)])
     func blurAgreesWithTheCropMapping(_ pointRect: CGRect) throws {
-        // A 2× backing store shown in a 100×50 point view — the Retina case,
+        // A 2× backing store shown in a 100×50 point view. The Retina case,
         // where a y-flip mistake is a whole-image mirror rather than a nudge.
         let cg = try image(width: 200, height: 100)
         let display = CGRect(x: 0, y: 0, width: 100, height: 50)
@@ -68,7 +68,7 @@ struct AnnotationRendererTests {
     @Test("An offset display rect shifts the blur by the same amount as a crop")
     func blurHonoursAnOffsetDisplayRect() throws {
         let cg = try image(width: 200, height: 200)
-        // The image no longer fills the view — what happens after a crop.
+        // The image no longer fills the view: what happens after a crop.
         let display = CGRect(x: 20, y: 30, width: 100, height: 100)
         let pointRect = CGRect(x: 40, y: 60, width: 30, height: 25)
 
@@ -93,7 +93,7 @@ struct AnnotationRendererTests {
 
     // MARK: - Encoding
 
-    @Test("PNG comes back as a PNG, JPEG as a JPEG — the extension is not the format")
+    @Test("PNG comes back as a PNG, JPEG as a JPEG. The extension is not the format")
     func encodesTheRequestedFormat() throws {
         let cg = try image(width: 64, height: 64)
         let png = try #require(AnnotationRenderer.encode(cg, format: .png, quality: 1))

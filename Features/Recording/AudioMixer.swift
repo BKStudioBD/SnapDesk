@@ -6,7 +6,7 @@ import CoreMedia
 /// Two audio tracks in a .mov play fine in QuickTime and almost nowhere else:
 /// web players (YouTube, Vimeo, Slack, Discord) and most editors take only the
 /// FIRST audio track, so a tutorial recorded with narration shipped with either
-/// the voice or the app audio missing — silently, with the recorder finding out
+/// the voice or the app audio missing: silently, with the recorder finding out
 /// from a viewer. Everything therefore lands in a single track, mixed here.
 ///
 /// The two sources are independent: different sample rates, different channel
@@ -16,13 +16,13 @@ import CoreMedia
 ///  * Both are converted to **48 kHz Float32 non-interleaved**. 48 kHz because
 ///    that is what ScreenCaptureKit delivers and what the voice-processing mic
 ///    path already targets, so the usual case resamples nothing. Float32 because
-///    the sum of two full-scale sources needs headroom Int16 does not have — the
+///    the sum of two full-scale sources needs headroom Int16 does not have. The
 ///    sum is limited once, at the end, instead of wrapping mid-pipeline.
 ///    Channel counts are left alone by the converter and folded to stereo while
 ///    summing: AVAudioConverter's channel-count behaviour varies by format, and
 ///    a fold we own is a fold we can test.
 ///  * Samples are summed into a one-second ring keyed by absolute frame index on
-///    ONE clock — the first sample's PTS is the epoch. A source's jitter then
+///    ONE clock. The first sample's PTS is the epoch. A source's jitter then
 ///    moves only WHERE its audio lands, never when the mix advances. Within ONE
 ///    source, though, consecutive buffers are butt-spliced instead (see
 ///    `nextIndex`): summing is right for two DIFFERENT sources and wrong for two
@@ -48,7 +48,7 @@ final class AudioMixer {
     /// One mixed chunk and its presentation time, on the input clock (the caller
     /// applies any pause offset). Fires on the mixer's queue.
     var onChunk: ((AVAudioPCMBuffer, CMTime) -> Void)?
-    /// Input level per source, about 20× a second. Fires on the mixer's queue —
+    /// Input level per source, about 20× a second. Fires on the mixer's queue;
     /// the consumer hops to the main thread itself.
     var onLevel: ((Source, AudioLevel) -> Void)?
 
@@ -56,7 +56,7 @@ final class AudioMixer {
     /// loses almost nothing, large enough not to hand the AAC encoder crumbs.
     private let chunkFrames = 1024
     /// How far behind the furthest-ahead source a chunk is held before it counts
-    /// as final. 2048 frames ≈ 43 ms — two chunks of slack, which covers the
+    /// as final. 2048 frames ≈ 43 ms, two chunks of slack, which covers the
     /// jitter between the ScreenCaptureKit audio callback and the voice-processing
     /// tap, so a late source still lands in its own slot instead of being dropped
     /// as history.
@@ -81,7 +81,7 @@ final class AudioMixer {
     /// recording, and every resume (the paused span is not silence to write).
     private var needsAnchor = true
     /// The mixer's own monotonicity guard. One track now, so one clock and one
-    /// last-PTS — a regressive PTS flips AVAssetWriter to `.failed` and loses the
+    /// last-PTS: a regressive PTS flips AVAssetWriter to `.failed` and loses the
     /// whole recording.
     private var lastEmittedPTS: CMTime?
 
@@ -89,13 +89,13 @@ final class AudioMixer {
     /// butts up against it.
     ///
     /// Placement from PTS alone plus an unconditional `+=` is right for two
-    /// DIFFERENT sources — that is the mix — but it also makes two CONSECUTIVE
+    /// DIFFERENT sources, that is the mix, but it also makes two CONSECUTIVE
     /// buffers of the SAME source sum into each other whenever the PTS spacing
     /// disagrees with the frame counts. It always does: a PTS rounded to the 48 kHz
     /// grid is up to half a frame out, a device clock a routine 100 ppm off the host
     /// clock drifts ~5 frames a second, and a resampled 44.1 kHz buffer is 1114.29
     /// frames "wide" whichever integer the converter hands back. The overlapping
-    /// samples were counted twice (+6 dB) and the missed slots drained as zeros —
+    /// samples were counted twice (+6 dB) and the missed slots drained as zeros:
     /// several single-sample ticks a second, heard as a faint continuous crackle on
     /// the drifting source while the other one stayed clean.
     private var nextIndex: [Source: Int] = [:]
@@ -103,8 +103,8 @@ final class AudioMixer {
     /// before it counts as a real jump rather than rounding or clock drift. 96
     /// frames = 2 ms at 48 kHz: small enough that a genuine gap or seek still lands
     /// on its own timestamp, large enough to absorb every rounding artefact. Drift
-    /// that eventually crosses it re-snaps to the true timeline once — one 2 ms
-    /// artefact a minute or so instead of a tick every few buffers — which also
+    /// that eventually crosses it re-snaps to the true timeline once, one 2 ms
+    /// artefact a minute or so instead of a tick every few buffers, which also
     /// stops the splice from letting a drifting source walk away from the picture.
     private let spliceTolerance = 96
 
@@ -139,7 +139,7 @@ final class AudioMixer {
 
     /// Emit everything whole that is buffered, without waiting for the jitter
     /// slack. Called when capture has ended: nothing more can arrive to fill those
-    /// slots, so holding them back would just drop the last ~64 ms of audio — the
+    /// slots, so holding them back would just drop the last ~64 ms of audio. The
     /// end of the sentence the user was still speaking when they hit Stop.
     func flush() {
         guard let epoch else { return }
@@ -151,7 +151,7 @@ final class AudioMixer {
 
     /// Throw away what is buffered and let the next sample pick a new write
     /// cursor. Called on resume: nothing was fed while paused, so that span is
-    /// not silence the movie should carry — it is time the movie cuts out. The
+    /// not silence the movie should carry. It is time the movie cuts out. The
     /// first source to arrive afterwards anchors, so the other one may lose the
     /// few milliseconds it was ahead by; that beats writing a wall of silence and
     /// then having every real chunk rejected as non-monotonic.
@@ -197,7 +197,7 @@ final class AudioMixer {
         }
 
         // Butt this buffer against its source's previous one when the PTS agrees to
-        // within the tolerance — see `nextIndex`. Deliberately AFTER the
+        // within the tolerance: see `nextIndex`. Deliberately AFTER the
         // discontinuity check, which must judge the real timestamp, and before the
         // history/clamp arithmetic below, which is about the mix as a whole.
         if let expected = nextIndex[source], abs(index - expected) <= spliceTolerance {
@@ -266,7 +266,7 @@ final class AudioMixer {
         onChunk?(out, pts)
     }
 
-    /// Copy one chunk out through the limiter, zeroing the slots as it goes —
+    /// Copy one chunk out through the limiter, zeroing the slots as it goes;
     /// they are reused a ring-length later.
     private func drain(_ ring: inout [Float], from start: Int,
                        into destination: UnsafeMutablePointer<Float>) {
@@ -291,7 +291,7 @@ final class AudioMixer {
     // MARK: - Gain and limiting
 
     /// Headroom given to each source on the way in. Two full-scale signals summed
-    /// raw reach 2.0 and, written as PCM, wrap into a square wave — the harshest
+    /// raw reach 2.0 and, written as PCM, wrap into a square wave. The harshest
     /// artefact there is. At 0.8 a lone source loses about 1.9 dB and is otherwise
     /// bit-for-bit untouched, which is the trade worth making: nobody notices two
     /// decibels, everybody notices tearing.
@@ -387,7 +387,7 @@ final class AudioMixer {
 
         func converted(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
             let format = buffer.format
-            // ScreenCaptureKit already delivers exactly this — don't pay for a
+            // ScreenCaptureKit already delivers exactly this: don't pay for a
             // converter that would copy the samples unchanged.
             if format.sampleRate == AudioMixer.canonical.sampleRate,
                format.commonFormat == .pcmFormatFloat32, !format.isInterleaved {

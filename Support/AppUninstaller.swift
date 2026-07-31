@@ -14,7 +14,7 @@ enum UninstallMatch {
         // The whole name, extension included: stripping it first would turn
         // `org.mozilla.firefox` into a two-part `org.mozilla` and stop treating
         // it as an identifier at all. A space is the giveaway that it isn't one
-        // — "Slack Helper.app.plist" has three dotted parts and is still a
+        //: "Slack Helper.app.plist" has three dotted parts and is still a
         // plain filename.
         guard !name.contains(" ") else { return false }
         let parts = name.split(separator: ".", omittingEmptySubsequences: false)
@@ -31,7 +31,7 @@ enum UninstallMatch {
         let rest = haystack[range.upperBound...]
         guard let next = rest.first else { return true }
         // A DOT is not a boundary. `com.google.Chrome.canary` is Chrome Canary's
-        // own identifier — a separate product, still installed, whose prefs,
+        // own identifier: a separate product, still installed, whose prefs,
         // cookies and saved state were arriving here pre-ticked. Past the id only
         // a file-type suffix may follow; a word that isn't one is more identifier.
         guard next == "." else { return !next.isLetter && !next.isNumber }
@@ -66,7 +66,7 @@ enum UninstallMatch {
     }
 
     /// Words worth searching for: the app's name and the parts of its bundle id.
-    /// Short fragments are dropped — "com", "app" and "for" match everything.
+    /// Short fragments are dropped: "com", "app" and "for" match everything.
     static func tokens(appName: String, bundleID: String) -> [String] {
         let fromName = appName.components(separatedBy: CharacterSet.alphanumerics.inverted)
         let fromID = bundleID.components(separatedBy: ".")
@@ -89,7 +89,7 @@ enum UninstallMatch {
         // A different token is not enough: "Chrome Canary" and "Chrome Beta"
         // both match on `chrome` while being SEPARATE products, still installed,
         // whose profiles hold their own bookmarks and logins. Every word of the
-        // folder has to belong to the app being removed — an extra word means
+        // folder has to belong to the app being removed: an extra word means
         // an extra product. This under-removes the odd genuine leftover
         // ("Slack Helper"), which is the side to err on.
         let words = child.components(separatedBy: CharacterSet.alphanumerics.inverted)
@@ -99,7 +99,7 @@ enum UninstallMatch {
     }
 }
 
-/// Removes an app and everything it left around the system — support files,
+/// Removes an app and everything it left around the system: support files,
 /// caches, preferences, launch agents, containers, logs.
 ///
 /// Everything is moved to the Trash, so an uninstall stays reversible until the
@@ -113,7 +113,7 @@ enum AppUninstaller {
         let url: URL
         let bundleID: String
         /// Fetched ONCE during the scan. As a computed property this asked
-        /// NSWorkspace for the icon on every row redraw — a disk-backed lookup
+        /// NSWorkspace for the icon on every row redraw: a disk-backed lookup
         /// inside a list that redraws on every keystroke in the search field.
         let icon: NSImage
 
@@ -165,14 +165,14 @@ enum AppUninstaller {
 
     /// Off the main actor: reading every bundle's Info.plist and icon is disk
     /// work, and it used to run while the window was drawing its first frame.
-    /// On a queue, not a detached task — the reads block, and blocking a
+    /// On a queue, not a detached task. The reads block, and blocking a
     /// cooperative-pool thread is what `BackgroundWork` exists to avoid.
     static func installedAppsInBackground() async -> [App] {
         await BackgroundWork.run { installedApps() }
     }
 
     /// Where leftovers hide. The `/Library` entries are admin-owned and a trash
-    /// attempt there may simply fail — that is reported honestly rather than
+    /// attempt there may simply fail. That is reported honestly rather than
     /// hidden.
     private static func leftoverDirectories() -> (user: [URL], system: [URL]) {
         let library = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library")
@@ -207,7 +207,7 @@ enum AppUninstaller {
             let nested = last == "Application Support" || last == "Caches"
             for child in children {
                 let name = child.lastPathComponent
-                // The word-boundary name rule is right for FILES — "Slack
+                // The word-boundary name rule is right for FILES: "Slack
                 // Helper.plist" belongs to Slack. It is wrong for DIRECTORIES:
                 // "Notion Calendar" is a separate app that is still installed,
                 // and its folder is that app's whole account state. A directory
@@ -259,7 +259,7 @@ enum AppUninstaller {
     }
 
     /// Ask the app to quit, then insist. A running bundle cannot be trashed, and
-    /// the person has already said they want this app gone — but the polite
+    /// the person has already said they want this app gone. But the polite
     /// request comes first, so an app with unsaved work gets its own chance to
     /// save.
     /// Returns whether the app is now gone. It is never killed: `terminate()`

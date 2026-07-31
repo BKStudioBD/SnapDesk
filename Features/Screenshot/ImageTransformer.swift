@@ -50,7 +50,7 @@ enum ImageTransformer {
     // MARK: - Transforms
 
     /// Crop to a pixel rect. Returns nil rather than the untouched image when the
-    /// rect is empty, inverted or outside the bitmap — a silently ignored crop
+    /// rect is empty, inverted or outside the bitmap: a silently ignored crop
     /// reads as a broken button.
     static func cropped(_ image: CGImage, toPixelRect rect: CGRect) -> CGImage? {
         guard rect.isNull == false, rect.isInfinite == false else { return nil }

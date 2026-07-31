@@ -31,17 +31,17 @@ final class FrameDecorator: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     private var keyTime: CFTimeInterval = 0
     private var keyImage: CIImage?
     private var cameraBuffer: CVPixelBuffer?
-    /// The webcam-bubble circle mask depends only on the frame size — build it
+    /// The webcam-bubble circle mask depends only on the frame size: build it
     /// once per recording, not on every frame (a CIFilter alloc per frame).
     private var camMask: CIImage?
     private var camMaskSize: CGSize = .zero
 
     private var monitors: [Any] = []
-    /// Camera session/device notification tokens. Removed in `stop()` — an
+    /// Camera session/device notification tokens. Removed in `stop()`: an
     /// observer left behind outlives the recording it belongs to.
     private var observers: [NSObjectProtocol] = []
     private var camSession: AVCaptureSession?
-    /// The running camera feed, for the live on-screen preview bubble — nil
+    /// The running camera feed, for the live on-screen preview bubble: nil
     /// when the camera effect is off or the device couldn't be opened.
     var liveCameraSession: AVCaptureSession? { camSession }
     private let camControlQueue = DispatchQueue(label: "com.snapdesk.camera.control")
@@ -51,7 +51,7 @@ final class FrameDecorator: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     /// Main-thread only: `start()`, the first-frame watchdog and both observers
     /// all run there, so one plain flag keeps this to a single message.
     private var reportedCameraProblem = false
-    /// Lock-guarded like `cameraBuffer` — written on the camera queue, read by
+    /// Lock-guarded like `cameraBuffer`: written on the camera queue, read by
     /// the watchdog on main.
     private var sawCameraFrame = false
     /// How long an opened camera may stay silent before we say so. Long enough
@@ -91,7 +91,7 @@ final class FrameDecorator: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         }
         if config.keystrokes {
             // A GLOBAL keyDown monitor delivers nothing unless SnapDesk has
-            // Accessibility (Input Monitoring) trust — the overlay would just
+            // Accessibility (Input Monitoring) trust. The overlay would just
             // stay blank with no hint why. Tell the user instead of silently
             // recording no keystrokes.
             if !Permissions.hasAccessibility {
@@ -180,7 +180,7 @@ final class FrameDecorator: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         camControlQueue.async { session.startRunning() }
         camSession = session
         // A session that opens and then delivers nothing is its own failure mode
-        // — a sleeping Continuity Camera, a virtual camera whose app isn't
+        //: a sleeping Continuity Camera, a virtual camera whose app isn't
         // running. Without this it is indistinguishable from a broken app.
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.firstFrameGrace) { [weak self] in
             guard let self, self.camSession != nil else { return }   // stopped meanwhile
@@ -220,7 +220,7 @@ final class FrameDecorator: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         acceptCameraFrame(pb)
     }
 
-    /// The one door camera frames come in by — the delegate callback above, or a
+    /// The one door camera frames come in by. The delegate callback above, or a
     /// test handing over a synthetic frame so the bubble can be rendered and
     /// measured without a camera or a permission prompt.
     func acceptCameraFrame(_ pb: CVPixelBuffer) {
@@ -249,7 +249,7 @@ final class FrameDecorator: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
                 let ringScale = (0.35 + t * 0.9)                     // grows
                 let alpha = (1 - t) * 0.85                            // fades
                 // Include the display scale like the cursor and keystroke layers
-                // do — `c.pos` is already in pixels, so without it the ring drew
+                // do: `c.pos` is already in pixels, so without it the ring drew
                 // at half its intended size on a Retina display.
                 let draw = ringScale * scale
                 let size = 120 * draw

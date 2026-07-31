@@ -3,7 +3,7 @@ import AppKit
 @testable import SnapDeskCore
 
 /// Table mode and code mode both reshape what the user pastes, so the risk isn't
-/// "it doesn't work" — it's that they fire when they shouldn't and mangle plain
+/// "it doesn't work": it's that they fire when they shouldn't and mangle plain
 /// text. These render real layouts and run the real recognizer.
 ///
 /// Serialized: each test drives Vision, and running several `.accurate` passes at
@@ -63,7 +63,7 @@ struct OCRLayoutTests {
     func keepsMultiWordCellsTogether() async throws {
         // Two gaps per row (one word space, one column). The first implementation
         // took the MEDIAN gap as "normal spacing", and the median of two is the
-        // larger — so the threshold inflated and nothing ever split.
+        // larger. So the threshold inflated and nothing ever split.
         let image = try render([
             ("Region", 24, 170), ("Total revenue", 240, 170),
             ("North America", 24, 130), ("1 240", 240, 130),
@@ -95,7 +95,7 @@ struct OCRLayoutTests {
         #expect(text.contains("--no-cache"), "got: \(text)")
         // What code mode actually guarantees: the language model doesn't SPLIT
         // camelCase into English words. It cannot fix a glyph confusion such as
-        // capital-I vs lowercase-l — nothing can, from the shape alone.
+        // capital-I vs lowercase-l: nothing can, from the shape alone.
         #expect(text.contains("get User") == false, "got: \(text)")
     }
 

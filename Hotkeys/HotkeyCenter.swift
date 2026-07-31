@@ -102,13 +102,13 @@ final class HotkeyCenter {
                                          GetApplicationEventTarget(), 0, &ref)
         guard status == noErr, let ref else {
             NSLog("SnapDesk: failed to register hotkey \(hotkey.displayString) (status \(status))")
-            // Silent failure looked like the app was broken — tell the user the
+            // Silent failure looked like the app was broken: tell the user the
             // combo is owned by another app so they rebind it. But hotkeys are
             // re-registered on every rebind and every recorder-arm cycle, so warn
-            // only the FIRST time a given combo fails — not on every cycle.
+            // only the FIRST time a given combo fails, not on every cycle.
             if notifiedFailures.insert(hotkey.displayString).inserted {
                 Notifier.error("Shortcut unavailable",
-                               "\(hotkey.displayString) is used by another app — pick a different combo in Settings → Shortcuts.")
+                               "\(hotkey.displayString) is used by another app. Pick a different combo in Settings → Shortcuts.")
             }
             return 0
         }
@@ -155,7 +155,7 @@ final class HotkeyCenter {
                               MemoryLayout<EventHotKeyID>.size, nil, &hkID)
             let center = Unmanaged<HotkeyCenter>.fromOpaque(userData).takeUnretainedValue()
             // .common modes: GCD main-queue blocks do NOT drain while a menu is
-            // open (event-tracking mode) — a hotkey pressed with the status-bar
+            // open (event-tracking mode): a hotkey pressed with the status-bar
             // menu up was silently deferred until the menu closed.
             RunLoop.main.perform(inModes: [.common]) { center.handle(id: hkID.id) }
             return noErr

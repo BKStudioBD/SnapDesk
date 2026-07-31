@@ -7,7 +7,7 @@ import Darwin
 /// A plain value, so the sampling code has no state a view can see half-written
 /// and the health arithmetic can be tested without a machine under load.
 struct SystemSample: Sendable, Equatable {
-    /// 0…1 — the share of processor time that was NOT idle since the last sample.
+    /// 0…1. The share of processor time that was NOT idle since the last sample.
     var cpuBusy: Double = 0
     var memoryUsed: UInt64 = 0
     var memoryTotal: UInt64 = 0
@@ -20,7 +20,7 @@ struct SystemSample: Sendable, Equatable {
     var memoryFree: UInt64 { memoryTotal > memoryUsed ? memoryTotal - memoryUsed : 0 }
 
     /// 0…100. Free memory counts most because it is what the cleaner can move,
-    /// then free disk, then an idle processor — a busy CPU is usually the user's
+    /// then free disk, then an idle processor: a busy CPU is usually the user's
     /// own work and not something to fix.
     var health: Int {
         func fraction(_ part: UInt64, _ whole: UInt64) -> Double {
@@ -44,7 +44,7 @@ struct SystemCounters: Sendable, Equatable {
 }
 
 /// Reads the machine's vital signs. Every call is a syscall measured in
-/// microseconds, so there is no background queue here — the cost of hopping
+/// microseconds, so there is no background queue here. The cost of hopping
 /// threads would exceed the cost of the read.
 enum SystemStats {
 
@@ -99,7 +99,7 @@ enum SystemStats {
     // MARK: - Disk
 
     /// Free and total bytes on the boot volume. "Important usage" is the figure
-    /// Finder shows — it counts purgeable space the system would reclaim for a
+    /// Finder shows. It counts purgeable space the system would reclaim for a
     /// real write, which a raw `volumeAvailableCapacity` does not.
     ///
     /// The one reading in here that is NOT microseconds: totting up purgeable
@@ -117,7 +117,7 @@ enum SystemStats {
 
     /// The same reading off the main actor. It blocks on the volume rather than
     /// suspending, which is a dispatch queue's job and not the cooperative
-    /// pool's — see `BackgroundWork`.
+    /// pool's: see `BackgroundWork`.
     static func diskInBackground() async -> (free: UInt64, total: UInt64) {
         await BackgroundWork.run { disk() }
     }
@@ -157,7 +157,7 @@ enum SystemStats {
                               timestamp: ProcessInfo.processInfo.systemUptime)
     }
 
-    /// Turn two counter readings into a sample. Pure arithmetic — the rate math
+    /// Turn two counter readings into a sample. Pure arithmetic. The rate math
     /// (including a counter that wrapped or a machine that woke from sleep) is
     /// tested without touching the kernel.
     static func sample(from previous: SystemCounters, to current: SystemCounters,
@@ -189,7 +189,7 @@ enum SystemStats {
         return out
     }
 
-    /// "1.2 GB" — the Finder-style figure, used everywhere in the cleaner so a
+    /// "1.2 GB". The Finder-style figure, used everywhere in the cleaner so a
     /// size never reads differently in two places.
     static func format(_ bytes: UInt64) -> String {
         ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)

@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-/// SwiftUI wrapper around NSVisualEffectView — the same vibrancy "glass" the
+/// SwiftUI wrapper around NSVisualEffectView. The same vibrancy "glass" the
 /// capture editor uses, so every window shares one look. Default = behind-window
 /// HUD glass (dark, high-contrast).
 

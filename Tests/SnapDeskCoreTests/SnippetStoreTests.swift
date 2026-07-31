@@ -6,7 +6,7 @@ import Foundation
 /// the ones that matter: a reorder that lands on the wrong index, and a budget that
 /// silently drops entries.
 ///
-/// Storage is injected, so nothing here touches the real defaults domain — a test
+/// Storage is injected, so nothing here touches the real defaults domain: a test
 /// must not leave anything in the plist of the person running the suite.
 struct SnippetStoreTests {
 
@@ -112,13 +112,13 @@ struct SnippetStoreTests {
         let items = (0..<24).map { Snippet(title: "row \($0)", body: body) }
         let out = SnippetStore.withinBudget(items)
         #expect(out.isEmpty == false, "the budget must not throw everything away")
-        #expect(out.count < items.count, "got \(out.count) — the budget has to bite")
+        #expect(out.count < items.count, "got \(out.count). The budget has to bite")
         #expect(out.first?.title == "row 0", "the newest are what the person is working with")
     }
 
     // MARK: - Titles
 
-    @Test("A nameless snippet takes its name from the body — a blank row is unfindable")
+    @Test("A nameless snippet takes its name from the body. A blank row is unfindable")
     func derivesATitle() {
         #expect(Snippet(title: "   ", body: "\n\n  hello there\nmore").title == "hello there")
         #expect(Snippet(title: "", body: "   \n  ").title == Snippet.untitled)

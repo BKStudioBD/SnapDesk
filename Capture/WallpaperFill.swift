@@ -28,11 +28,11 @@ enum WallpaperFill {
     /// screen uncovered.
     ///
     /// `scalingRawValue` is `.imageScaling` as stored; nil means the desktop
-    /// reported no scaling at all, where macOS's own default — Fill Screen —
+    /// reported no scaling at all, where macOS's own default of Fill Screen
     /// applies. Answering "fill" for every mode that wasn't Fit was wrong for three
     /// of the five wallpaper positions: Center and Tile blew a small picture up to
     /// full screen, and Stretch came back aspect-correct and cropped. The magnified
-    /// blow-up is the visible one — a Centre wallpaper turned the covered desktop
+    /// blow-up is the visible one: a Centre wallpaper turned the covered desktop
     /// into a huge blurry crop of itself, in the shot as well as on screen.
     static func layout(scalingRawValue: UInt?, allowsClipping: Bool) -> Layout? {
         guard let scalingRawValue else { return .fill }
@@ -43,8 +43,8 @@ enum WallpaperFill {
         case .scaleProportionallyUpOrDown: return allowsClipping ? .fill : .fit
         case .scaleAxesIndependently:      return .stretch
         // "Center" and "Tile" are BOTH `.scaleNone`, and NSWorkspace exposes no key
-        // that tells them apart. Centring a tiled desktop — or tiling a centred one
-        // — puts pixels in the file that were never on the screen, so this screen
+        // that tells them apart. Centring a tiled desktop, or tiling a centred one,
+        // puts pixels in the file that were never on the screen, so this screen
         // goes uncovered, the same answer this file already gives for a wallpaper it
         // cannot read at all.
         case .scaleNone: return nil
@@ -65,14 +65,14 @@ enum WallpaperFill {
         }
     }
 
-    /// Smallest rect that COVERS `bounds` at the image's aspect ratio, centred —
+    /// Smallest rect that COVERS `bounds` at the image's aspect ratio, centred:
     /// what "Fill Screen" does. The overflow is the caller's to clip.
     static func aspectFillRect(imageSize: CGSize, in bounds: CGRect) -> CGRect {
         scaled(imageSize, in: bounds, by: max)
     }
 
     /// Largest rect that FITS inside `bounds` at the image's aspect ratio,
-    /// centred — "Fit to Screen". What's left over shows the desktop's own fill
+    /// centred: "Fit to Screen". What's left over shows the desktop's own fill
     /// colour, exactly as the real desktop does.
     static func aspectFitRect(imageSize: CGSize, in bounds: CGRect) -> CGRect {
         scaled(imageSize, in: bounds, by: min)
@@ -103,7 +103,7 @@ enum WallpaperFill {
         }
         guard drawn else { return nil }
 
-        // Buffer is BGRA (byteOrder32Little + premultipliedFirst) — the same
+        // Buffer is BGRA (byteOrder32Little + premultipliedFirst). The same
         // layout, and the same easy-to-get-wrong channel order, as
         // CaptureService.looksBlank.
         var b = 0, g = 0, r = 0
@@ -117,7 +117,7 @@ enum WallpaperFill {
 
     private static func scaled(_ imageSize: CGSize, in bounds: CGRect,
                                by pick: (CGFloat, CGFloat) -> CGFloat) -> CGRect {
-        // A zero dimension means "we don't know how big it is" — hand back the
+        // A zero dimension means "we don't know how big it is": hand back the
         // bounds so the caller still paints something the right shape.
         guard imageSize.width > 0, imageSize.height > 0,
               bounds.width > 0, bounds.height > 0 else { return bounds }

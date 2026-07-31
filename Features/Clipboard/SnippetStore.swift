@@ -21,7 +21,7 @@ final class SnippetStore: ObservableObject {
     private let save: (Data) -> Void
 
     /// Storage is injected so tests can exercise the store without writing to the
-    /// real defaults domain — a test must not leave anything in the plist of the
+    /// real defaults domain: a test must not leave anything in the plist of the
     /// person running the suite.
     init(load: () -> Data? = { UserDefaults.standard.data(forKey: SnippetStore.persistKey) },
          save: @escaping (Data) -> Void = { UserDefaults.standard.set($0, forKey: SnippetStore.persistKey) }) {
@@ -58,7 +58,7 @@ final class SnippetStore: ObservableObject {
     func snippet(id: UUID) -> Snippet? { snippets.first { $0.id == id } }
 
     /// Written synchronously, unlike history: a snippet edit is a rare, small,
-    /// deliberate act, so there is nothing to debounce — and losing one to a crash
+    /// deliberate act, so there is nothing to debounce. And losing one to a crash
     /// 0.8 s later would be losing something the person typed by hand.
     private func persist() {
         guard let data = Self.encode(snippets) else { return }
@@ -73,7 +73,7 @@ final class SnippetStore: ObservableObject {
         withinBudget([snippet] + list.filter { $0.id != snippet.id })
     }
 
-    /// Same id AND same date — an edit is not a new snippet, and re-sorting the
+    /// Same id AND same date: an edit is not a new snippet, and re-sorting the
     /// list under the person because they fixed a typo would be its own bug.
     static func updating(id: UUID, title: String, body: String, in list: [Snippet]) -> [Snippet] {
         withinBudget(list.map { s in
@@ -99,7 +99,7 @@ final class SnippetStore: ObservableObject {
 
     /// Per-body and aggregate caps, so one giant paste into the editor can't make
     /// the stored blob unbounded. Entries past the budget are dropped from the
-    /// END — the newest are what the person is working with.
+    /// END. The newest are what the person is working with.
     static func withinBudget(_ list: [Snippet]) -> [Snippet] {
         var out: [Snippet] = []
         var bytes = 0

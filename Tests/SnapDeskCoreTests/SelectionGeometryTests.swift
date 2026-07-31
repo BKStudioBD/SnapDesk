@@ -14,7 +14,7 @@ struct SelectionGeometryTests {
 
     // MARK: - Readout placement
 
-    @Test("At rest the chip hangs under the selection's left edge — the corner a drag doesn't end on")
+    @Test("At rest the chip hangs under the selection's left edge. The corner a drag doesn't end on")
     func restingPlace() {
         let selection = CGRect(x: 400, y: 400, width: 300, height: 200)
         let layout = SelectionGeometry.readout(size: chip, selection: selection, container: screen)
@@ -137,7 +137,7 @@ struct SelectionGeometryTests {
         #expect(moved == CGRect(x: 110, y: 99, width: 200, height: 100))
     }
 
-    @Test("A nudge into a screen edge stops — it never trims the size the user just dialled in",
+    @Test("A nudge into a screen edge stops. It never trims the size the user just dialled in",
           arguments: [
             (CGRect(x: 1240, y: 100, width: 200, height: 100), CGFloat(10), CGFloat(0)),   // right
             (CGRect(x: 0, y: 100, width: 200, height: 100), CGFloat(-10), CGFloat(0)),     // left
@@ -173,7 +173,7 @@ struct SelectionGeometryTests {
         #expect(shorter.maxY == rect.maxY, "the opposite corner is the anchor and must not move")
     }
 
-    @Test("Resizing can't turn the selection inside out — a negative side becomes a mirrored crop",
+    @Test("Resizing can't turn the selection inside out. A negative side becomes a mirrored crop",
           arguments: [
             (CGFloat(-50), CGFloat(0)), (CGFloat(0), CGFloat(50)), (CGFloat(-50), CGFloat(50)),
           ])
@@ -208,7 +208,7 @@ struct SelectionGeometryTests {
         #expect(SelectionGeometry.flipped(local, inHeight: 900) == rect)
     }
 
-    @Test("The flip uses the rect's OWN screen height — the multi-display trap")
+    @Test("The flip uses the rect's OWN screen height. The multi-display trap")
     func flipUsesEachScreensHeight() {
         // Same view rect on a 900-point laptop panel and a 1080-point monitor.
         let rect = CGRect(x: 0, y: 20, width: 100, height: 40)

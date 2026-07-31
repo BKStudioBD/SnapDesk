@@ -2,7 +2,7 @@ import Testing
 import AppKit
 @testable import SnapDeskCore
 
-/// The escalation ladder — upscale → bigger retry → overlapping tiles — exists
+/// The escalation ladder, upscale → bigger retry → overlapping tiles, exists
 /// because of measured Vision blind spots, and it is the part of SnapDesk that
 /// regressed most often. Nothing here is synthetic: each case renders the exact
 /// shape that used to come back empty and asserts the real recognizer reads it.
@@ -43,7 +43,7 @@ struct OCREscalationTests {
 
     private let detailed = OCROptions(engine: .detailed)
 
-    @Test("A WIDE THIN STRIP is read — the blind spot the tiling rescue exists for",
+    @Test("A WIDE THIN STRIP is read. The blind spot the tiling rescue exists for",
           .tags(.regression))
     func readsAWideStrip() async throws {
         // Vision normalizes detection by the LONG side, so a one-line strip
@@ -159,7 +159,7 @@ struct OCREscalationTests {
     @Test("The recognizer reports the languages this Mac can actually read")
     func offersInstalledLanguages() {
         // Named for what it checks. It used to claim to prove the newest Vision
-        // revision was selected — which it never asserted, so a hard-pinned
+        // revision was selected, which it never asserted, so a hard-pinned
         // Revision3 (exactly the regression it was guarding) kept it green.
         let languages = OCRService.supportedLanguages()
         #expect(languages.isEmpty == false, "the recognizer should offer languages")

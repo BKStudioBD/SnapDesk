@@ -12,7 +12,7 @@ struct EditorImageState {
     var selection: CGRect
     /// Strokes still live and editable on top of `flattened`.
     var annotations: [AnnotationStroke]
-    /// Where the numbered-step tool continues from — baked-in steps must not be
+    /// Where the numbered-step tool continues from: baked-in steps must not be
     /// re-used, so the counter survives a flatten.
     var stepCounter: Int
 }

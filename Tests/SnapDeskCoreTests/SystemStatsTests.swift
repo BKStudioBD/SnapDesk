@@ -83,7 +83,7 @@ struct SystemStatsTests {
         #expect(pegged.health == 0)
     }
 
-    @Test("Free memory is weighted heaviest — it is what the cleaner can move")
+    @Test("Free memory is weighted heaviest. It is what the cleaner can move")
     func healthWeighting() {
         // Same machine, once short on memory and once short on disk. The memory
         // case must score lower, or the dashboard would send people to the wrong

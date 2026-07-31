@@ -2,7 +2,7 @@ import AppKit
 
 /// Pre-record options bar. Appears right after the user picks
 /// the recording area: quick toggles (system audio · mic · camera · captions ·
-/// blur) + a big Record button — no trip to Settings needed. Toggles write
+/// blur) + a big Record button, no trip to Settings needed. Toggles write
 /// straight to SettingsStore, so they persist. Return records, Esc cancels.
 final class PreRecordPanel: NSObject {
     private static var current: PreRecordPanel?
@@ -89,7 +89,7 @@ final class PreRecordPanel: NSObject {
                   get: { [weak self] in self?.settings.recordSubtitles ?? false },
                   set: { [weak self] in self?.settings.recordSubtitles = $0 })
         addToggle(to: stack, symbol: "circle.grid.3x3.fill",
-                  help: "Hide passwords/private info — pixelated in the video",
+                  help: "Hide passwords or private info (pixelated in the video)",
                   get: { [weak self] in self?.settings.recordBlurEnabled ?? false },
                   set: { [weak self] on in
                       guard let self else { return }
@@ -147,7 +147,7 @@ final class PreRecordPanel: NSObject {
         var origin = NSPoint(x: g.midX - size.width / 2, y: g.minY - size.height - 12)
         let vis = selection.screen.visibleFrame
         if origin.y < vis.minY { origin.y = g.maxY + 12 }
-        // Full-screen selection: no room below OR above — float inside, near the bottom.
+        // Full-screen selection: no room below OR above, so float inside near the bottom.
         if origin.y + size.height > vis.maxY { origin.y = vis.minY + 24 }
         origin.x = min(max(origin.x, vis.minX + 8), vis.maxX - size.width - 8)
 
@@ -169,7 +169,7 @@ final class PreRecordPanel: NSObject {
 
     /// Open (or re-open, or close) the level monitor to match the toggles.
     ///
-    /// This DOES light the system microphone indicator while the panel is up —
+    /// This DOES light the system microphone indicator while the panel is up,
     /// which is the honest thing: the meter is only shown when the user has
     /// already switched the mic on for this recording. It never triggers a
     /// permission prompt; the recording flow owns that request, and an
@@ -221,7 +221,7 @@ final class PreRecordPanel: NSObject {
                 v?.needsDisplay = true
             }
         }
-        // Below the options panel — on a full-screen selection the panel sits
+        // Below the options panel: on a full-screen selection the panel sits
         // INSIDE the overlay's area and its clicks must win.
         if let panel = window {
             win.order(.below, relativeTo: panel.windowNumber)
@@ -233,7 +233,7 @@ final class PreRecordPanel: NSObject {
 
     /// Blur just turned on → drop one ready-made box in the middle of the
     /// area. The user immediately SEES the pixelation and only has to drag it
-    /// onto whatever needs hiding — nothing to figure out.
+    /// onto whatever needs hiding: nothing to figure out.
     private func addStarterBoxIfNeeded() {
         guard blurRects.isEmpty else { return }
         let a = selection.rectInScreenPoints
@@ -301,7 +301,7 @@ final class PreRecordPanel: NSObject {
         b.isBordered = false
         b.setButtonType(.momentaryChange)
         b.toolTip = help
-        // Icon-only button — give VoiceOver the same words the tooltip shows.
+        // Icon-only button: give VoiceOver the same words the tooltip shows.
         b.setAccessibilityLabel(help)
         b.tag = toggles.count
         b.widthAnchor.constraint(equalToConstant: 30).isActive = true
@@ -342,7 +342,7 @@ final class PreRecordPanel: NSObject {
     @objc private func gearTapped() { onGear() }
 
     private func finish(_ proceed: Bool) {
-        // Release the microphone before anything else — leaving it open would keep
+        // Release the microphone before anything else, leaving it open would keep
         // the system indicator lit AND hand the recording a device already in use.
         micMonitor.stop()
         micMonitor.onLevel = nil
@@ -382,7 +382,7 @@ private final class BlurSelectView: NSView {
     var onAdd: ((CGRect) -> Void)?
     var onRemove: ((Int) -> Void)?
     var onMove: ((Int, CGRect) -> Void)?
-    /// Frozen capture of the area — powers the live-look pixelation preview.
+    /// Frozen capture of the area: powers the live-look pixelation preview.
     var frozen: CGImage?
 
     private var dragStart: CGPoint?
@@ -396,7 +396,7 @@ private final class BlurSelectView: NSView {
     private var resizeIndex: Int?
 
     /// CRITICAL: without this the FIRST click only activates the window and the
-    /// drag never reaches the view — blur boxes seemed "not to work".
+    /// drag never reaches the view: blur boxes seemed "not to work".
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func resetCursorRects() {
@@ -415,7 +415,7 @@ private final class BlurSelectView: NSView {
 
     /// Cached pixelation per box rect. `drawBox` runs for EVERY box on every
     /// mouse-moved event during a drag, and each uncached call is a CoreImage
-    /// pixelate plus a GPU→CPU readback — so dragging one box re-rendered all of
+    /// pixelate plus a GPU→CPU readback. So dragging one box re-rendered all of
     /// them, every frame. Keyed by the rect, so only the box actually changing
     /// re-renders.
     ///
@@ -457,7 +457,7 @@ private final class BlurSelectView: NSView {
         let b = NSBezierPath(roundedRect: r, xRadius: 3, yRadius: 3)
         b.lineWidth = selected ? 2 : 1.25
         b.stroke()
-        // Corner handles — visible grab points teach that boxes are editable.
+        // Corner handles: visible grab points teach that boxes are editable.
         NSColor.white.setFill()
         NSColor.controlAccentColor.setStroke()
         for c in [CGPoint(x: r.minX, y: r.minY), CGPoint(x: r.maxX, y: r.minY),
@@ -487,7 +487,7 @@ private final class BlurSelectView: NSView {
         let p = convert(event.locationInWindow, from: nil)
         let rects = existing()
         if event.clickCount == 2 {
-            // Remove the box under the double-click — hit-test the box OR its
+            // Remove the box under the double-click: hit-test the box OR its
             // corner grab zone (double-clicking a corner should delete too).
             let i = rects.lastIndex(where: { $0.contains(p) })
                 ?? rects.lastIndex(where: { r in

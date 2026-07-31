@@ -8,7 +8,7 @@ struct SnapDeskApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        // SwiftUI's Settings scene binds ⌘, for free — but SnapDesk already has
+        // SwiftUI's Settings scene binds ⌘, for free. But SnapDesk already has
         // its own fully-wired settings window (deep-links from Help and the
         // pre-record gear). Rather than show a SECOND, competing settings window,
         // this scene immediately hands ⌘, off to that one window and closes

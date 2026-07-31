@@ -4,11 +4,11 @@ import AVFoundation
 
 /// The noise-cancelling mic path converts Apple's processed PCM buffers into
 /// CMSampleBuffers for the asset writer. A wrong format description or a lost
-/// timestamp doesn't fail loudly — it silently desyncs or mutes the voice track,
+/// timestamp doesn't fail loudly. It silently desyncs or mutes the voice track,
 /// so this conversion is checked directly. No microphone (and no permission
 /// prompt) is involved: the input is a synthetic buffer.
 struct MicSampleBufferConversion {
-    /// 48 kHz mono Int16 interleaved — exactly what the production path targets.
+    /// 48 kHz mono Int16 interleaved: exactly what the production path targets.
     ///
     /// Computed and throwing rather than a force-unwrapped stored property: a
     /// trap in a stored property fires while the SUITE is being built, so the

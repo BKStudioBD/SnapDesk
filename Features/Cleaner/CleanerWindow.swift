@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// The cleaner window: a dashboard of the machine, plus three things it can
-/// actually recover space from — caches, build folders, and apps you're done
+/// actually recover space from: caches, build folders, and apps you're done
 /// with.
 ///
 /// Every destructive action in here goes to the Trash, with one exception the
@@ -69,7 +69,7 @@ struct CleanerRootView: View {
     @State private var tab: Tab = .dashboard
     // Owned here, not by the tab views: a `switch` in a ViewBuilder rebuilds the
     // branch it lands on, so tab-local @State and .task were destroyed on every
-    // switch — ticks lost, and Developer re-walked the whole home directory.
+    // switch: ticks lost, and Developer re-walked the whole home directory.
     @State private var clean = CleanModel()
     @State private var developer = DeveloperModel()
     @State private var uninstall = UninstallModel()

@@ -6,7 +6,7 @@ import CoreVideo
 @testable import SnapDeskCore
 
 /// The webcam bubble is burned into every recorded frame, so a mistake in its
-/// placement, its circle mask or its mirroring is only discovered on playback —
+/// placement, its circle mask or its mirroring is only discovered on playback:
 /// after the take is spoiled. These render one real decorated frame from a
 /// SYNTHETIC camera picture and read the pixels back: no camera, no screen
 /// capture, no permission prompt, nothing on screen.
@@ -164,7 +164,7 @@ struct WebcamBubbleRendering {
         #expect(frame.isScreen(Int(bubble.midX), Int(bubble.midY)))
     }
 
-    @Test("Any sensor shape fills the circle — no letterboxing, no squashing",
+    @Test("Any sensor shape fills the circle. No letterboxing, no squashing",
           arguments: [(1920, 1080), (640, 480), (480, 640)])
     func sensorAspectRatios(sensor: (width: Int, height: Int)) throws {
         let frame = try decoratedFrame(corner: .topLeft, size: .large, mirrored: false,
@@ -176,7 +176,7 @@ struct WebcamBubbleRendering {
     }
 }
 
-/// A camera that can't be used has to SAY so — the whole point of these cases is
+/// A camera that can't be used has to SAY so. The whole point of these cases is
 /// that the bubble never fails in silence again.
 struct CameraProblemMessages {
 

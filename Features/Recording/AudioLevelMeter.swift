@@ -9,7 +9,7 @@ struct AudioLevel: Equatable {
     /// visible for longer than the 50 ms it existed.
     var peak: Float = 0
     /// A sample reached full scale recently. Worth its own flag: a meter pinned at
-    /// the top could just be loud, and the difference matters — a clipped mic
+    /// the top could just be loud, and the difference matters: a clipped mic
     /// cannot be fixed afterwards.
     var isClipping = false
 
@@ -21,7 +21,7 @@ struct AudioLevel: Equatable {
     var peakFraction: Float { Self.fraction(of: peak) }
 
     /// Amplitude → bar length on a dB scale: -60 dBFS reads as empty, 0 dBFS as
-    /// full. Linear amplitude looks broken on a meter — normal speech sits around
+    /// full. Linear amplitude looks broken on a meter: normal speech sits around
     /// 0.05 linear and would barely move the bar.
     static func fraction(of amplitude: Float) -> Float {
         guard amplitude > 0 else { return 0 }
@@ -31,7 +31,7 @@ struct AudioLevel: Equatable {
 }
 
 /// Accumulates samples and publishes an `AudioLevel` once per window. Pure value
-/// logic on purpose: no timer, no clock, no thread of its own — a caller on an
+/// logic on purpose: no timer, no clock, no thread of its own. A caller on an
 /// audio queue feeds it and gets a reading back exactly when one is due, which is
 /// also what makes it testable without a microphone.
 struct AudioLevelMeter {
@@ -54,14 +54,14 @@ struct AudioLevelMeter {
         self.clipHoldWindows = max(0, clipHoldWindows)
     }
 
-    /// Feed pre-summarised numbers — used by callers that already walked the
+    /// Feed pre-summarised numbers: used by callers that already walked the
     /// samples and know the channel layout. Returns a reading only when a window
     /// completed.
     /// The parameter is deliberately NOT named `sumOfSquares`: under that name it
     /// shadowed the accumulator property, so the RMS divided the LAST buffer's sum
     /// by the WHOLE window's frame count. Every earlier buffer in the window was
     /// thrown away from the numerator while still counting in the denominator, and
-    /// the meter under-read by sqrt(lastBufferFrames / windowFrames) — a steady
+    /// the meter under-read by sqrt(lastBufferFrames / windowFrames): a steady
     /// 4.8 dB low with the 1024-frame buffers the mic paths deliver, which is
     /// exactly the "working mic reads low" failure this type exists to avoid.
     mutating func accumulate(frames: Int, sumOfSquares squares: Double, peak: Float) -> AudioLevel? {
@@ -91,7 +91,7 @@ struct AudioLevelMeter {
         return level
     }
 
-    /// One channel of plain samples, one per frame — the shape a test builds.
+    /// One channel of plain samples, one per frame. The shape a test builds.
     mutating func accumulate(_ samples: [Float]) -> AudioLevel? {
         var squares = 0.0
         var peak: Float = 0

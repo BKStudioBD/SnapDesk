@@ -6,7 +6,7 @@ import CoreGraphics
 /// `RegionSelection` carries.
 ///
 /// Deliberately AppKit-free and screen-free so every case can be pinned by a
-/// test — including the ones nobody can reproduce on demand (a drag into the
+/// test, including the ones nobody can reproduce on demand (a drag into the
 /// bottom-right corner of a secondary display). Unless a function says
 /// otherwise, every rect is in ONE screen's local space, bottom-left origin,
 /// points.
@@ -23,7 +23,7 @@ enum SelectionGeometry {
     struct Readout: Equatable {
         let frame: CGRect
         /// True when there was no room outside the selection on either side, so
-        /// the chip had to move inside it — a full-height drag, where "above"
+        /// the chip had to move inside it: a full-height drag, where "above"
         /// and "below" are both off screen.
         let isInsideSelection: Bool
     }
@@ -103,8 +103,8 @@ enum SelectionGeometry {
         return moved
     }
 
-    /// Moves the selection's bottom-right corner — the corner the arrow keys
-    /// resize from — by (dx, dy), so the corner travels the way the arrow points.
+    /// Moves the selection's bottom-right corner. The corner the arrow keys
+    /// resize from: by (dx, dy), so the corner travels the way the arrow points.
     ///
     /// Clamped so the selection can neither leave the screen nor cross itself:
     /// an inverted rect has a negative width, which downstream turns into a

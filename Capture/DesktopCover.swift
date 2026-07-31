@@ -1,13 +1,13 @@
 import AppKit
 import CoreGraphics
 
-/// Hides everything living on the desktop — icons, a folder of old screenshots,
-/// whatever was dragged there this morning — for the length of a capture.
+/// Hides everything living on the desktop (icons, a folder of old screenshots,
+/// whatever was dragged there this morning) for the length of a capture.
 ///
 /// Mechanism: a window per screen that draws that screen's CURRENT wallpaper,
 /// parked one level above the desktop-icon window. The icons go; the background
 /// of the shot is the same wallpaper it always was, so the capture looks
-/// untouched. Sitting that low means real windows are unaffected — only the
+/// untouched. Sitting that low means real windows are unaffected: only the
 /// desktop is covered.
 ///
 /// Every path out of a capture MUST reach `lower()`. A cover that outlives its
@@ -26,7 +26,7 @@ enum DesktopCover {
 
     /// Hard ceiling on a cover's life once the only thing left to wait for is the
     /// app's own pixel grab. Reached only if a caller loses its way out of a
-    /// capture — the desktop then comes back by itself.
+    /// capture. The desktop then comes back by itself.
     private static let failsafeSeconds: TimeInterval = 20
 
     /// Ceiling while a region-selection overlay is still on screen.
@@ -35,7 +35,7 @@ enum DesktopCover {
     /// window out of the way, then dragging carefully takes longer than 20 s often
     /// enough. A flat 20 s from the moment the cover appeared fired mid-selection,
     /// popped the icons back in behind the live overlay, and left the rest of the
-    /// flow uncovered — `lower(after:)` then found no windows and the frame carried
+    /// flow uncovered: `lower(after:)` then found no windows and the frame carried
     /// the icons. The person who took the most care got exactly the shot the switch
     /// promised to prevent. A leaked overlay is still bounded, just on the scale of
     /// a person deciding rather than of a screenshot completing.
@@ -45,7 +45,7 @@ enum DesktopCover {
     private static var failsafe: Timer?
     private static var grace: Timer?
     private static var screenChangeObserver: NSObjectProtocol?
-    /// True while a selection overlay owns the cover — see `selectionCeilingSeconds`.
+    /// True while a selection overlay owns the cover: see `selectionCeilingSeconds`.
     private static var selecting = false
     /// Captures that still need the cover in their own frame.
     ///
@@ -60,7 +60,7 @@ enum DesktopCover {
     /// Window IDs of the live covers.
     ///
     /// ScreenCaptureKit is told to exclude every SnapDesk window from a capture
-    /// so the selection overlay can't land in a shot — the cover is one of ours
+    /// so the selection overlay can't land in a shot. The cover is one of ours
     /// too, so it has to be handed back in as an exception or the frame would
     /// still contain the icons it hides on screen. See `CaptureService`.
     static var windowIDs: [CGWindowID] {
@@ -80,7 +80,7 @@ enum DesktopCover {
         guard isEnabled else { return }
 
         // Already covered, because a previous capture's grace or failsafe timer is
-        // still pending. The covers themselves are fine to adopt — but the pending
+        // still pending. The covers themselves are fine to adopt. But the pending
         // teardown belongs to a flow that is OVER and would otherwise fire in the
         // middle of this one, after which this flow's own `lower(after:)` would find
         // no windows to schedule against and the frame would carry the icons. So
@@ -101,14 +101,14 @@ enum DesktopCover {
         armFailsafe()
         // A display plugged in or resolution changed mid-selection leaves the
         // covers the wrong size on the wrong screens. Uncovering is the only
-        // safe answer — a mis-sized cover is visible in the shot.
+        // safe answer: a mis-sized cover is visible in the shot.
         screenChangeObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil, queue: .main) { _ in DesktopCover.lower() }
     }
 
     /// True while covers are on screen. A caller that needs the window server to
-    /// have composited them before it grabs pixels checks this first — there is
+    /// have composited them before it grabs pixels checks this first: there is
     /// nothing to wait for when the setting is off or every screen was declined.
     static var isRaised: Bool { !windows.isEmpty }
 
@@ -209,7 +209,7 @@ enum DesktopCover {
         let image = workspace.desktopImageURL(for: screen).flatMap { NSImage(contentsOf: $0) }
 
         // A solid-colour desktop has no image to read and carries its colour in
-        // the options — that IS the wallpaper, not a fallback.
+        // the options. That IS the wallpaper, not a fallback.
         var fill = options?[.fillColor] as? NSColor
         if fill == nil, let cg = image?.cgImage(forProposedRect: nil, context: nil, hints: nil) {
             fill = WallpaperFill.averageColor(of: cg)
@@ -251,14 +251,14 @@ enum DesktopCover {
 
 // MARK: - Wallpaper drawing
 
-/// Draws one screen's wallpaper. Everything is in POINTS — the window is sized
+/// Draws one screen's wallpaper. Everything is in POINTS. The window is sized
 /// in points per screen, so a 1× display and a 2× display both come out right
 /// without the view knowing which it is on.
 private final class WallpaperView: NSView {
     var image: NSImage?
     var fill: NSColor?
     /// How the real desktop lays this picture in. Nil only when there is no picture
-    /// — a solid-colour desktop, where the fill below IS the wallpaper.
+    ///: a solid-colour desktop, where the fill below IS the wallpaper.
     var layout: WallpaperFill.Layout?
 
     override func draw(_ dirtyRect: NSRect) {

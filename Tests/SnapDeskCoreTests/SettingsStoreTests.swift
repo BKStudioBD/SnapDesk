@@ -2,7 +2,7 @@ import Testing
 import Foundation
 @testable import SnapDeskCore
 
-/// The store's own logic — the parsing, the caps, the presets.
+/// The store's own logic. The parsing, the caps, the presets.
 ///
 /// Every store here is built on its own throwaway suite and the suite is removed
 /// afterwards, so nothing touches the preferences of whoever runs the tests.
@@ -55,7 +55,7 @@ struct SettingsStoreTests {
         #expect(store.recentColors == ["#FF0000", "#00FF00"])
     }
 
-    @Test("The list stops at sixteen — the oldest pick falls off the end", .tags(.regression))
+    @Test("The list stops at sixteen. The oldest pick falls off the end", .tags(.regression))
     func recentColorsAreCapped() throws {
         let (store, cleanup) = try makeStore()
         defer { cleanup() }
@@ -92,7 +92,7 @@ struct SettingsStoreTests {
         #expect(store.recordSubtitles == false)
     }
 
-    @Test("A preset leaves the output settings alone — they aren't its business")
+    @Test("A preset leaves the output settings alone. They aren't its business")
     func presetsLeaveOutputAlone() throws {
         let (store, cleanup) = try makeStore()
         defer { cleanup() }

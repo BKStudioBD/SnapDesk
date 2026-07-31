@@ -1,7 +1,7 @@
 import AppKit
 import AVFoundation
 
-/// Live circular webcam preview shown WHILE recording — the on-screen twin of
+/// Live circular webcam preview shown WHILE recording. The on-screen twin of
 /// the bubble FrameDecorator burns into the video. Same corner, same size, fed
 /// by the same AVCaptureSession, so what the user sees is exactly what the
 /// video gets. Without it the camera was invisible until playback and read as
@@ -16,7 +16,7 @@ final class CameraBubbleWindow: NSPanel {
         let sel = selection.rectInScreenPoints
         let sf = selection.screen.frame
         // Mirror FrameDecorator's layout math, in points. Same corner, same
-        // fraction, same margin — if these drift the preview starts lying about
+        // fraction, same margin: if these drift the preview starts lying about
         // where the bubble will be in the video.
         let d = sel.height * size.fraction
         let margin: CGFloat = 24

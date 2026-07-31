@@ -2,14 +2,14 @@ import Testing
 import AVFoundation
 @testable import SnapDeskCore
 
-/// The mixer exists because the finished file used to carry TWO audio tracks —
+/// The mixer exists because the finished file used to carry TWO audio tracks,
 /// one for system audio, one for the mic. QuickTime played both; web players and
 /// almost every editor take only the FIRST, so a tutorial recorded with narration
 /// shipped with either the voice or the app audio missing, silently, and the
 /// person found out from a viewer.
 ///
 /// Everything below is synthetic PCM: no microphone, no screen capture, no
-/// permission prompt. Constant-amplitude (DC) input on purpose — after summing,
+/// permission prompt. Constant-amplitude (DC) input on purpose: after summing,
 /// resampling and limiting, the expected value of every output sample is still
 /// known exactly, which a sine wave could not give.
 struct AudioMixerTests {
@@ -50,7 +50,7 @@ struct AudioMixerTests {
 
     /// 0.25 in from one source, after the input headroom.
     private let oneSource: Float = 0.25 * AudioMixer.sourceGain      // 0.2
-    /// 0.25 from both, summed — still under the limiter's knee.
+    /// 0.25 from both, summed. Still under the limiter's knee.
     private let bothSources: Float = 0.5 * AudioMixer.sourceGain     // 0.4
 
     // MARK: - Summing
@@ -104,7 +104,7 @@ struct AudioMixerTests {
                 "later chunks carry both")
     }
 
-    @Test("A gap in one source is silence in that source alone — nothing slips in time",
+    @Test("A gap in one source is silence in that source alone. Nothing slips in time",
           .tags(.regression))
     func gapInOneSource() throws {
         // The mic drops out between 2048 and 6144 frames (a USB glitch, or the
@@ -146,7 +146,7 @@ struct AudioMixerTests {
         }
     }
 
-    @Test("Re-anchoring wipes the held tail — a pause has to flush BEFORE it",
+    @Test("Re-anchoring wipes the held tail. A pause has to flush BEFORE it",
           .tags(.regression))
     func reanchorWipesWhatWasStillHeld() throws {
         // `ScreenRecorder.pause()` used to suspend capture and let `resume()` call
@@ -165,7 +165,7 @@ struct AudioMixerTests {
         mixer.flush()
         #expect(sink.chunks.count == 12)
         #expect(abs(sink.chunks[10].samples[0]) < 0.0001,
-                "got \(sink.chunks[10].samples[0]) — the re-anchor zeroed the held audio")
+                "got \(sink.chunks[10].samples[0]). The re-anchor zeroed the held audio")
 
         let flushedFirst = AudioMixer()
         let tail = Sink()
@@ -177,7 +177,7 @@ struct AudioMixerTests {
         flushedFirst.reanchorAfterGap()
         #expect(tail.chunks.count == 12)
         #expect(abs(tail.chunks[10].samples[0] - oneSource) < 0.001,
-                "got \(tail.chunks[10].samples[0]) — flushing first keeps the end of the sentence")
+                "got \(tail.chunks[10].samples[0]). Flushing first keeps the end of the sentence")
     }
 
     /// Parameterised rather than looped inside one test: each spacing gets its
@@ -189,9 +189,9 @@ struct AudioMixerTests {
         // Placement came purely from each buffer's PTS and the write was an
         // unconditional `+=`. Correct for two DIFFERENT sources; for two buffers of
         // the SAME source it meant that a PTS spacing disagreeing with the frame
-        // count by a single sample — which every real device does, from rounding
+        // count by a single sample, which every real device does, from rounding
         // onto the 48 kHz grid, from a clock a routine 100 ppm off the host's, and
-        // from a resampled 44.1 kHz buffer being 1114.29 frames "wide" — either
+        // from a resampled 44.1 kHz buffer being 1114.29 frames "wide": either
         // counted the overlap twice (+6 dB) or drained the missed slot as a zero.
         // Several ticks a second on the drifting source: a faint crackle in the mix.
         //
@@ -231,9 +231,9 @@ struct AudioMixerTests {
         }
         #expect(abs(sink.chunks[0].samples[0] - bothSources) < 0.001, "mic present at the start")
         #expect(abs(sink.chunks[10].samples[0] - oneSource) < 0.001,
-                "got \(sink.chunks[10].samples[0]) — the mic's gap was spliced away")
+                "got \(sink.chunks[10].samples[0]). The mic's gap was spliced away")
         #expect(abs(sink.chunks[26].samples[0] - bothSources) < 0.001,
-                "got \(sink.chunks[26].samples[0]) — the mic has to return at its own time")
+                "got \(sink.chunks[26].samples[0]). The mic has to return at its own time")
     }
 
     // MARK: - Sample rates
@@ -269,7 +269,7 @@ struct AudioMixerTests {
         }
         let value = sink.chunks[5].samples[512]
         #expect(value > 0.35 && value < 0.45,
-                "got \(value) — that is one source, not two")
+                "got \(value) (that is one source, not two)")
     }
 
     @Test("A mono source arrives in BOTH output channels")
@@ -298,7 +298,7 @@ struct AudioMixerTests {
         // The paused wall clock is time the movie CUTS OUT, not silence it owes.
         // Emitting it would have produced ~25 silent chunks and then, once the
         // recorder subtracts the pause offset, every real chunk after it would be
-        // rejected as non-monotonic — which is how a resumed recording ends up mute.
+        // rejected as non-monotonic, which is how a resumed recording ends up mute.
         let mixer = AudioMixer()
         let sink = Sink()
         sink.attach(to: mixer)
@@ -317,7 +317,7 @@ struct AudioMixerTests {
         let afterResume = sink.chunks.count - beforePause
         #expect(afterResume > 0, "audio has to come back")
         #expect(afterResume < 20,
-                "got \(afterResume) — the paused span was emitted as silence")
+                "got \(afterResume). The paused span was emitted as silence")
         #expect(sink.chunks[beforePause].pts >= time(frame: resumeFrame),
                 "the first chunk after the pause belongs after the pause")
         for i in 1..<sink.chunks.count {
@@ -377,7 +377,7 @@ struct AudioMixerTests {
 
     @Test("A sample past full scale is clamped, not wrapped")
     func clampsOutOfRange() throws {
-        // Wrapping would turn the loudest moment into the quietest — the classic
+        // Wrapping would turn the loudest moment into the quietest. The classic
         // integer-overflow crackle.
         let pcm = try buffer(2.0, frames: 4, channels: 1)
         let out = try #require(AudioMixer.int16Interleaved(from: pcm))

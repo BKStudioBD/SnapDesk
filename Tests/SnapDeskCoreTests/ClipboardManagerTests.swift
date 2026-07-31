@@ -2,7 +2,7 @@ import Testing
 import AppKit
 @testable import SnapDeskCore
 
-/// These cover the PURE parts of `ClipboardManager` only — deliberately nothing
+/// These cover the PURE parts of `ClipboardManager` only: deliberately nothing
 /// that touches `NSPasteboard.general`. A test that wrote to the real pasteboard
 /// would clobber whatever the person running it had copied.
 
@@ -22,7 +22,7 @@ struct PasteboardTextTests {
         #expect(ClipboardManager.pasteboardText(input) == expected)
     }
 
-    @Test("Only the END is trimmed — indentation and inner breaks survive",
+    @Test("Only the END is trimmed. Indentation and inner breaks survive",
           .tags(.regression), arguments: [
         ("line1\nline2\n", "line1\nline2"),
         ("    indented\n", "    indented"),
@@ -68,7 +68,7 @@ struct ByteCapTests {
         #expect(capped.utf8.count <= emoji.utf8.count + 3)
         // Whatever survived must still be valid, whole characters.
         #expect(capped.unicodeScalars.allSatisfy { $0.value != 0xFFFD },
-                "no replacement characters — nothing was cut in half")
+                "no replacement characters (nothing was cut in half)")
         #expect(capped == emoji, "the second one didn't fit, so only the first is kept")
     }
 
@@ -137,7 +137,7 @@ struct PersistSnapshotTests {
     func pinnedOnlyModeWritesNoUnpinnedText() {
         // The bug: unpinned text was written during the session, so a crash or
         // force-quit (where stop() never runs) left the full plaintext history
-        // behind — exactly what the setting promises to prevent.
+        // behind: exactly what the setting promises to prevent.
         let items = [text("secret note"), text("kept", pinned: true), text("another secret")]
         let out = ClipboardManager.persistSnapshot(items, cap: 100, pinnedOnly: true)
         #expect(out.count == 1)
@@ -159,7 +159,7 @@ struct PersistSnapshotTests {
           .tags(.regression))
     func pinnedAreNotExemptFromTheCeiling() {
         // Pinned rows used to skip the byte budget entirely, so starring enough
-        // big pastes grew the plist without bound — and every launch decoded it
+        // big pastes grew the plist without bound. And every launch decoded it
         // before the menu bar appeared. Each row caps at 512 KB, so ~70 of them
         // are needed to pass the ceiling.
         let big = String(repeating: "p", count: 600_000)
@@ -184,7 +184,7 @@ struct PersistSnapshotTests {
     @Test("The whole snapshot stays inside an aggregate byte budget", .tags(.regression))
     func respectsTheTotalBudget() {
         // 40 × 512 KB = ~20 MB of text, well past the 8 MB budget. Before the fix
-        // there was no aggregate limit at all — the plist could reach hundreds of MB
+        // there was no aggregate limit at all. The plist could reach hundreds of MB
         // and was decoded synchronously at launch.
         let chunk = String(repeating: "y", count: 520_000)
         let items = (0..<40).map { _ in text(chunk) }

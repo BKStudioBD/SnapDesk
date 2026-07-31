@@ -4,7 +4,7 @@ import SwiftUI
 extension NSColor {
     /// "#RRGGBB" in sRGB. Pass uppercase=false for lowercase hex.
     func hexString(uppercase: Bool = true) -> String {
-        // Force-reading .redComponent on a pattern/catalog color raises — fall
+        // Force-reading .redComponent on a pattern/catalog color raises: fall
         // back to a neutral swatch instead of crashing.
         guard let c = usingColorSpace(.sRGB) else { return "#000000" }
         let r = Int((c.redComponent * 255).rounded())
@@ -19,7 +19,7 @@ extension NSColor {
         var s = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         if s.hasPrefix("#") { s.removeFirst() }
         // `Int(_:radix:)` accepts a leading sign, so "-00001" parsed as -1 and
-        // the shifts below turned it into a perfectly plausible #FFFFFF — a
+        // the shifts below turned it into a perfectly plausible #FFFFFF: a
         // wrong colour handed back where the contract promises nil. Require six
         // real hex digits before trusting the number.
         guard s.count == 6, s.allSatisfy({ $0.isASCII && $0.isHexDigit }),

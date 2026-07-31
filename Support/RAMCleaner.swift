@@ -3,9 +3,9 @@ import os
 
 /// Frees inactive memory by asking the kernel for it.
 ///
-/// macOS keeps "free" memory near zero on purpose — everything spare is cache —
-/// so the target here is RECLAIMABLE pages: inactive, purgeable, speculative and
-/// free. Claiming that much and immediately handing it back makes the pager
+/// macOS keeps "free" memory near zero on purpose, because everything spare is
+/// cache, so the target here is RECLAIMABLE pages: inactive, purgeable,
+/// speculative and free. Claiming that much and handing it straight back makes
 /// evict the cache, and the counters stay up afterwards.
 ///
 /// The allocation uses `vm_allocate`/`vm_deallocate` rather than `malloc`/`free`
@@ -17,7 +17,7 @@ enum RAMCleaner {
     /// the first for the same pages and report nonsense.
     private static let isRunning = OSAllocatedUnfairLock(initialState: false)
 
-    /// Long-running, deliberately blocking work — a tight `memset` over
+    /// Long-running, deliberately blocking work: a tight `memset` over
     /// gigabytes. It gets its own queue instead of a `Task`: parking that on
     /// Swift's cooperative pool would hold a thread the rest of the app needs.
     private static let queue = DispatchQueue(label: "com.snapdesk.ramcleaner", qos: .utility)
@@ -83,7 +83,7 @@ enum RAMCleaner {
     /// The blocking part. Never call this on the main thread.
     private static func pressurePass() -> UInt64 {
         // The real thing first, if this Mac allows it. It fails silently under
-        // the sandbox and on machines without developer tools, which is fine —
+        // the sandbox and on machines without developer tools, which is fine:
         // the allocation pass below does the same job the slow way.
         let purge = Process()
         purge.executableURL = URL(fileURLWithPath: "/usr/sbin/purge")

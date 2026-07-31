@@ -3,7 +3,7 @@ import SwiftUI
 /// Green / amber / red for a 0–100 score.
 ///
 /// System colours, so they follow the appearance and the accessibility
-/// settings — and every place that uses this prints the number beside it, so
+/// settings. And every place that uses this prints the number beside it, so
 /// the colour is never the only thing carrying the meaning.
 func cleanerScoreColor(_ score: Int) -> Color {
     switch score {
@@ -15,7 +15,7 @@ func cleanerScoreColor(_ score: Int) -> Color {
 
 /// One selectable line in a cleaner list: symbol, name, detail, size, tick.
 ///
-/// The tick is the system checkbox rather than a drawn square — it picks up the
+/// The tick is the system checkbox rather than a drawn square. It picks up the
 /// accent colour, the focus ring, VoiceOver and the mixed state for free.
 struct CleanerRow: View {
     let symbol: String
@@ -54,8 +54,8 @@ struct CleanerRow: View {
 
 /// A group's heading: one checkbox for the whole group, its name, its subtotal.
 ///
-/// `Toggle(sources:)` is what gives the box its third state — half-ticked when
-/// only some of the group is chosen — without drawing it by hand.
+/// `Toggle(sources:)` is what gives the box its third state: half-ticked when
+/// only some of the group is chosen, without drawing it by hand.
 struct CleanerGroupHeader: View {
     let title: String
     let size: String
@@ -109,8 +109,8 @@ struct CleanerActionBar: View {
 /// The heading over a list: the total, what it covers, and select-all.
 ///
 /// The button's label and its action read the SAME value. They used to be
-/// computed separately — "is everything ticked" for the label, "is nothing
-/// ticked" for the action — so with a partial selection it said Select All and
+/// computed separately: "is everything ticked" for the label, "is nothing
+/// ticked" for the action. So with a partial selection it said Select All and
 /// cleared instead.
 struct CleanerListHeader: View {
     let total: String

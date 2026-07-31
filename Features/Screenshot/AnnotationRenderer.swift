@@ -6,7 +6,7 @@ enum AnnotationTool: Int, CaseIterable {
     case arrow, rectangle, ellipse, line, pen, highlighter, blur, step, text, spotlight
 }
 
-/// One drawn annotation, independent of any view — purely data + geometry.
+/// One drawn annotation, independent of any view: purely data + geometry.
 struct AnnotationStroke {
     var tool: AnnotationTool
     var color: NSColor
@@ -17,7 +17,7 @@ struct AnnotationStroke {
     var step: Int?
 }
 
-/// Pure drawing/compositing for annotations. No window, no screen — so it can be
+/// Pure drawing/compositing for annotations. No window, no screen. So it can be
 /// exercised headlessly (see test-tools.sh) and reused by the live editor.
 enum AnnotationRenderer {
     private static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
@@ -100,7 +100,7 @@ enum AnnotationRenderer {
     }
 
     /// Pixelate a region of a base image that occupies only `displayRect` of the
-    /// view (bottom-left origin) — the case once a crop or rotate has replaced the
+    /// view (bottom-left origin). The case once a crop or rotate has replaced the
     /// frozen screen inside the selection, where blurring the frozen pixels would
     /// smear a region of the *old* picture into the new one.
     ///
@@ -147,7 +147,7 @@ enum AnnotationRenderer {
     /// Composite an already-flattened bitmap (one that has been cropped, rotated or
     /// flipped) plus the strokes drawn over it since.
     ///
-    /// Renders at the base's exact pixel size — NOT at a point size × scale — so a
+    /// Renders at the base's exact pixel size, NOT at a point size × scale, so a
     /// crop or rotate never resamples the picture it just produced: `displayRect`
     /// only sets the point coordinate system the strokes were recorded in.
     static func compositeFlat(base: CGImage, displayRect: CGRect,

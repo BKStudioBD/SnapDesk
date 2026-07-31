@@ -3,7 +3,7 @@ import Foundation
 /// Builds the visible row list out of the two sources the window shows: the
 /// snippets the person wrote, and the history SnapDesk captured.
 ///
-/// Pure, so the ordering and filtering rules are testable without a window —
+/// Pure, so the ordering and filtering rules are testable without a window,
 /// including the one that matters most, that a snippet is present no matter what
 /// the history cap did.
 enum ClipboardRows {
@@ -55,7 +55,7 @@ enum ClipboardRows {
         return out
     }
 
-    /// Searches the (≤500-char, cached) preview, never the raw multi-KB string —
+    /// Searches the (≤500-char, cached) preview, never the raw multi-KB string:
     /// keeps every keystroke off the slow path. A snippet also matches on the name
     /// the person gave it, which is usually the only thing they remember.
     private static func matches(_ item: ClipboardItem, _ search: String) -> Bool {

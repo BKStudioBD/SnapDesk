@@ -1,7 +1,7 @@
 import AppKit
 
 /// Segmented input-level meter for the pre-record panel. Twelve segments, green
-/// through amber to red, with a held peak tick and a distinct clip state — a bar
+/// through amber to red, with a held peak tick and a distinct clip state: a bar
 /// pinned at the top could just be loud, and only the clip state tells the user
 /// their voice is being destroyed before it reaches the file.
 ///
@@ -50,7 +50,7 @@ final class AudioLevelMeterView: NSView {
             shownLevel = target
             shownPeak = peak
         } else {
-            // Fast attack, slow release — standard meter ballistics, so a syllable
+            // Fast attack, slow release: standard meter ballistics, so a syllable
             // registers but the bar doesn't flicker between them.
             shownLevel += (target - shownLevel) * (target > shownLevel ? 0.6 : 0.25)
             shownPeak = max(peak, shownPeak - 0.04)
@@ -88,7 +88,7 @@ final class AudioLevelMeterView: NSView {
             NSRect(x: x - 0.5, y: inset.minY, width: 1, height: inset.height).fill()
         }
 
-        // Clipping reads as its own thing — a red frame around the whole meter,
+        // Clipping reads as its own thing: a red frame around the whole meter,
         // not merely "the bar is at the end".
         if level.isClipping {
             NSColor.systemRed.setStroke()

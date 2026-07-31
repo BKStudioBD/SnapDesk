@@ -1,14 +1,14 @@
 import AppKit
 
 /// A single row of the clipboard window: a captured history entry, or a snippet
-/// the person wrote (`title` != nil). Both persist across launches — text in the
+/// the person wrote (`title` != nil). Both persist across launches: text in the
 /// defaults blob, image bytes in `ClipboardImageStore`.
 struct ClipboardItem: Identifiable, Equatable {
     enum Kind {
         case text(String)
         /// Compressed JPEG bytes (decoded only when copied back) + a small
         /// thumbnail for the list row. Storing decoded NSImages held ~23 MB
-        /// per Retina screenshot — hundreds of items meant GBs of RAM.
+        /// per Retina screenshot: hundreds of items meant GBs of RAM.
         case image(data: Data, thumb: NSImage)
     }
 
@@ -16,11 +16,11 @@ struct ClipboardItem: Identifiable, Equatable {
     let kind: Kind
     let date: Date
     var pinned: Bool
-    /// Cached at init — recomputing these per row render (they trim/scan the
+    /// Cached at init: recomputing these per row render (they trim/scan the
     /// full string) caused visible scroll hitches with large history items.
     let preview: String
     let contentType: ContentType
-    /// Non-nil ONLY on a snippet row — the name the person gave it. A captured
+    /// Non-nil ONLY on a snippet row. The name the person gave it. A captured
     /// entry has no name, so nil is also what tells the two apart: a snippet is
     /// never counted against the history cap and never wiped on quit (see
     /// `ClipboardManager.trimmed` and `retainedOnQuit`).
@@ -45,7 +45,7 @@ struct ClipboardItem: Identifiable, Equatable {
                   pinned: false, title: snippet.title)
     }
 
-    /// True if `s` has more than `n` characters, walking at most n+1 — a plain
+    /// True if `s` has more than `n` characters, walking at most n+1: a plain
     /// `s.count > n` walks the WHOLE string (up to 1 MB here) just to compare.
     private static func longer(_ s: String, than n: Int) -> Bool {
         return s.index(s.startIndex, offsetBy: n + 1, limitedBy: s.endIndex) != nil
@@ -92,7 +92,7 @@ extension ClipboardItem {
         switch kind {
         case .image: return .image
         case .text(let s):
-            // Cap the scan — classification only needs the head of the string.
+            // Cap the scan: classification only needs the head of the string.
             let head = longer(s, than: 4000) ? String(s.prefix(4000)) : s
             let t = head.trimmingCharacters(in: .whitespacesAndNewlines)
             if Self.isHexColor(t) { return .color }
@@ -105,7 +105,7 @@ extension ClipboardItem {
 
     /// Storage normalization: a copied URL routinely arrives with a trailing
     /// newline (address bars, chat apps append one). Stored verbatim, every
-    /// paste re-emits that newline — which SENDS the message / navigates the
+    /// paste re-emits that newline, which SENDS the message / navigates the
     /// page the instant it lands. If the trimmed text is a bare link, store it
     /// trimmed; anything else is kept byte-for-byte.
     static func normalizedForStorage(_ s: String) -> String {

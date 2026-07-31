@@ -2,8 +2,8 @@ import Foundation
 
 /// Which rows a multi-row action (today: merge) will act on.
 ///
-/// Ids, not indexes: the list re-sorts under the person constantly — a copy
-/// arrives, a star floats a row to the top, the search text changes — and an
+/// Ids, not indexes. The list re-sorts under the person constantly: a copy
+/// arrives, a star floats a row to the top, the search text changes. And an
 /// index-based selection would then point at whatever moved into that slot.
 struct ClipboardSelection: Equatable {
     /// What a click or a Shift-arrow is asking for.
@@ -37,8 +37,8 @@ struct ClipboardSelection: Equatable {
     /// Adds every row between the anchor and `id`, inclusive.
     ///
     /// Adds rather than replaces, so Command-clicking three scattered rows and
-    /// then Shift-clicking a run keeps both. With no anchor yet — the very first
-    /// gesture is a Shift-click — `id` becomes the anchor and the gesture selects
+    /// then Shift-clicking a run keeps both. With no anchor yet. The very first
+    /// gesture is a Shift-click: `id` becomes the anchor and the gesture selects
     /// that one row, instead of silently doing nothing.
     mutating func extend(to id: UUID, in rows: [UUID]) {
         guard let target = rows.firstIndex(of: id) else { return }
@@ -57,7 +57,7 @@ struct ClipboardSelection: Equatable {
         }
     }
 
-    /// Drops ids that are no longer on screen — a merge must never act on a row
+    /// Drops ids that are no longer on screen: a merge must never act on a row
     /// that was deleted or filtered away while it sat in the selection.
     mutating func prune(to rows: [UUID]) {
         let visible = Set(rows)

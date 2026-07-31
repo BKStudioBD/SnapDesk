@@ -7,7 +7,7 @@ import AppKit
 /// quarantined app run from Downloads / a DMG is executed from a random
 /// read-only `…/AppTranslocation/…` path. macOS ties every TCC grant (Screen
 /// Recording, Accessibility) to that path + code signature, so the next launch
-/// — a DIFFERENT random path — has no grant → the app re-prompts forever.
+///, a DIFFERENT random path, has no grant → the app re-prompts forever.
 ///
 /// The only cure is to run from a STABLE path with the quarantine flag cleared.
 /// This helper detects the bad state on launch and offers a one-click
@@ -16,16 +16,16 @@ import AppKit
 enum InstallHelper {
     private static let appsDir = "/Applications"
 
-    /// True if the bundle already lives in /Applications. Anywhere else — a
-    /// translocated `…/AppTranslocation/…` path, the mounted DMG (`/Volumes/…`),
-    /// or Downloads — is a spot where TCC grants can't persist.
+    /// True if the bundle already lives in /Applications. Anywhere else is a
+    /// spot where TCC grants can't persist: a translocated `…/AppTranslocation/…`
+    /// path, the mounted DMG (`/Volumes/…`), or Downloads.
     static var isInApplications: Bool {
         Bundle.main.bundlePath.hasPrefix(appsDir + "/")
     }
 
     /// Call once at launch, BEFORE anything requests a permission.
     /// - Returns: `true` to continue normal startup, `false` when we've begun
-    ///   relocating + relaunching (the caller must stop — a fresh instance from
+    ///   relocating + relaunching (the caller must stop: a fresh instance from
     ///   /Applications is taking over).
     @MainActor
     static func ensureProperLocation() -> Bool {
@@ -44,7 +44,7 @@ enum InstallHelper {
         alert.messageText = "Move SnapDesk to Applications"
         alert.informativeText = """
         SnapDesk is running from a temporary location, so macOS won't remember \
-        the Screen Recording / Accessibility permissions you grant — you'd be \
+        the Screen Recording / Accessibility permissions you grant. You'd be \
         asked again every time.
 
         Move it to your Applications folder once and this is fixed for good.
@@ -68,14 +68,14 @@ enum InstallHelper {
 
         // Copy BESIDE the target and swap only once the copy is complete.
         // Deleting the installed app first (the old order) meant a copy that then
-        // failed — no write access, full disk, source ejected — left the user with
+        // failed, no write access, full disk, source ejected, left the user with
         // no SnapDesk at all.
         let staged = URL(fileURLWithPath: appsDir)
             .appendingPathComponent(".\(src.lastPathComponent).incoming-\(UUID().uuidString)")
         do {
             try fm.copyItem(at: src, to: staged)
             // Replace any older copy (e.g. a previous version already installed).
-            // Replacing a running bundle is fine — the process keeps its open
+            // Replacing a running bundle is fine. The process keeps its open
             // files; enforceSingleInstance in the new copy quits the old one.
             if fm.fileExists(atPath: dest.path) {
                 _ = try fm.replaceItemAt(dest, withItemAt: staged)
@@ -125,7 +125,7 @@ enum InstallHelper {
         }
     }
 
-    /// Relaunch THIS bundle (from wherever it currently runs) — used after a
+    /// Relaunch THIS bundle (from wherever it currently runs): used after a
     /// permission grant, which macOS only honors on a fresh process.
     @MainActor
     static func relaunchSelf() {
@@ -142,7 +142,7 @@ enum InstallHelper {
     /// Quit ONLY once the replacement process is actually up. Terminating on a
     /// launch that never happened (Gatekeeper block, damaged bundle, the copy
     /// still being written) is indistinguishable from a successful handover: the
-    /// app just disappears — and after the updater has swapped the bundle
+    /// app just disappears. And after the updater has swapped the bundle
     /// underneath us there is nothing left running to explain why.
     private static func quitOnceRunning(_ error: Error?, nextStep: String) {
         guard let error else { NSApp.terminate(nil); return }

@@ -17,7 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.settings.completeFirstRunSetup()
 
         // Record whether Screen Recording was granted BEFORE anything can
-        // change it — a grant that arrives later needs a relaunch to work,
+        // change it: a grant that arrives later needs a relaunch to work,
         // and ensureScreenRecording() uses this snapshot to know that.
         Permissions.primeLaunchState()
 
@@ -39,7 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let others = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
             .filter { $0.processIdentifier != me.processIdentifier }
         guard !others.isEmpty else { return }
-        // The NEWEST copy must win — that's how build-updates replace the
+        // The NEWEST copy must win: that's how build-updates replace the
         // running app. ("Lowest pid wins" was backwards: every fresh build
         // killed ITSELF and the stale binary lived forever.) Deterministic
         // tie-break for simultaneous launches: later launchDate wins, then
@@ -54,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         others.forEach { $0.terminate() }
-        // A stuck old instance can ignore the polite quit — force it, but only
+        // A stuck old instance can ignore the polite quit: force it, but only
         // after long enough that an instance finalizing a recording can finish.
         // `applicationShouldTerminate` there holds the quit up to 6s to write the
         // .mov's moov atom; force-killing at 3s (the old value) truncated the
@@ -65,7 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// If a recording is in progress, delay termination until the writer has
-    /// finalized the .mov — otherwise the file loses its moov atom and becomes
+    /// finalized the .mov. Otherwise the file loses its moov atom and becomes
     /// unplayable. A 6s watchdog guarantees we never hang the quit.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard coordinator.finishActiveRecording(then: {

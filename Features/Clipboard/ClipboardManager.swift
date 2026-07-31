@@ -3,7 +3,7 @@ import Combine
 import ImageIO
 
 /// Watches the system pasteboard and keeps a searchable, pinnable history. Both
-/// text and image entries persist across launches — text in the defaults blob,
+/// text and image entries persist across launches: text in the defaults blob,
 /// image bytes in `ClipboardImageStore`.
 final class ClipboardManager: ObservableObject {
     @Published private(set) var items: [ClipboardItem] = []
@@ -15,7 +15,7 @@ final class ClipboardManager: ObservableObject {
     private var maxUnpinned: Int { settings?.clipboardMaxItems ?? 100 }
     private let persistKey = "SnapDesk.clipboard.text"
     /// Image METADATA only (id, date, pinned). The bytes are files, under their own
-    /// 0700 directory — a base64 image in the defaults plist would be neither
+    /// 0700 directory: a base64 image in the defaults plist would be neither
     /// bounded nor 0600.
     private let imagePersistKey = "SnapDesk.clipboard.images"
     private let imageStore = ClipboardImageStore()
@@ -26,7 +26,7 @@ final class ClipboardManager: ObservableObject {
         // Nothing observed "clear history when SnapDesk quits", so switching it ON
         // changed only what the NEXT write would do: the unpinned `.jpg` files and
         // the unpinned plaintext already on disk survived until some incidental
-        // persist happened to run — a copy, a star, a delete, or a clean quit. Anyone
+        // persist happened to run: a copy, a star, a delete, or a clean quit. Anyone
         // who turned the switch on because of what was in their history and then
         // force-quit (or crashed, where the quit path never runs) still had all of it
         // on disk, and it came back on the next launch. Rewrite the disk on the
@@ -55,7 +55,7 @@ final class ClipboardManager: ObservableObject {
 
     /// Every app that held focus since the previous tick, plus the one holding it
     /// now. The ignored-apps check used to read `frontmostApplication` at poll
-    /// time — up to ~0.7 s after the copy — so the normal move, copy a password
+    /// time, up to ~0.7 s after the copy, so the normal move, copy a password
     /// then ⌘-Tab straight to the browser you're pasting into, showed the BROWSER
     /// as frontmost and the secret went into history anyway. Anything that held
     /// focus inside that window counts: dropping one copy is recoverable, a
@@ -73,7 +73,7 @@ final class ClipboardManager: ObservableObject {
             self?.poll()
         }
         t.tolerance = 0.2
-        // .common: keep polling while a menu or modal is open — the default
+        // .common: keep polling while a menu or modal is open. The default
         // mode stalls there and copies made meanwhile get lost.
         RunLoop.main.add(t, forMode: .common)
         timer = t
@@ -105,7 +105,7 @@ final class ClipboardManager: ObservableObject {
 
     // MARK: - Polling
 
-    /// Everyone who held focus since the last tick, plus whoever holds it now —
+    /// Everyone who held focus since the last tick, plus whoever holds it now,
     /// and then the window starts again. Cleared on EVERY tick, copy or not, so
     /// an app that was frontmost ten seconds ago can't suppress a copy made
     /// somewhere else now.
@@ -142,14 +142,14 @@ final class ClipboardManager: ObservableObject {
         if settings?.ignoreUniversalClipboard == true,
            !presentTypes.isDisjoint(with: Self.universalClipboardTypes) { return }
 
-        // Skip copies made while a user-ignored app had focus — at any point
+        // Skip copies made while a user-ignored app had focus: at any point
         // since the last tick, not just right now.
         if let ignore = settings?.ignoreApps, !ignore.isEmpty,
            !Set(ignore).isDisjoint(with: focusHolders) { return }
 
         if let string = pasteboard.string(forType: .string),
            !string.isEmpty {
-            // Cap in-memory text (~1 MB) — a select-all of a huge log would
+            // Cap in-memory text (~1 MB): a select-all of a huge log would
             // otherwise retain tens of MB per item in a "lightweight" app. Cap by
             // BYTES: `prefix(1_048_576)` counts characters, so multi-byte text
             // (CJK, emoji) could still keep ~4 MB.
@@ -157,7 +157,7 @@ final class ClipboardManager: ObservableObject {
         } else if settings?.clipboardStoreImages != false,
                   // PNG first: it is the compressed flavour, so a huge canvas
                   // costs megabytes here instead of the hundreds that an
-                  // uncompressed TIFF materialises on the main thread — only to
+                  // uncompressed TIFF materialises on the main thread: only to
                   // be thrown away by the size guard below.
                   let data = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff) {
             // Same image copied twice in a row → skip the duplicate row. Hash
@@ -169,7 +169,7 @@ final class ClipboardManager: ObservableObject {
             if hash == lastImageHash, case .image = items.first?.kind { return }
             lastImageHash = hash
             // Decompression-bomb guard: read the DECLARED pixel dimensions from
-            // the header only (CGImageSource — no decode, no main-thread bitmap
+            // the header only (CGImageSource, no decode, no main-thread bitmap
             // materialization) and reject absurd sizes before the off-main decode.
             if let src = CGImageSourceCreateWithData(data as CFData, nil),
                let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any] {
@@ -179,8 +179,8 @@ final class ClipboardManager: ObservableObject {
             }
             // Decode + downscale + JPEG-compress OFF the main thread (was a
             // visible hitch on every large image copy), then insert on main. A
-            // SERIAL queue, so two images copied in quick succession finish — and
-            // therefore insert — in the order they were copied.
+            // SERIAL queue, so two images copied in quick succession finish. And
+            // therefore insert: in the order they were copied.
             Self.compressQueue.async { [weak self] in
                 guard let image = NSImage(data: data),
                       let stored = Self.compressed(image) else { return }
@@ -191,7 +191,7 @@ final class ClipboardManager: ObservableObject {
 
     /// Draw `img` into a fresh bitmap no larger than `maxPx` on its long edge.
     ///
-    /// Sized from the TRUE pixel size, not NSImage.size (which is in POINTS — a 2×
+    /// Sized from the TRUE pixel size, not NSImage.size (which is in POINTS: a 2×
     /// Retina screenshot reports half its pixels there, so scaling off it stored
     /// and pasted the image at half resolution, visibly blurry).
     private static func downscaled(_ img: NSImage, maxPx: CGFloat) -> NSBitmapImageRep? {
@@ -225,7 +225,7 @@ final class ClipboardManager: ObservableObject {
         guard let full = downscaled(image, maxPx: 1600),
               let thumbRep = downscaled(image, maxPx: 320) else { return nil }
         // JPEG has no alpha channel, so a transparent logo came back with every
-        // transparent pixel solid BLACK — while the row's thumbnail, built from
+        // transparent pixel solid BLACK, while the row's thumbnail, built from
         // the un-encoded bitmap, still looked right. PNG for anything carrying
         // transparency; JPEG stays the default because most copies are photos
         // and screenshots, where it is a fraction of the size.
@@ -237,7 +237,7 @@ final class ClipboardManager: ObservableObject {
     }
 
     /// Rebuild a row from bytes already on disk: the JPEG is kept as-is (it was
-    /// compressed once, at copy time — re-encoding it would only lose quality) and
+    /// compressed once, at copy time: re-encoding it would only lose quality) and
     /// only the row thumbnail is regenerated.
     private static func restoredKind(from data: Data) -> ClipboardItem.Kind? {
         guard let image = NSImage(data: data),
@@ -312,7 +312,7 @@ final class ClipboardManager: ObservableObject {
 
     /// What a paste should actually emit.
     ///
-    /// Copied text routinely arrives with a trailing newline — selecting a whole
+    /// Copied text routinely arrives with a trailing newline: selecting a whole
     /// line in a terminal or an editor, a table cell, a chat message. Pasting it
     /// verbatim re-emits that newline: the caret drops to the START OF THE NEXT
     /// LINE instead of staying where the text landed, and in a message field it
@@ -322,7 +322,7 @@ final class ClipboardManager: ObservableObject {
     ///
     /// `Character.isNewline` covers "\n", "\r", "\r\n" (one grapheme) and the
     /// Unicode line/paragraph separators.
-    /// Internal for tests — see PasteboardTextTests.
+    /// Internal for tests: see PasteboardTextTests.
     static func pasteboardText(_ s: String) -> String {
         var t = s
         while let last = t.last, last.isNewline { t.removeLast() }
@@ -357,7 +357,7 @@ final class ClipboardManager: ObservableObject {
         case .text(let s):
             let out = Self.pasteboardText(s)
             pasteboard.setString(out, forType: .string)
-            // Links also get the URL flavor — apps that read `public.url`
+            // Links also get the URL flavor: apps that read `public.url`
             // (browsers, Finder's Go-to, link fields) then paste it natively
             // instead of falling back to plain text. Only when it's a real
             // absolute URL: a scheme-less "www.…" written to public.url is
@@ -367,7 +367,7 @@ final class ClipboardManager: ObservableObject {
             }
         case .image(let data, _):
             // `clearContents()` has already run, so a write that fails leaves
-            // the pasteboard EMPTY — whatever the person had is gone and the
+            // the pasteboard EMPTY: whatever the person had is gone and the
             // next ⌘V pastes nothing. Say so rather than wiping in silence.
             guard let img = NSImage(data: data), pasteboard.writeObjects([img]) else {
                 Notifier.error("Copy failed", "That image couldn't be read.")
@@ -384,7 +384,7 @@ final class ClipboardManager: ObservableObject {
         persist()
     }
 
-    /// Put text on the pasteboard as OUR OWN write — no new history row.
+    /// Put text on the pasteboard as OUR OWN write, no new history row.
     ///
     /// The row transforms ("Copy as → lowercase") used to write the pasteboard
     /// directly, which the poll then read back 0.5 s later and filed as a fresh
@@ -397,7 +397,7 @@ final class ClipboardManager: ObservableObject {
         lastChangeCount = pasteboard.changeCount
     }
 
-    /// Adds text composed inside SnapDesk — today, the merge of several rows.
+    /// Adds text composed inside SnapDesk: today, the merge of several rows.
     ///
     /// Goes through `ingest` so it obeys the same duplicate rule, byte cap and trim
     /// as a real copy. Deliberately does NOT touch the pasteboard: merging is
@@ -477,7 +477,7 @@ final class ClipboardManager: ObservableObject {
 
     /// Write without waiting out the debounce, still off the main thread.
     ///
-    /// For changes whose whole point is that they take effect NOW — switching
+    /// For changes whose whole point is that they take effect NOW: switching
     /// "clear history when SnapDesk quits" on has to purge what is already on disk.
     /// Cancelling the pending debounced work matters as much as the new write: that
     /// one was snapshotted while the flag was still false and would otherwise land
@@ -496,7 +496,7 @@ final class ClipboardManager: ObservableObject {
         Self.persistQueue.sync(execute: work)
     }
 
-    /// Snapshot everything on the main thread (cheap — refs and a plan), then do
+    /// Snapshot everything on the main thread (cheap: refs and a plan), then do
     /// the encoding, the plist write, the image writes and the orphan prune on the
     /// persist queue. ONE serial queue owns the plist AND the image directory, so a
     /// debounced write, the quit-time flush and a prune can never interleave.
@@ -505,7 +505,7 @@ final class ClipboardManager: ObservableObject {
         let snapshot = Self.persistSnapshot(items, cap: maxUnpinned, pinnedOnly: pinnedOnly)
         // Text is safe to write at any moment. The image half is NOT: while a
         // restore is outstanding `items` has no image rows yet, so a plan built from
-        // it is empty — and that emptied the manifest and deleted every stored
+        // it is empty. And that emptied the manifest and deleted every stored
         // `.jpg`, on the persist queue, while the restore loop was still reading
         // those very files off `compressQueue`. Whatever it had not reached was gone
         // for good: those bytes had never been in memory. See `imagesRestorePending`.
@@ -526,7 +526,7 @@ final class ClipboardManager: ObservableObject {
     }
 
     /// With "Clear history when SnapDesk quits" on, unpinned content must NEVER
-    /// reach the disk — neither text nor image bytes — because a crash or
+    /// reach the disk, neither text nor image bytes, because a crash or
     /// force-quit (where `stop()` never runs) would leave the whole history
     /// behind. So persist pinned only.
     private var pinnedOnlyOnDisk: Bool { settings?.clearOnQuit == true }
@@ -593,7 +593,7 @@ final class ClipboardManager: ObservableObject {
         defer { loadPersistedImages() }
         guard let data = UserDefaults.standard.data(forKey: persistKey),
               let saved = try? JSONDecoder().decode([Persisted].self, from: data) else { return }
-        // Normalize on load too — links saved before trailing-newline trimming
+        // Normalize on load too: links saved before trailing-newline trimming
         // existed would otherwise keep their broken paste behavior forever.
         items = saved.map {
             ClipboardItem(id: $0.id, kind: .text(ClipboardItem.normalizedForStorage($0.text)),
@@ -635,7 +635,7 @@ final class ClipboardManager: ObservableObject {
     }
 
     /// True from the moment the image restore is dispatched until its rows are back
-    /// in `items`. Main-thread only — see `persistWork()` for what it guards.
+    /// in `items`. Main-thread only: see `persistWork()` for what it guards.
     private var imagesRestorePending = false
 
     private func finishImageRestore(_ restored: [ClipboardItem]) {
@@ -649,7 +649,7 @@ final class ClipboardManager: ObservableObject {
 
     /// Splice restored image rows into the loaded text history by date, so the list
     /// reads in the order things were actually copied. Anything copied while the
-    /// decode was running keeps its place — matching by id, never by position.
+    /// decode was running keeps its place: matching by id, never by position.
     ///
     /// No `persist()` here: nothing about what is on disk changed, and writing from
     /// a load would mean a launch that crashes mid-restore could shorten history.

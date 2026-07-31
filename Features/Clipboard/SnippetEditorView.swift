@@ -3,7 +3,7 @@ import SwiftUI
 /// Create or edit a snippet: a name, and the body it pastes.
 struct SnippetEditorView: View {
     @State private var title: String
-    /// NOT called `body` — that name belongs to `View`.
+    /// NOT called `body`. That name belongs to `View`.
     @State private var text: String
     private let isNew: Bool
     private let save: (String, String) -> Void

@@ -22,12 +22,12 @@ final class MicLevelMonitor {
     /// Queue-confined.
     private let converter = AudioMixer.Converter()
 
-    /// Counts starts so a `stop()` — or a second `start` — issued while a device is
+    /// Counts starts so a `stop()`, or a second `start`, issued while a device is
     /// still spinning up can disown the capture it is waiting on. Main-thread only.
     private var startToken = 0
 
     /// Opens the microphone and reports on MAIN whether it worked. False means no
-    /// meter should be shown — permission not granted yet, no device, or the capture
+    /// meter should be shown: permission not granted yet, no device, or the capture
     /// refused to start.
     ///
     /// Returns IMMEDIATELY: the open itself (an AVCaptureDevice discovery pass, VPIO
@@ -35,7 +35,7 @@ final class MicLevelMonitor {
     /// time) runs 100–500 ms, and hundreds of milliseconds more on a machine with
     /// aggregate or virtual inputs. Doing that on the main thread made the
     /// pre-record bar appear late and froze the panel on every mic / noise-
-    /// cancellation click with the button stuck in its old state — the very rule
+    /// cancellation click with the button stuck in its old state. The very rule
     /// `MicCapture`'s raw path already follows for `startRunning()`.
     func start(deviceID: String, noiseCancellation: Bool, onReady: @escaping (Bool) -> Void) {
         guard capture == nil else { onReady(true); return }
@@ -83,7 +83,7 @@ final class MicLevelMonitor {
     func stop() {
         guard let capture else { return }
         self.capture = nil
-        // Disown any start still in flight — see `startToken`.
+        // Disown any start still in flight: see `startToken`.
         startToken += 1
         // Tear down ON THE SAME QUEUE the start runs on. A stop dispatched straight
         // to `MicCapture.control` could otherwise be enqueued there BEFORE the

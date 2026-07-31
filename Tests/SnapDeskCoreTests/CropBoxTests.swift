@@ -13,13 +13,13 @@ struct CropBoxTests {
 
     /// The default box is inset 8% a side, so confirming an UNTOUCHED one silently
     /// discards 29% of the picture. The Crop button both starts and confirms, so a
-    /// double-click — which is what people give toolbar buttons — used to cut the
+    /// double-click, which is what people give toolbar buttons, used to cut the
     /// edges off the very window being captured with nothing on screen to show it.
     @Test("A box nobody aimed reports itself untouched", .tags(.regression))
     func freshBoxIsNotDragged() {
         let box = CropBox(limit: image)
         #expect(box.wasDragged == false)
-        // And it really is inset, i.e. confirming it would NOT have been a no-op —
+        // And it really is inset, i.e. confirming it would NOT have been a no-op,
         // which is exactly why the untouched flag has to exist.
         #expect(box.rect != image)
         #expect(box.rect.width < image.width && box.rect.height < image.height)
@@ -79,7 +79,7 @@ struct CropBoxTests {
     // MARK: - It cannot invert or collapse
 
     /// An inverted rect reaches the compositor as a negative-size crop, which returns
-    /// no image at all — to the user the shot simply vanished.
+    /// no image at all: to the user the shot simply vanished.
     @Test("An edge dragged past its opposite stops instead of flipping",
           .tags(.regression), arguments: [0, 2, 5, 7, 3, 4, 1, 6])
     func edgesNeverInvert(_ handle: Int) {
@@ -104,8 +104,8 @@ struct CropBoxTests {
         #expect(image.contains(box.rect), "got \(box.rect)")
     }
 
-    /// The floor must never exceed the image, or a thin capture — a one-line strip of
-    /// a terminal, say — could not be cropped at all.
+    /// The floor must never exceed the image, or a thin capture (a one-line strip
+    /// of a terminal, say) could not be cropped at all.
     @Test("An image thinner than the minimum is still croppable")
     func aThinImageIsStillCroppable() {
         let strip = CGRect(x: 0, y: 0, width: 400, height: 6)
@@ -126,7 +126,7 @@ struct CropBoxTests {
                 "a centre handle would sit under the drag-to-move area")
     }
 
-    /// An 11pt dot is hard to hit exactly, so hit-testing is deliberately slack —
+    /// An 11pt dot is hard to hit exactly, so hit-testing is deliberately slack,
     /// without the slop a handle reads as unresponsive rather than as small.
     @Test("Hit-testing a handle allows for slop just outside it")
     func handleHitTestHasSlop() {

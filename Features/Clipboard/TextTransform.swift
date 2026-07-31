@@ -3,7 +3,7 @@ import Foundation
 /// One-shot text cleanups applied on the way OUT of the clipboard history.
 ///
 /// The history is a log of what you copied, so a transform never rewrites the
-/// stored item — it only changes what lands on the pasteboard this once. That's
+/// stored item. It only changes what lands on the pasteboard this once. That's
 /// why these are actions in the row's context menu rather than a mode you leave
 /// switched on.
 enum TextTransform: String, CaseIterable, Identifiable {
@@ -19,7 +19,7 @@ enum TextTransform: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     /// Applied to a whole clipboard item. Returns nil when the transform can't
-    /// apply (bad JSON, nothing to decode) — the caller then leaves the text alone
+    /// apply (bad JSON, nothing to decode). The caller then leaves the text alone
     /// rather than pasting something mangled.
     func apply(to text: String) -> String? {
         switch self {
@@ -63,11 +63,11 @@ enum TextTransform: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Transforms worth offering for this item — a JSON pretty-print on a plain
+    /// Transforms worth offering for this item: a JSON pretty-print on a plain
     /// sentence is noise, and an image has no text at all.
     ///
-    /// This runs while ROWS RENDER — SwiftUI builds a row's context menu as part
-    /// of `body`, not on right-click — so it has to stay cheap. It used to run
+    /// This runs while ROWS RENDER: SwiftUI builds a row's context menu as part
+    /// of `body`, not on right-click. So it has to stay cheap. It used to run
     /// four whole transforms, `JSONSerialization` among them, across the full
     /// item for every visible row on every keystroke in the search field, and a
     /// history row holds up to 1 MB. These answer the same question by LOOKING at

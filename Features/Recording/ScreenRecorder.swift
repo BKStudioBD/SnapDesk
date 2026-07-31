@@ -34,7 +34,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
     /// Host-clock time when the current pause began; nil when not paused. The
     /// pause DURATION is measured on the same clock SCStream/AVCapture timestamp
     /// their buffers on, so on resume we grow `pauseOffset` by exactly the paused
-    /// wall-clock span — no need to wait for a video frame to recompute it (which
+    /// wall-clock span, no need to wait for a video frame to recompute it (which
     /// left audio muted over a static slide) and no video-only gap math that
     /// could shove audio PTS backwards and fail the writer.
     private var pausedAtHost: CMTime?
@@ -91,7 +91,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
     private var startConfig: StartConfig?
     /// Main-thread: a restart has torn the old writer down and the fresh run has
     /// not begun yet. `stop()` in that window must cancel the restart rather than
-    /// stop a recording that does not exist — otherwise the new run starts with
+    /// stop a recording that does not exist. Otherwise the new run starts with
     /// nobody holding it and writes until the app quits.
     private var pendingRestart = false
 
@@ -99,13 +99,13 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
     /// `Sendable`, and the mic callback has to hop because the voice-processing
     /// backend delivers on the audio engine's render thread. The buffer is only
     /// READ after the hop and the CF object stays retained across it, so the
-    /// crossing is safe — stated here narrowly instead of widening `MicCapture`'s
+    /// crossing is safe: stated here narrowly instead of widening `MicCapture`'s
     /// own contract.
     private struct SampleBox: @unchecked Sendable { let sb: CMSampleBuffer }
 
     /// Same narrow crossing for the mic device. `AVCaptureDevice` is not
-    /// `Sendable`, but this one is only READ — handed straight to `MicCapture` on
-    /// the recorder queue — and AVFoundation's device objects are safe to open
+    /// `Sendable`, but this one is only READ: handed straight to `MicCapture` on
+    /// the recorder queue. And AVFoundation's device objects are safe to open
     /// from any queue. Boxed here rather than marking the whole `import
     /// AVFoundation` `@preconcurrency`, which would hide every other
     /// Sendable warning in a file full of buffers crossing threads.
@@ -159,11 +159,11 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         //
         // MEASURED, not assumed: with no keyframe setting at all, VideoToolbox
         // already emits keyframes roughly every 0.6 s on both high- and low-motion
-        // 720p30 content. So this cap does NOT speed up scrubbing — the default was
+        // 720p30 content. So this cap does NOT speed up scrubbing. The default was
         // fine. What it buys is a GUARANTEED CEILING: the default GOP is
         // encoder-chosen and undocumented, and can drift with the codec (HEVC) or a
         // future macOS, so bounding it keeps seek behaviour deterministic instead of
-        // trusting an implementation detail. Frame reordering enables B-frames —
+        // trusting an implementation detail. Frame reordering enables B-frames:
         // worth about 2% on this content, more on longer static screen recordings.
         var compression: [String: Any] = [
             AVVideoMaxKeyFrameIntervalKey: max(15, fps) * 2,
@@ -214,13 +214,13 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         }
 
         // The microphone feeds the mixer, not its own track. Mic failure is
-        // non-fatal — the screen recording continues without voice.
+        // non-fatal. The screen recording continues without voice.
         var micCapture: MicCapture?
         if let micDevice, mixer != nil {
             let mc = MicCapture { [weak self] sb in
                 guard let self else { return }
                 // The voice-processing backend taps on the audio engine's render
-                // thread, NOT this queue — the raw backend does deliver here, but
+                // thread, NOT this queue. The raw backend does deliver here, but
                 // relying on that made every mixer/pause/writer field a race on
                 // the noise-cancelling path. Hop unconditionally; it is one async
                 // per ~21 ms buffer.
@@ -228,8 +228,8 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
                 self.queue.async { self.appendMic(box.sb) }
             }
             micCapture = mc
-            // Opening the device is 100–500 ms of CoreAudio work — the device
-            // UID walk, enabling voice processing, starting the engine — and
+            // Opening the device is 100–500 ms of CoreAudio work. The device
+            // UID walk, enabling voice processing, starting the engine. And
             // `MicLevelMonitor` measures exactly that and hops off main for it.
             // This function is @MainActor, so doing it inline froze the
             // countdown and the control bar at the instant recording begins.
@@ -247,7 +247,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
                     NSLog("SnapDesk: mic capture failed: \(error)")
                     DispatchQueue.main.async {
                         Notifier.info("Recording without your voice",
-                                      "The microphone couldn't be started — another app may be using it. The screen is still being recorded.")
+                                      "The microphone couldn't be started. Another app may be using it. The screen is still being recorded.")
                     }
                 }
             }
@@ -288,14 +288,14 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         stream.startCapture { [weak self] error in
             if let error {
                 NSLog("SnapDesk: recording start failed: \(error)")
-                // Tear down on the recorder queue — the stream callback thread
+                // Tear down on the recorder queue. The stream callback thread
                 // must not nil writer/inputs while didOutputSampleBuffer runs.
                 self?.queue.async { self?.finish(success: false) }
             }
         }
     }
 
-    /// Bin the partial file and immediately begin an identical run — same area,
+    /// Bin the partial file and immediately begin an identical run: same area,
     /// same audio sources, same effects, same destination. Safe mid-write: the
     /// stream is stopped, the writer is CANCELLED (not finished, so no half movie
     /// survives), the partial file is deleted, and only then does a new writer
@@ -310,7 +310,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         queue.async { [self] in
             // Claim the teardown so a late didStopWithError or a racing
             // finalizeWriting cannot also run it. Losing that race means the
-            // recording is already ending — release the flag, or a later stop()
+            // recording is already ending: release the flag, or a later stop()
             // would take the restart branch and never finalize anything.
             guard !finalized else {
                 DispatchQueue.main.async { [weak self] in self?.pendingRestart = false }
@@ -333,8 +333,8 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
 
             // The fresh run may only begin once the dying stream has actually
             // stopped delivering. `start()` is @MainActor and rewrites every
-            // queue-confined field — stream, writer, adaptor, mixer, decorator,
-            // the PTS bookkeeping — while SCStream can still be draining its
+            // queue-confined field: stream, writer, adaptor, mixer, decorator,
+            // the PTS bookkeeping, while SCStream can still be draining its
             // buffer backlog into didOutputSampleBuffer on this queue. Firing
             // and forgetting stopCapture's completion left those two writing
             // the same references from two threads.
@@ -385,7 +385,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
             self.pausedAtHost = CMClockGetTime(CMClockGetHostTimeClock())
             // Same reason `stop()` flushes: the mixer holds everything newer than
             // `maxFilled - latencyFrames`, so 43–64 ms of already-summed audio is
-            // sitting in the ring at any instant — and `resume()`'s
+            // sitting in the ring at any instant. And `resume()`'s
             // `reanchorAfterGap()` zeroes the ring, which DELETED it. Every pause
             // clipped the word the user was in the middle of. Flushing here is safe
             // for monotonicity: `pauseOffset` has not grown yet, so these chunks are
@@ -394,7 +394,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
             // Suspend the mic itself: dropping its samples while it keeps running
             // burns CPU and leaves the system's orange mic indicator lit.
             self.micCapture?.setPaused(true)
-            // Stop ScreenCaptureKit compositing at full fps while paused — it was
+            // Stop ScreenCaptureKit compositing at full fps while paused. It was
             // delivering frames we just dropped, burning battery for nothing.
             if let cfg = self.streamConfig {
                 cfg.minimumFrameInterval = CMTime(value: 2, timescale: 1)   // ~1 frame / 2 s
@@ -406,7 +406,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         queue.async {
             guard self.paused else { return }
             self.paused = false
-            // Grow the offset by the exact paused span, right now — so audio
+            // Grow the offset by the exact paused span, right now. So audio
             // resumes with the picture instead of staying muted until the screen
             // next changes, and the offset can never overshoot and drive a track
             // backwards.
@@ -443,11 +443,11 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         }
         // Everything else is queue-owned. `cleanup()` nils stream/writer/
         // micCapture/decorator ON THE RECORDER QUEUE, so reading those same vars
-        // here on main was a data race — hop first, then touch them.
+        // here on main was a data race: hop first, then touch them.
         queue.async { [self] in
             micCapture?.stop()
             // Push the mixer's jitter buffer into the file before the writer is
-            // finished — otherwise the last ~64 ms, the end of whatever the user
+            // finished. Otherwise the last ~64 ms, the end of whatever the user
             // was saying as they pressed Stop, is simply dropped.
             mixer?.flush()
             let deco = decorator
@@ -489,7 +489,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         guard !finalized else { return }
         finalized = true
         // Nothing was ever appended (stopped before the first complete frame):
-        // finishWriting would throw — cancel instead and report failure.
+        // finishWriting would throw: cancel instead and report failure.
         guard sessionStarted else {
             writer?.cancelWriting()
             if let url = outputURL { try? FileManager.default.removeItem(at: url) }
@@ -533,7 +533,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         let url = success ? outputURL : nil
         // `isRecording` is read on the main thread (stop(), the coordinator); flip
         // it there, never from this recorder queue, so the two never race. Every
-        // other exit already flips it on main — match them.
+        // other exit already flips it on main: match them.
         DispatchQueue.main.async { self.isRecording = false; self.onFinish?(url) }
         cleanup()
     }
@@ -555,7 +555,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         // must not reach the new writer, so every callback identifies its run.
         guard stream === self.stream else { return }
         guard CMSampleBufferDataIsReady(sampleBuffer), let writer else { return }
-        // The writer can fail MID-recording — disk full is the common one. Until
+        // The writer can fail MID-recording: disk full is the common one. Until
         // now every later frame was silently dropped and the user only found out
         // when they pressed Stop and got nothing. Stop right there and say why,
         // so whatever was already written (fragments land every 5s) is kept.
@@ -628,14 +628,14 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         guard !reportedFailure else { return }
         reportedFailure = true
         let error = writer.error as NSError?
-        // Disk full is the failure worth naming — it's actionable.
+        // Disk full is the failure worth naming: it's actionable.
         let outOfSpace = error?.domain == NSCocoaErrorDomain
             && (error?.code == NSFileWriteOutOfSpaceError
                 || (error?.underlyingErrors.first as NSError?)?.code == NSFileWriteOutOfSpaceError)
-        NSLog("SnapDesk: writer failed mid-recording — \(error?.localizedDescription ?? "unknown")")
+        NSLog("SnapDesk: writer failed mid-recording. \(error?.localizedDescription ?? "unknown")")
         DispatchQueue.main.async {
             if outOfSpace {
-                Notifier.error("Recording stopped — disk full",
+                Notifier.error("Recording stopped (disk full)",
                                "The video was saved up to the point the disk ran out. Free some space and record again.")
             } else {
                 Notifier.error("Recording stopped",

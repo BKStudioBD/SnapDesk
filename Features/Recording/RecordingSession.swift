@@ -42,9 +42,9 @@ final class RecordingSession: NSObject {
 
     private(set) var isPaused = false
 
-    /// (elapsed "M:SS" for the menu bar) — fired every timer tick.
+    /// (elapsed "M:SS" for the menu bar): fired every timer tick.
     var onTick: ((String) -> Void)?
-    /// State changed (started / paused / stopped) — refresh menus/icons.
+    /// State changed (started / paused / stopped): refresh menus/icons.
     var onStateChange: (() -> Void)?
     /// Recording ended. URL is nil on failure or cancel.
     var onFinished: ((URL?) -> Void)?
@@ -84,7 +84,7 @@ final class RecordingSession: NSObject {
                 // Denied back then → requestAccess now returns false silently,
                 // which reads as "the camera just doesn't work". Take the user
                 // to the switch they need (once per app session, not per
-                // recording — they may be recording something else right now).
+                // recording. They may be recording something else right now).
                 Notifier.info("Camera off", "Turn ON SnapDesk under Privacy → Camera (Settings just opened), then record again.")
                 if !Self.openedCameraPane {
                     Self.openedCameraPane = true
@@ -96,7 +96,7 @@ final class RecordingSession: NSObject {
         }
         if cancelled { return }
 
-        // Countdown (Esc or ⌃5 aborts). stop() already tore down and notified —
+        // Countdown (Esc or ⌃5 aborts). stop() already tore down and notified:
         // just bail, don't start recording.
         await runCountdown()
         if cancelled { return }
@@ -113,7 +113,7 @@ final class RecordingSession: NSObject {
                   let scDisplay = content.displays.first(where: { $0.displayID == displayID })
             else { throw ScreenRecorder.RecorderError.setup }
             // Exclude SnapDesk APP-WIDE (not a window snapshot) so windows opened
-            // DURING the recording — capture editor, clipboard, pins — never
+            // DURING the recording, capture editor, clipboard, pins, never
             // appear in the video either.
             let pid = pid_t(ProcessInfo.processInfo.processIdentifier)
             let filter: SCContentFilter
@@ -140,8 +140,8 @@ final class RecordingSession: NSObject {
                                           displayID: displayID,
                                           sourceRect: selection.rectInScreenPoints,
                                           scale: selection.screen.backingScaleFactor)
-                // Wired BEFORE start(): the setup failures it reports — no
-                // device, camera busy, output refused — all happen synchronously
+                // Wired BEFORE start(): the setup failures it reports (no
+                // device, camera busy, output refused) all happen synchronously
                 // inside start(), and used to vanish without a word.
                 deco.onCameraProblem = { problem in
                     if problem.isDisruption { Notifier.error(problem.title, problem.body) }
@@ -178,7 +178,7 @@ final class RecordingSession: NSObject {
                                decorator: decorator,
                                url: url)
             startedRecording = true
-            // Live preview of the burned-in webcam bubble — without it the
+            // Live preview of the burned-in webcam bubble, without it the
             // camera is invisible until playback and reads as broken.
             if let cam = decorator?.liveCameraSession {
                 let bubble = CameraBubbleWindow(session: cam, selection: selection,
@@ -193,7 +193,7 @@ final class RecordingSession: NSObject {
             startTimer()
             onStateChange?()
         } catch {
-            // The decorator started BEFORE the recorder — stop it or its event
+            // The decorator started BEFORE the recorder: stop it or its event
             // monitors + camera session (webcam light!) leak until app quit.
             decorator?.stop()
             decorator = nil
@@ -203,7 +203,7 @@ final class RecordingSession: NSObject {
             guard !finishedOnce else { return }
             finishedOnce = true
             // The coordinator's onFinished(nil) path already shows a single
-            // "Recording failed" notification for a non-discarded failure — don't
+            // "Recording failed" notification for a non-discarded failure: don't
             // post a second one here.
             onFinished?(nil)
         }
@@ -227,7 +227,7 @@ final class RecordingSession: NSObject {
     }
 
     func stop() {
-        // End a running countdown at once — its sleep throws on cancellation.
+        // End a running countdown at once: its sleep throws on cancellation.
         countdownTask?.cancel()
         if recorder.isRecording {
             recorder.stop()
@@ -237,7 +237,7 @@ final class RecordingSession: NSObject {
             cancelled = true
             handleFinish(nil)
         }
-        // else: already finalizing — ignore the extra press; the writer's
+        // else: already finalizing, so ignore the extra press; the writer's
         // completion will deliver the real URL exactly once.
     }
 
@@ -268,7 +268,7 @@ final class RecordingSession: NSObject {
     }
 
     private func handleFinish(_ finishedURL: URL?) {
-        // Fires from user-stop AND the writer's async completion — only once.
+        // Fires from user-stop AND the writer's async completion: only once.
         guard !finishedOnce else { return }
         finishedOnce = true
         timer?.invalidate(); timer = nil
@@ -377,7 +377,7 @@ final class RecordingSession: NSObject {
     private func showBorder() {
         // Spotlight: everything OUTSIDE the recorded area dims (premium tint),
         // the area itself stays live with a red recording border. Click-through,
-        // and excluded from the capture filter — never appears in the video.
+        // and excluded from the capture filter, never appears in the video.
         let win = SpotlightOverlay.window(around: globalRect,
                                           on: selection.screen, border: .systemRed)
         win.orderFront(nil)
@@ -408,7 +408,7 @@ final class RecordingSession: NSObject {
         let pause = glassButton("pause.fill", "Pause", #selector(pauseTapped))
         pauseButton = pause
         let restartB = glassButton("arrow.counterclockwise",
-                                   "Start over — throws away what's recorded so far",
+                                   "Start over (throws away what's recorded so far)",
                                    #selector(restartTapped))
         let stopB = glassButton("stop.fill", "Stop & save", #selector(stopTapped))
         stopB.contentTintColor = .systemRed

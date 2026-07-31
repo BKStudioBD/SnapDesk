@@ -6,8 +6,8 @@ import AppKit
 ///
 /// It is the app icon reduced to monochrome: a ring of short, heavy, round-capped
 /// corner brackets (capture) around a solid centre mark (the target you drag
-/// over). The brackets sit on the vertices of a regular heptagon — seven corners,
-/// not the four of a rectangle — which is what separates the mark from every
+/// over). The brackets sit on the vertices of a regular heptagon: seven corners,
+/// not the four of a rectangle, which is what separates the mark from every
 /// other viewfinder in a menu bar. The centre is a DIAMOND, not a dot: a dot plus
 /// brackets is Apple's own `viewfinder` symbol, and at 2× (what every Retina Mac
 /// actually shows) the rotated square is what makes the mark read as ours.
@@ -15,7 +15,7 @@ import AppKit
 /// Every measurement is a fraction of the requested point size, so the mark is
 /// resolution-independent. The detail level is deliberately low: anything finer
 /// (the app icon's four-quadrant colour wheel, for instance) collapses into a
-/// blob at a real 18pt menu-bar size — verified by rasterising it.
+/// blob at a real 18pt menu-bar size: verified by rasterising it.
 enum MenuBarIcon {
 
     /// How many brackets the mark is built from. Shared with the app icon
@@ -33,14 +33,14 @@ enum MenuBarIcon {
         }
         img.isTemplate = true
         // The status item is an icon and nothing else, so this string IS the
-        // control's name to VoiceOver — without it the menu bar holds an
+        // control's name to VoiceOver, without it the menu bar holds an
         // unnamed button.
         img.accessibilityDescription = "SnapDesk"
         return img
     }
 
     /// Solid red dot shown in the menu bar while a recording is in progress.
-    /// Not a style — a state, which is why it lives alongside the one mark.
+    /// Not a style: a state, which is why it lives alongside the one mark.
     static func recordingImage(pointSize: CGFloat = 18) -> NSImage {
         let size = NSSize(width: pointSize, height: pointSize)
         let img = NSImage(size: size, flipped: false) { rect in
@@ -51,7 +51,7 @@ enum MenuBarIcon {
         img.isTemplate = false   // keep it red, not a template tint
         // "Recording" is carried by the colour alone otherwise, which no
         // screen reader and no colour-blind user can read.
-        img.accessibilityDescription = "SnapDesk — recording"
+        img.accessibilityDescription = "SnapDesk (recording)"
         return img
     }
 
@@ -79,7 +79,7 @@ enum MenuBarIcon {
         guard corners >= 3 else { return path }
 
         // Half the stroke hangs outside the centre line, so pull the vertices in
-        // by that much — otherwise the caps clip against the icon's edge.
+        // by that much. Otherwise the caps clip against the icon's edge.
         let radius = min(rect.width, rect.height) / 2 - lineWidth / 2
         let centre = NSPoint(x: rect.midX, y: rect.midY)
         // Start at the top so one bracket points straight up: a rotated ring
@@ -107,7 +107,7 @@ enum MenuBarIcon {
         return path
     }
 
-    /// The centre diamond — a square on its point, so it survives as a distinct
+    /// The centre diamond: a square on its point, so it survives as a distinct
     /// shape at 2× instead of rounding off into a dot.
     ///
     /// - Parameters:
@@ -130,7 +130,7 @@ enum MenuBarIcon {
         // Seven brackets divide the ring into much shorter edges than four did,
         // so both the stroke and the arms have to come DOWN: at the old weights
         // the round caps met in the middle of every edge and the mark rasterised
-        // as a solid ring at a real 18pt menu-bar size — checked on the proof
+        // as a solid ring at a real 18pt menu-bar size: checked on the proof
         // sheet ./make-icon.sh writes.
         bracketsPath(in: rect.insetBy(dx: unit * 0.05, dy: unit * 0.05),
                      lineWidth: unit * 0.066,

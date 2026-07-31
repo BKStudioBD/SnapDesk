@@ -3,7 +3,7 @@ import AppKit
 @testable import SnapDeskCore
 
 extension Tag {
-    /// Cases that were real shipped bugs — treat with extra care.
+    /// Cases that were real shipped bugs: treat with extra care.
     @Tag static var regression: Self
 }
 
@@ -28,7 +28,7 @@ struct ClipboardItemClassification {
     @Test("Hex colors need the leading #", .tags(.regression))
     func hexColorsNeedHash() {
         #expect(item("#FF8800").contentType == .color)
-        // "facade" and git short SHAs are 6 hex chars — treating them as colors
+        // "facade" and git short SHAs are 6 hex chars: treating them as colors
         // was the bug the # requirement fixed.
         #expect(item("FF8800").contentType == .text)
         #expect(item("facade").contentType == .text)

@@ -148,7 +148,7 @@ private struct UninstallDetail: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(app.name).fontWeight(.semibold)
                 if isRunning {
-                    Label("Running — it will be quit first", systemImage: "exclamationmark.triangle")
+                    Label("Running (it will be quit first)", systemImage: "exclamationmark.triangle")
                         .font(.caption)
                         .foregroundStyle(.orange)
                 } else {
@@ -171,7 +171,7 @@ private struct UninstallDetail: View {
     }
 
     private func load() async {
-        // `isRunning` used to be read inside the body — an NSWorkspace scan of
+        // `isRunning` used to be read inside the body: an NSWorkspace scan of
         // every running process, on every redraw of this view.
         isRunning = AppUninstaller.isRunning(app)
         let found = await AppUninstaller.leftoversInBackground(for: app)
@@ -186,15 +186,15 @@ private struct UninstallDetail: View {
         isRemoving = true
         let removingBundle = picked.contains { $0.url == app.url }
         // Quit first whatever is being removed, not just the bundle: untick the
-        // .app to "reset" an app and the container and preferences still go —
-        // the ones it has open right now, and rewrites from memory on the way
-        // out. `quit` returns immediately when the app isn't running.
+        // .app to "reset" an app and the container and preferences still go. A
+        // running app holds those files open and rewrites them from memory on
+        // the way out. `quit` returns immediately when the app isn't running.
         if await AppUninstaller.quit(app) == false {
-            // It is still running, and it is never killed — a save prompt may be
+            // It is still running, and it is never killed: a save prompt may be
             // waiting for an answer. Removing a live bundle would fail anyway.
             isRemoving = false
             isRunning = true
-            result = "\(app.name) is still open — quit it, then try again"
+            result = "\(app.name) is still open. Quit it, then try again"
             return
         }
 

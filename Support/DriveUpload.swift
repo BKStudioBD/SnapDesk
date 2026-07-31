@@ -1,6 +1,6 @@
 import Foundation
 
-/// "Auto-upload to Google Drive" — SnapDesk itself never touches the network:
+/// "Auto-upload to Google Drive". SnapDesk itself never touches the network:
 /// finished recordings are copied into the Google Drive desktop app's sync
 /// folder (~/Library/CloudStorage/GoogleDrive-*/My Drive/SnapDesk Recordings)
 /// and Google's own app uploads them. Zero OAuth, zero network code.

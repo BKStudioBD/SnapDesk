@@ -3,7 +3,7 @@ import AppKit
 @testable import SnapDeskCore
 
 /// Every picked color is handed to the user as a string, so parse and format must
-/// be exact inverses — a one-off here silently corrupts what they paste.
+/// be exact inverses: a one-off here silently corrupts what they paste.
 struct ColorHexTests {
     @Test("Parse → format returns the original hex",
           arguments: ["#000000", "#FFFFFF", "#FF8800", "#123456", "#0A0B0C", "#7F7F7F"])
@@ -19,7 +19,7 @@ struct ColorHexTests {
     }
 
     /// `Int(_:radix:)` reads a leading sign, so these are six characters long and
-    /// parse — as a NEGATIVE number, which the shifts then mask into a valid
+    /// parse: as a NEGATIVE number, which the shifts then mask into a valid
     /// looking colour. "-00001" came back as white.
     @Test("A signed number is not a colour", .tags(.regression),
           arguments: ["-00001", "+12345", "#-00001", "#+FFFFF", "-FFFFF", "+00000"])
@@ -44,7 +44,7 @@ struct ColorHexTests {
         #expect(color.hexString(uppercase: false) == "#aabbcc")
     }
 
-    @Test("Channel order is R, G, B — not reversed")
+    @Test("Channel order is R, G, B (not reversed)")
     func channelOrder() throws {
         let red = try #require(NSColor(hex: "#FF0000")).usingColorSpace(.sRGB)
         #expect(red?.redComponent == 1)

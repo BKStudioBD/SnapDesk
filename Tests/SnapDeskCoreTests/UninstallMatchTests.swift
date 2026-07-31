@@ -24,7 +24,7 @@ struct UninstallMatchTests {
         #expect(UninstallMatch.matchesBundleID("com.google.Chrome2", bundleID: "com.google.Chrome") == false)
     }
 
-    @Test("A dot does not end the match — a longer id is another product",
+    @Test("A dot does not end the match. A longer id is another product",
           .tags(.regression))
     func aDotIsNotABoundary() {
         // The bug this pins: `com.google.Chrome.canary` shares Chrome's id as a
@@ -48,7 +48,7 @@ struct UninstallMatchTests {
             bundleID: "com.google.Chrome"))
     }
 
-    @Test("Case doesn't matter — the file system's does not either")
+    @Test("Case doesn't matter. The file system's does not either")
     func caseInsensitive() {
         #expect(UninstallMatch.matchesBundleID("COM.GOOGLE.CHROME.plist", bundleID: "com.google.Chrome"))
     }
@@ -110,7 +110,7 @@ struct UninstallMatchTests {
     @Test("Inside a vendor folder, the child must match a DIFFERENT word")
     func vendorChildNeedsItsOwnMatch() {
         let tokens = UninstallMatch.tokens(appName: "Google Chrome", bundleID: "com.google.Chrome")
-        // Application Support/Google/Chrome — the child names the product.
+        // Application Support/Google/Chrome. The child names the product.
         #expect(UninstallMatch.vendorChildMatches(vendor: "Google", child: "Chrome", tokens: tokens))
         // Google/GoogleUpdater is shared with Drive and Earth: it matches only
         // the same word the vendor folder did, so it stays.

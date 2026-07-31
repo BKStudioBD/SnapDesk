@@ -2,7 +2,7 @@ import Testing
 @testable import SnapDeskCore
 
 /// Version comparison decides whether the app replaces itself, so a wrong answer
-/// either strands users on an old build or downgrades them. No network here — the
+/// either strands users on an old build or downgrades them. No network here. The
 /// comparison is pure.
 struct UpdaterVersionTests {
     @Test("A later version is detected", arguments: [
@@ -17,7 +17,7 @@ struct UpdaterVersionTests {
         ("1.1.0", "1.1.0"), ("1.0.9", "1.1.0"),
         ("1.9.0", "1.10.0"), ("0.9.9", "1.0.0"),
         // A missing component is zero, so these two are the SAME version in both
-        // directions — neither is an update.
+        // directions: neither is an update.
         ("1.1", "1.1.0"), ("1.1.0", "1.1"),
     ])
     func rejectsOlderOrEqual(_ candidate: String, _ current: String) {
@@ -40,7 +40,7 @@ struct UpdaterVersionTests {
     }
 
     @Test func currentVersionIsReadable() {
-        // Under `swift test` there's no app bundle, so this falls back to "0" —
+        // Under `swift test` there's no app bundle, so this falls back to "0";
         // the point is that it never traps or returns an empty string.
         #expect(Updater.currentVersion.isEmpty == false)
     }
@@ -67,7 +67,7 @@ struct UpdaterAssetTests {
     func rejectsOtherArchives() {
         #expect(Updater.appZipURL(in: [asset("SnapDesk-dSYMs.zip"), asset("symbols.zip")]) == nil)
         #expect(Updater.appZipURL(in: []) == nil)
-        // Name matches but the asset carries no URL — still nothing to download.
+        // Name matches but the asset carries no URL. Still nothing to download.
         #expect(Updater.appZipURL(in: [["name": "SnapDesk.zip"]]) == nil)
     }
 
@@ -79,7 +79,7 @@ struct UpdaterAssetTests {
 
 /// The signature policy is what stands between a user and someone else's app. It
 /// also decides whether a legitimate update is refused, so both directions are
-/// asserted here — no codesign process involved.
+/// asserted here, no codesign process involved.
 struct UpdaterSignatureTests {
     private let developerID = """
     Executable=/Applications/SnapDesk.app/Contents/MacOS/SnapDesk

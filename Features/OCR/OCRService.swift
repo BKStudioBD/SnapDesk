@@ -4,7 +4,7 @@ import VisionKit
 
 /// Which recognizer runs first.
 enum OCREngine: String, CaseIterable, Identifiable {
-    /// macOS Live Text first — it reads columns, tables and wrapped paragraphs
+    /// macOS Live Text first. It reads columns, tables and wrapped paragraphs
     /// in the right order, which a plain top-to-bottom word sort cannot. Falls
     /// back to the detailed pipeline whenever it comes up empty.
     case automatic = "Automatic"
@@ -41,9 +41,9 @@ struct OCROptions {
     var tableMode: Bool = false
 
     /// Live Text takes no custom words, so asking for them picks the pipeline
-    /// that honours them — silently dropping them would be worse.
+    /// that honours them: silently dropping them would be worse.
     /// Code mode and table mode both need the word boxes, which only the detailed
-    /// pass produces — so they force it, exactly like custom words do.
+    /// pass produces. So they force it, exactly like custom words do.
     var usesLiveText: Bool {
         engine == .automatic && customWords.isEmpty && codeMode == false && tableMode == false
     }
@@ -54,27 +54,27 @@ struct OCROptions {
 ///
 /// Two recognizers, in order:
 ///
-///   A. Live Text (`ImageAnalyzer`) — macOS's own reader. Its transcript comes
+///   A. Live Text (`ImageAnalyzer`): macOS's own reader. Its transcript comes
 ///      out in reading order with paragraphs already joined, which is what a
 ///      multi-column or wrapped block needs. No boxes, no knobs.
-///   B. The detailed pipeline — one happy path plus escalating rescues, tried in
+///   B. The detailed pipeline, one happy path plus escalating rescues, tried in
 ///      order and stopped at the first that finds text, so an ordinary capture
 ///      pays for exactly one pass and only a genuine miss walks further:
 ///
-///        1. `readWhole` on the (small-upscaled) image                — common case
+///        1. `readWhole` on the (small-upscaled) image: common case
 ///        2. detected-but-unreadable (boxes found, no glyphs) → 2× pass
-///        3. nothing detected → a larger pass, then tiling            — blind spots
+///        3. nothing detected → a larger pass, then tiling: blind spots
 ///
 /// Everything internal to B speaks ONE coordinate space: `Word`s in pixels,
 /// top-left origin, relative to the prepared image. Vision's own boxes are
-/// normalized and bottom-left — converted once, at the edge, so the ordering
+/// normalized and bottom-left: converted once, at the edge, so the ordering
 /// logic never has to think about it.
 enum OCRService {
 
     // MARK: - Public
 
     static func recognizeText(in image: CGImage, options: OCROptions) async throws -> String {
-        // Both recognizers see the SAME prepared image — tiny glyphs are the #1
+        // Both recognizers see the SAME prepared image: tiny glyphs are the #1
         // miss for either of them.
         let prepared = upscaledIfSmall(image)
 
@@ -85,7 +85,7 @@ enum OCRService {
         return finish(compose(words, options: options), options: options)
     }
 
-    /// Recognition languages this OS actually has, newest model first — the list
+    /// Recognition languages this OS actually has, newest model first. The list
     /// Settings offers. Empty only if Vision refuses to answer.
     static func supportedLanguages() -> [String] {
         let request = VNRecognizeTextRequest()
@@ -100,7 +100,7 @@ enum OCRService {
 
     // MARK: - Live Text
 
-    /// Creating an analyzer is the expensive part, not analyzing — one for the
+    /// Creating an analyzer is the expensive part, not analyzing, one for the
     /// process, reused.
     private static let analyzer = ImageAnalyzer()
 
@@ -119,14 +119,14 @@ enum OCRService {
             return transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? nil : transcript
         } catch {
-            NSLog("SnapDesk: Live Text pass failed, falling back — \(error)")
+            NSLog("SnapDesk: Live Text pass failed, falling back. \(error)")
             return nil
         }
     }
 
     /// Live Text hands back ONE line per block, in reading order, with the lines
     /// a paragraph wrapped onto already joined. So the block boundaries are the
-    /// paragraph boundaries — nothing to measure, just the user's choices to
+    /// paragraph boundaries: nothing to measure, just the user's choices to
     /// apply. (Blank lines it emits are normalized away first, so the spacing
     /// comes out the same whether macOS added them or we did.)
     private static func shape(_ transcript: String, options: OCROptions) -> String {
@@ -141,7 +141,7 @@ enum OCRService {
         for i in 1..<blocks.count {
             // Blank line only BETWEEN TWO PROSE blocks. A list, a table column
             // or a row of labels arrives as many short blocks, and double-spacing
-            // those reads worse than leaving them alone — the detailed engine is
+            // those reads worse than leaving them alone. The detailed engine is
             // the one that can tell them apart by measuring the gaps.
             let prose = isProse(blocks[i - 1]) && isProse(blocks[i])
             out += prose ? "\n\n" : "\n"
@@ -170,9 +170,9 @@ enum OCRService {
         let first = try await readWhole(prepared, options: options)
         if !first.words.isEmpty { return first.words }
 
-        // 2. Boxes were detected but not read — faint or sub-pixel glyphs that
+        // 2. Boxes were detected but not read: faint or sub-pixel glyphs that
         //    more resolution recovers. (Zero boxes means the DETECTOR came up
-        //    empty; scaling the same framing won't change that — a different
+        //    empty; scaling the same framing won't change that, but a different
         //    framing, below, will.)
         if first.observations > 0,
            let bigger = scaledToMinSide(prepared, target: minSideForRetry),
@@ -204,7 +204,7 @@ enum OCRService {
     /// Newest recognition model this OS actually ships. Vision adds a revision
     /// with most macOS releases; asking for one that isn't installed throws, and
     /// pinning an old number leaves accuracy on the table for everyone on a
-    /// newer system. Resolved once — the set can't change mid-process.
+    /// newer system. Resolved once. The set can't change mid-process.
     private static let revision: Int = {
         Array(VNRecognizeTextRequest.supportedRevisions).max() ?? VNRecognizeTextRequestRevision3
     }()
@@ -226,7 +226,7 @@ enum OCRService {
     }
 
     /// Recognize an entire image. Returns word boxes in the image's own pixel
-    /// space (top-left) plus the raw observation count — the caller needs the
+    /// space (top-left) plus the raw observation count. The caller needs the
     /// latter to distinguish "no text detected" from "detected, unreadable".
     private static func readWhole(_ image: CGImage, options: OCROptions) async throws -> (words: [Word], observations: Int) {
         try await withCheckedThrowingContinuation { continuation in
@@ -236,7 +236,7 @@ enum OCRService {
             let request = VNRecognizeTextRequest()
             configure(request, options: options)
             let handler = VNImageRequestHandler(cgImage: image, options: [:])
-            // Off the main thread — an .accurate pass on a big region is heavy.
+            // Off the main thread: an .accurate pass on a big region is heavy.
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
                     try handler.perform([request])
@@ -266,7 +266,7 @@ enum OCRService {
         var out: [Word] = []
         for (range, text) in candidate.string.wordRanges {
             // Prefer the word's own box; fall back to the whole observation's
-            // when Vision can't map the substring (rare) — a slightly misplaced
+            // when Vision can't map the substring (rare): a slightly misplaced
             // word beats a dropped one.
             let norm = (try? candidate.boundingBox(for: range))?.boundingBox ?? observation.boundingBox
             out.append(Word(rect: toPixels(norm), text: text))
@@ -350,7 +350,7 @@ enum OCRService {
     // MARK: - Line assembly
 
     /// Words → text. Group into visual lines by vertical overlap against each
-    /// line's ANCHOR (its first, topmost word) — never a running band, which
+    /// line's ANCHOR (its first, topmost word), never a running band, which
     /// would inflate around a tall word (a heading beside body text) and swallow
     /// adjacent lines. Then left-to-right within each line, top-to-bottom overall.
     private static func compose(_ words: [Word], options: OCROptions) -> String {
@@ -389,7 +389,7 @@ enum OCRService {
     ///  1. Split each line into CELLS on unusually wide horizontal gaps. A
     ///     sentence has near-uniform word spacing, so it yields exactly one cell
     ///     and can never become tabs. A table row has one huge gap per column
-    ///     boundary. (Clustering word left-edges directly — without this step —
+    ///     boundary. (Clustering word left-edges directly, without this step,
     ///     turns every word of a sentence into its own column.)
     ///  2. Cluster those cell left-edges across lines into column anchors, and
     ///     require the anchors to REPEAT down the page.
@@ -413,7 +413,7 @@ enum OCRService {
             if let last = anchors.last, x - last <= tolerance { continue }
             anchors.append(x)
         }
-        // Keep only anchors that RECUR — a one-off indent isn't a column.
+        // Keep only anchors that RECUR: a one-off indent isn't a column.
         let recurring = anchors.filter { anchor in
             rowCells.filter { row in row.contains { abs($0.x - anchor) <= tolerance } }.count >= 2
         }
@@ -444,7 +444,7 @@ enum OCRService {
         for i in 1..<sorted.count { gaps.append(max(0, sorted[i].rect.minX - sorted[i - 1].rect.maxX)) }
         // Threshold from LINE HEIGHT, not from the gaps themselves. A word space
         // is roughly a third of the line height in any font at any zoom, while a
-        // column boundary is at least a whole line height and usually several — so
+        // column boundary is at least a whole line height and usually several. So
         // 0.9× separates them cleanly.
         //
         // Deliberately NOT the median gap: a two-column row has exactly two gaps
@@ -468,7 +468,7 @@ enum OCRService {
     /// Line breaks, plus a BLANK line wherever the vertical gap says the layout
     /// itself broke. Within one paragraph the gap between wrapped lines is
     /// near-constant, so the median gap is the paragraph's own leading and
-    /// anything clearly above it is a real break — no font size or DPI assumed.
+    /// anything clearly above it is a real break, no font size or DPI assumed.
     ///
     /// Needs enough lines for a median to mean anything; two lines have exactly
     /// one gap, which is its own median and would never look unusual.
@@ -484,8 +484,8 @@ enum OCRService {
         var out = texts[0]
         for i in 1..<texts.count {
             // Two guards, and the break needs BOTH to be cleared:
-            //  · 1.8× the median — unusual for this block's own leading;
-            //  · 0.7× the smaller line's height — an absolute floor, so tightly
+            //  · 1.8× the median: unusual for this block's own leading;
+            //  · 0.7× the smaller line's height: an absolute floor, so tightly
             //    set text (median 0) can't turn every line into a paragraph.
             let lineHeight = min(rects[i].height, rects[i - 1].height)
             let isBreak = gaps[i - 1] > max(median * 1.8, lineHeight * 0.7)
@@ -503,10 +503,10 @@ enum OCRService {
     private static let tileMax: CGFloat = 1400
     /// Retry (detected-unreadable) target for the shorter side.
     private static let minSideForRetry = 900
-    /// Rescue (nothing-detected) target for the shorter side — push harder.
+    /// Rescue (nothing-detected) target for the shorter side: push harder.
     private static let minSideForRescue = 1200
 
-    /// Upscale small selections up front — tiny glyphs are Vision's #1 miss and
+    /// Upscale small selections up front: tiny glyphs are Vision's #1 miss and
     /// recognize far better enlarged. Keyed off the SHORT side (glyph height
     /// tracks the short side, not a wide strip's long edge) and off the long
     /// side for whole blocks; whichever asks for more wins, capped by budget.
@@ -563,7 +563,7 @@ enum OCRService {
 
     /// Hands the claim back, so a warm-up that never actually ran can be retried.
     /// A latched claim over a failed prewarm costs the user the whole model load
-    /// on their first real grab — the exact wait this exists to remove.
+    /// on their first real grab. The exact wait this exists to remove.
     private static func releasePrewarm() {
         prewarmLock.lock()
         defer { prewarmLock.unlock() }
@@ -577,7 +577,7 @@ enum OCRService {
     /// request config, and the probe image MUST contain glyphs (a blank image
     /// short-circuits before the recognizer loads).
     ///
-    /// Returns whether this call actually completed the warm-up — false when it
+    /// Returns whether this call actually completed the warm-up: false when it
     /// failed, and when someone else already owns it.
     @discardableResult
     static func prewarm(options: OCROptions) async -> Bool {
@@ -599,7 +599,7 @@ enum OCRService {
     /// background. The very first recognition by a new binary costs ~32 s (macOS
     /// compiles the model bundle for this executable, then caches it keyed to
     /// the binary); later launches warm in ~0.1 s. So this is per-update, not
-    /// per-launch — and doing it right after a self-relaunch spends that 32 s
+    /// per-launch. And doing it right after a self-relaunch spends that 32 s
     /// where nobody waits. Skipping it otherwise keeps a menu-bar app that may
     /// never OCR from holding the ~54 MB the models occupy.
     static func warmModelCacheAfterUpdate(options: OCROptions) {

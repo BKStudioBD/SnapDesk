@@ -2,14 +2,14 @@ import AppKit
 import AVKit
 
 /// Review window shown when a recording finishes: plays the video with a
-/// a trim TIMELINE below it — drag on the strip to select any
+/// a trim TIMELINE below it: drag on the strip to select any
 /// range (middle included), Cut it, adjust by the edge handles, Undo, then
 /// Export writes the kept parts as one file (in place). Playback skips cuts.
 final class RecordingPreviewWindow: NSWindowController, NSWindowDelegate {
     private static var open = Set<RecordingPreviewWindow>()
     private let url: URL
     /// Sibling file (e.g. the raw original of a subtitled copy) that Delete
-    /// should also trash — otherwise the user "deletes" and a copy remains.
+    /// should also trash. Otherwise the user "deletes" and a copy remains.
     private let companion: URL?
     private let player: AVPlayer
     private let strip = TimelineStripView()
@@ -208,7 +208,7 @@ final class RecordingPreviewWindow: NSWindowController, NSWindowDelegate {
             return
         }
         player.pause()
-        // Lock every mutation while the export runs — cutting/undoing/deleting
+        // Lock every mutation while the export runs: cutting/undoing/deleting
         // under an in-flight export corrupts the result or orphans files.
         exporting = true
         exportButton?.isEnabled = false

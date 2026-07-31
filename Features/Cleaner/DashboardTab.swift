@@ -24,7 +24,7 @@ final class SystemMonitor {
         }
     }
 
-    /// Take a reading now — used after a memory clean, so the numbers move the
+    /// Take a reading now: used after a memory clean, so the numbers move the
     /// moment the work finishes rather than up to a second later.
     func update() async {
         let current = SystemStats.counters()
@@ -32,8 +32,8 @@ final class SystemMonitor {
         // button's extra update and the timer's cannot both measure from it.
         let last = previous
         previous = current
-        // The disk figure is the expensive one — purgeable and snapshot space,
-        // hundreds of milliseconds of it — and asking for it on the main actor
+        // The disk figure is the expensive one: purgeable and snapshot space,
+        // hundreds of milliseconds of it. And asking for it on the main actor
         // once a second is a window that stutters the whole time it is open.
         let disk = await SystemStats.diskInBackground()
         sample = SystemStats.sample(from: last, to: current,
@@ -109,7 +109,7 @@ struct DashboardTab: View {
     private var verdict: String {
         switch sample.health {
         case 70...: "Plenty of room. Nothing needs doing."
-        case 40..<70: "Getting tight — the Clean tab is where the easy wins are."
+        case 40..<70: "Getting tight. The Clean tab is where the easy wins are."
         default: "Low on memory or disk. Clean and Developer both have space to recover."
         }
     }

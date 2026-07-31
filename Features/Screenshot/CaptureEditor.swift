@@ -5,7 +5,7 @@ import AppKit
 /// The screen is frozen up-front, a dimmed overlay shows it, the user drags out a
 /// selection (with a live magnifier loupe), then annotates directly on the overlay
 /// using a floating glass toolbar docked to the selection. Resize handles adjust
-/// the region; Copy / Save / Close finish. All on one overlay — no second window.
+/// the region; Copy / Save / Close finish. All on one overlay, no second window.
 /// Text uses an inline field and colors use inline swatches, so nothing ever opens
 /// a panel *behind* the full-screen overlay.
 enum CaptureEditor {
@@ -123,7 +123,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
     private let frozenCG: CGImage
     /// Built lazily (only the active screen's loupe samples it) so multi-monitor
     /// captures don't allocate a full-res bitmap rep per display up-front.
-    // (color sampling reads a 1x1 crop of frozenCG on demand — no full-res
+    // (color sampling reads a 1x1 crop of frozenCG on demand, no full-res
     //  NSBitmapImageRep is kept, which would pin ~60 MB for the whole session.)
     private let scale: CGFloat
     private weak var settings: SettingsStore?
@@ -147,7 +147,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
     private var current: AnnotationStroke?
     private var stepCounter = 0
 
-    /// ONE stack for strokes and whole-image transforms alike — see EditorEdit.
+    /// ONE stack for strokes and whole-image transforms alike: see EditorEdit.
     private var undoStack: [EditorEdit] = []
     private var redoStack: [EditorEdit] = []
 
@@ -155,12 +155,13 @@ final class EditorView: NSView, NSTextFieldDelegate {
     /// selection now shows *instead of* the frozen screen underneath it.
     ///
     /// Strategy (b) of the two ways to transform an annotated picture: flatten the
-    /// strokes into the bitmap first, then transform the bitmap. (a) — transforming
-    /// each stroke's geometry alongside the image — keeps them editable, but every
+    /// strokes into the bitmap first, then transform the bitmap. Strategy (a),
+    /// transforming each stroke's geometry alongside the image, keeps them
+    /// editable, but every
     /// arrow head, text baseline and stroke width has to be re-derived, and any
     /// error there is invisible until someone looks closely at a shipped screenshot.
     /// The deliberate cost of (b): strokes made BEFORE a transform are pixels
-    /// afterwards and can no longer be undone individually — ⌘Z past the transform
+    /// afterwards and can no longer be undone individually: ⌘Z past the transform
     /// restores them as live strokes again, which is where they become editable.
     private var flattened: CGImage?
     private var cropBox: CropBox?
@@ -215,7 +216,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
         var px: [UInt8] = [0, 0, 0, 0]
         // The context is DRAWN INTO after its initializer has returned, so the
         // buffer pointer has to outlive that call. `&px` guarantees the pointer
-        // only for the duration of the call itself — Core Graphics then writes
+        // only for the duration of the call itself: Core Graphics then writes
         // through memory the array may no longer own, and the bytes read back
         // are whatever happened to be there. Same trap `CaptureService.looksBlank`
         // documents; keep the draw inside the scope that owns the pointer.
@@ -235,7 +236,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
     }
     override var acceptsFirstResponder: Bool { true }
     // First click always lands (starts a drag / snaps a window) even if the
-    // overlay isn't the active window yet — no dead "focus" click.
+    // overlay isn't the active window yet, no dead "focus" click.
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func viewDidMoveToWindow() { window?.makeFirstResponder(self) }
 
@@ -265,7 +266,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
     override func mouseMoved(with event: NSEvent) {
         mouseLoc = convert(event.locationInWindow, from: nil)
         // Window-snap outline hint while hovering (before any drag). Full redraw so
-        // the dim is always complete — targeted redraws left stale un-dimmed patches.
+        // the dim is always complete: targeted redraws left stale un-dimmed patches.
         guard phase == .selecting, dragStart == nil else { return }
         let newHover = windowAt(mouseLoc)
         if newHover != hoverWindow { hoverWindow = newHover; needsDisplay = true }
@@ -373,7 +374,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
 
     /// Topmost on-screen window containing `p`. `windowRects` comes from
     /// CGWindowList in front-to-back order, so the FIRST match is the one the
-    /// user actually sees under the cursor — picking the smallest instead used to
+    /// user actually sees under the cursor: picking the smallest instead used to
     /// snap to a tiny window fully hidden behind a larger one.
     private func windowAt(_ p: CGPoint) -> CGRect? {
         windowRects.first { $0.contains(p) }
@@ -381,10 +382,10 @@ final class EditorView: NSView, NSTextFieldDelegate {
 
     override func keyDown(with event: NSEvent) {
         // Note: while the inline text field is editing it is first responder, so
-        // these never fire then — letters type into the field as expected.
+        // these never fire then: letters type into the field as expected.
 
         // Crop mode owns Esc and ↵ first: Esc must abandon the crop, not the whole
-        // capture — that would take every annotation with it.
+        // capture. That would take every annotation with it.
         if cropBox != nil {
             if event.keyCode == 53 { cancelCrop(); return }
             if event.keyCode == 36 || event.keyCode == 76 { applyCrop(); return }
@@ -395,12 +396,12 @@ final class EditorView: NSView, NSTextFieldDelegate {
         let ch = event.charactersIgnoringModifiers?.lowercased()
         if event.modifierFlags.contains(.command) {
             switch ch {
-            case "c": copyAction(); return     // ⌘C — copy without clicking
+            case "c": copyAction(); return     // ⌘C copies without clicking
             case "s": saveAction(); return     // ⌘S
             case "t" where event.modifierFlags.contains(.shift):
-                grabTextAction(); return       // ⌘⇧T — OCR this shot
+                grabTextAction(); return       // ⌘⇧T reads this shot
             case "r" where event.modifierFlags.contains(.shift):
-                repeatLastAnnotation(); return // ⌘⇧R — same tool/colour/width again
+                repeatLastAnnotation(); return // ⌘⇧R reuses the tool/colour/width
             case "z":
                 if event.modifierFlags.contains(.shift) { redo() } else { undo() }
                 return                         // ⌘Z / ⌘⇧Z
@@ -415,7 +416,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
             default: break
             }
         } else if phase == .editing, cropBox == nil, ch == "c" {
-            beginCrop(); return                // C — the one letter no tool uses
+            beginCrop(); return                // C is the one letter no tool uses
         } else if phase == .editing, cropBox == nil, let t = toolForKey(ch) {
             setTool(t); return                 // A/L/R/O/P/H/B/N/T
         }
@@ -481,7 +482,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
         else if a.points.count >= 2 { a.points[1] = p }
         current = a
         // Spotlight repaints the entire selection (it dims everything outside
-        // the stroke) — partial invalidation left most of it undimmed mid-drag.
+        // the stroke): partial invalidation left most of it undimmed mid-drag.
         if a.tool == .spotlight {
             setNeedsDisplay(selection.insetBy(dx: -4, dy: -4))
             return
@@ -511,7 +512,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
         lastStrokeRect = .zero
     }
 
-    // Inline text field (placed on the overlay — never behind it).
+    // Inline text field (placed on the overlay, never behind it).
     private func beginText(at p: CGPoint) {
         commitTextIfEditing()
         let h = max(20, lineWidth * 6 + 8)
@@ -561,14 +562,14 @@ final class EditorView: NSView, NSTextFieldDelegate {
 
         if phase == .passive || bright.width <= 0 || bright.height <= 0 {
             bounds.fill(using: .sourceOver)
-            // Snap hint: thin accent outline around the hovered window ONLY — screen
+            // Snap hint: a thin accent outline around the hovered window only. The screen
             // stays fully dim (no un-dim), so nothing looks pre-selected on open.
             if phase == .selecting, let h = hoverWindow {
                 NSColor.controlAccentColor.withAlphaComponent(0.9).setStroke()
                 let p = NSBezierPath(rect: h.insetBy(dx: 1, dy: 1)); p.lineWidth = 2; p.stroke()
             }
         } else {
-            // Dim only the 4 regions AROUND the bright rect — no clip, no re-draw
+            // Dim only the 4 regions AROUND the bright rect, no clip, no re-draw
             // of the image. Clipped automatically to dirtyRect by AppKit.
             for r in surrounding(bright) { r.fill(using: .sourceOver) }
 
@@ -629,7 +630,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
     }
 
     /// The currently "bright" (un-dimmed) rect: only the live/edited selection.
-    /// A hovered window is NOT un-dimmed — it just gets a thin outline hint, so the
+    /// A hovered window is NOT un-dimmed. It just gets a thin outline hint, so the
     /// screen stays fully dim until the user actually drags (no "pre-selected" look).
     private func brightRect() -> CGRect {
         if phase == .editing { return selection }
@@ -638,7 +639,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
 
     private func surrounding(_ s: CGRect) -> [NSRect] { surrounding(s, within: bounds) }
 
-    /// The four rects of `outer` left over around `s` — used both for the screen dim
+    /// The four rects of `outer` left over around `s`: used both for the screen dim
     /// and for dimming the part of the selection a pending crop throws away.
     private func surrounding(_ s: CGRect, within outer: CGRect) -> [NSRect] {
         [NSRect(x: outer.minX, y: s.maxY, width: outer.width, height: max(0, outer.maxY - s.maxY)),
@@ -776,7 +777,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
 
     private func handleAt(_ p: CGPoint) -> Int? {
         // Once a transform has replaced the pixels, dragging the selection edge can
-        // no longer mean "show me more of the screen there" — there is no more
+        // no longer mean "show me more of the screen there": there is no more
         // picture outside the bitmap. Trimming after a transform is the crop tool.
         guard flattened == nil else { return nil }
         for (i, r) in handleRects().enumerated() where r.insetBy(dx: -3, dy: -3).contains(p) { return i }
@@ -841,7 +842,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
         let redoB = NSButton(image: symbol("arrow.uturn.forward", "Redo"), target: self, action: #selector(redo))
         redoB.bezelStyle = .texturedRounded; redoB.toolTip = "Redo (⌘⇧Z)"
         let crop = NSButton(image: symbol("crop", "Crop"), target: self, action: #selector(cropAction))
-        crop.bezelStyle = .texturedRounded; crop.toolTip = "Crop (C) — ↵ applies, Esc cancels"
+        crop.bezelStyle = .texturedRounded; crop.toolTip = "Crop (C). ↵ applies, Esc cancels"
         crop.setAccessibilityLabel("Crop")
         cropButton = crop
         let transforms: [(String, EditorImageTransform, String)] = [
@@ -865,7 +866,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
             transformButtons.append(b)
         }
         let beautify = NSButton(image: symbol("wand.and.stars", "Beautify"), target: self, action: #selector(beautifyAction))
-        beautify.bezelStyle = .texturedRounded; beautify.toolTip = "Beautify — gradient background"
+        beautify.bezelStyle = .texturedRounded; beautify.toolTip = "Beautify: adds a gradient background"
         let pin = NSButton(image: symbol("pin", "Pin"), target: self, action: #selector(pinAction))
         pin.bezelStyle = .texturedRounded; pin.toolTip = "Pin to screen"
         let grabText = NSButton(image: symbol("text.viewfinder", "Grab text"),
@@ -1027,7 +1028,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
 
     /// Put the editor back into a recorded state. The bitmap is the same object the
     /// snapshot was taken from and the strokes are the same values, so undoing a
-    /// rotate returns the picture and its annotations bit-identical — nothing is
+    /// rotate returns the picture and its annotations bit-identical: nothing is
     /// re-rendered to get there.
     private func restore(_ s: EditorImageState) {
         flattened = s.flattened
@@ -1061,8 +1062,8 @@ final class EditorView: NSView, NSTextFieldDelegate {
     /// Every `.transform` entry holds a full-resolution `CGImage` in its `before`
     /// state for the whole editor session, and nothing evicted them. A full-screen
     /// selection on a 5K display is 5120×2880×4 B ≈ 59 MB, so rotating four times to
-    /// work out which way round a shot was — and then ten crop/rotate/flip steps
-    /// before finally hitting Copy — left hundreds of megabytes resident while a
+    /// work out which way round a shot was. And then ten crop/rotate/flip steps
+    /// before finally hitting Copy: left hundreds of megabytes resident while a
     /// `.screenSaver`-level overlay covered the screen and could not be moved out of
     /// the way. The rest of this file goes out of its way not to pin even one spare
     /// full-size rep.
@@ -1073,7 +1074,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
     /// Trimmed from the BOTTOM, so what is left is still a contiguous suffix of the
     /// real edit order and ⌘Z simply stops at the cut. Removing an entry from the
     /// middle would leave older strokes to be undone against a picture whose rotate
-    /// can no longer be reversed — the mixed-order bug the single stack in
+    /// can no longer be reversed. The mixed-order bug the single stack in
     /// `EditorEdit` exists to prevent. The newest transform always survives, however
     /// big it is: a rotate you cannot undo at all is worse than the memory.
     private func trimTransformHistory() {
@@ -1109,7 +1110,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
         commitTextIfEditing()
         guard phase == .editing, cropBox == nil else { return }
         guard let base = compositeCG(), let out = t.apply(to: base) else {
-            Notifier.error("\(t.label) failed", "Couldn't transform that shot — try again.")
+            Notifier.error("\(t.label) failed", "Couldn't transform that shot. Try again.")
             return
         }
         pushTransform(to: EditorImageState(flattened: out,
@@ -1140,9 +1141,9 @@ final class EditorView: NSView, NSTextFieldDelegate {
     /// Fold a pending crop into the picture before anything composites it.
     ///
     /// Every finishing action goes through `compositeCG()`, which knows nothing
-    /// about `cropBox`: dragging a tight crop box and then clicking Copy — four
-    /// buttons further along the SAME bar — or pressing ⌘C (only Esc and ↵ are
-    /// intercepted while cropping) put the FULL selection on the clipboard, closed
+    /// about `cropBox`. Dragging a tight crop box and then clicking Copy (four
+    /// buttons further along the SAME bar), or pressing ⌘C (only Esc and ↵ are
+    /// intercepted while cropping), put the FULL selection on the clipboard, closed
     /// the overlay and showed the "Copied" toast as if nothing were wrong. The crop
     /// was unrecoverable, because the editor was already gone. Same shape as
     /// `commitTextIfEditing()`, which those actions already call to flush the other
@@ -1155,7 +1156,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
     private func applyCrop() {
         guard let box = cropBox, let base = compositeCG() else { cancelCrop(); return }
         // A box nobody touched is the 8%-inset default the constructor draws to show
-        // the box IS draggable — not a crop anyone asked for. Confirming it threw
+        // the box IS draggable, not a crop anyone asked for. Confirming it threw
         // away 29% of the pixels, so a second click on the Crop button (or C then ↵)
         // silently cut the edges off the very window being captured.
         guard box.wasDragged else { cancelCrop(); return }
@@ -1164,7 +1165,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
         guard let out = ImageTransformer.cropped(base, toPixelRect: px) else {
             // CropBox already forbids an empty or inverted rect; if the pixel rect
             // still came out unusable, keep the picture and let the user re-drag.
-            Notifier.error("Crop failed", "That crop was too small — drag a larger box.")
+            Notifier.error("Crop failed", "That crop was too small. Drag a larger box.")
             return
         }
         // Show the result at the rect those whole pixels actually cover, not the one
@@ -1188,7 +1189,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
         // "Copied" without checking meant the only copy of the work could be
         // gone while the toast claimed otherwise.
         guard pb.writeObjects([img]) else {
-            Notifier.error("Copy failed", "Couldn't write the screenshot to the clipboard.")
+            Notifier.error("Copy failed", "Couldn't write the screenshot to the clipboard. Try the copy again.")
             return
         }
         if let s = settings, s.autoSaveEnabled { autoSave(cg, settings: s) }
@@ -1198,13 +1199,13 @@ final class EditorView: NSView, NSTextFieldDelegate {
     }
 
     /// Grab the TEXT out of the shot instead of the pixels. Everything needed is
-    /// already here — the composited image and the user's OCR settings — so the
+    /// already here, the composited image and the user's OCR settings, so the
     /// alternative was: copy the shot, close, press the OCR hotkey, drag the same
     /// region again.
     /// Re-arm the tool, colour and width of the most recent annotation.
     ///
-    /// Annotating a screenshot is repetitive — five arrows in the same red at the
-    /// same weight — and every one of those meant re-picking the tool and the
+    /// Annotating a screenshot is repetitive: five arrows in the same red at the
+    /// same weight. And every one of those meant re-picking the tool and the
     /// swatch after an undo or a tool change.
     private func repeatLastAnnotation() {
         guard let last = annotations.last else {
@@ -1231,13 +1232,13 @@ final class EditorView: NSView, NSTextFieldDelegate {
                 let text = try await OCRService.recognizeText(in: cg, options: options)
                 guard text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
                     Notifier.info("No text found",
-                                  "Nothing readable in that shot — try a tighter crop around the text.")
+                                  "Nothing readable in that shot. Try a tighter crop around the text.")
                     return
                 }
                 let pb = NSPasteboard.general
                 pb.clearContents()
                 guard pb.setString(text, forType: .string) else {
-                    Notifier.error("Copy failed", "Couldn't write to the clipboard — try again.")
+                    Notifier.error("Copy failed", "Couldn't write to the clipboard. Try again.")
                     return
                 }
                 if notify {
@@ -1245,8 +1246,8 @@ final class EditorView: NSView, NSTextFieldDelegate {
                                   "\(text.count) character\(text.count == 1 ? "" : "s") on the clipboard.")
                 }
             } catch {
-                NSLog("SnapDesk: editor OCR failed — \(error)")
-                Notifier.error("OCR failed", "Couldn't read that shot — try again.")
+                NSLog("SnapDesk: editor OCR failed. \(error)")
+                Notifier.error("OCR failed", "Couldn't read that shot. Try again.")
             }
         }
     }
@@ -1268,7 +1269,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
                 return
             }
             // Encoding a full-resolution shot and writing it are seconds of work
-            // apiece on a 5K selection, and both ran on the main thread — with a
+            // apiece on a 5K selection, and both ran on the main thread, with a
             // `.screenSaver`-level overlay still on every display, so the whole
             // Mac looked hung at the exact moment the app was told to finish.
             // `cg` is immutable, so only the outcome has to come back.
@@ -1278,7 +1279,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
                 // reappearing as though nothing had been asked for.
                 guard let data = AnnotationRenderer.encode(cg, format: fmt, quality: q) else {
                     DispatchQueue.main.async {
-                        Notifier.error("Save failed", "Couldn't encode that image.")
+                        Notifier.error("Save failed", "Couldn't encode that image. Try saving as PNG instead.")
                         self?.session?.showOverlays()
                     }
                     return
@@ -1305,9 +1306,9 @@ final class EditorView: NSView, NSTextFieldDelegate {
         guard let cg = compositeCG() else { return }
         // Beautify allocates a bitmap larger than the shot itself (padding on all
         // four sides). When that allocation fails the wand button did nothing at
-        // all — no image, no toast, no clue that it had even been pressed.
+        // all, no image, no toast, no clue that it had even been pressed.
         guard let nice = AnnotationRenderer.beautify(cg) else {
-            Notifier.error("Beautify failed", "Couldn't build the padded image — try a smaller selection.")
+            Notifier.error("Beautify failed", "Couldn't build the padded image. Try a smaller selection.")
             return
         }
         let pb = NSPasteboard.general; pb.clearContents()
@@ -1315,7 +1316,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
         // must not claim a copy that didn't happen.
         guard pb.writeObjects([NSImage(cgImage: nice,
                                        size: NSSize(width: nice.width, height: nice.height))]) else {
-            Notifier.error("Copy failed", "Couldn't write the screenshot to the clipboard.")
+            Notifier.error("Copy failed", "Couldn't write the screenshot to the clipboard. Try the copy again.")
             return
         }
         Notifier.info("Beautified", "Padded gradient screenshot copied to clipboard.")
@@ -1354,7 +1355,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
         guard let b = cropButton else { return }
         let cropping = cropBox != nil
         b.contentTintColor = cropping ? .controlAccentColor : nil
-        b.toolTip = cropping ? "Apply crop (↵) — Esc cancels" : "Crop (C) — ↵ applies, Esc cancels"
+        b.toolTip = cropping ? "Apply crop (↵). Esc cancels" : "Crop (C). ↵ applies, Esc cancels"
         b.setAccessibilityLabel(cropping ? "Apply crop" : "Crop")
     }
 
@@ -1363,7 +1364,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
         let quality = s.jpegQuality
         let folder = s.autoSaveFolder
         // Copy runs this INLINE, so a full-resolution encode plus an atomic write
-        // froze the main thread in the middle of ⌘C — on a 5K shot, seconds of it,
+        // froze the main thread in the middle of ⌘C: on a 5K shot, seconds of it,
         // right where the app was about to say "Copied". `cg` is immutable and this
         // closure keeps it alive, so the editor is free to close underneath.
         DispatchQueue.global(qos: .userInitiated).async {
@@ -1389,7 +1390,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
             // simply never happened, and the only sign of it was a missing file
             // discovered later.
             guard let data = AnnotationRenderer.encode(cg, format: format, quality: quality) else {
-                Notifier.error("Auto-save failed", "Couldn't encode that screenshot.")
+                Notifier.error("Auto-save failed", "Couldn't encode that screenshot. It was not written to the auto-save folder.")
                 return
             }
             do { try data.write(to: url, options: .atomic) }
@@ -1398,7 +1399,7 @@ final class EditorView: NSView, NSTextFieldDelegate {
     }
 
     /// The picture as it stands: the frozen screen cropped to the selection with the
-    /// strokes drawn in, or — once a crop/rotate/flip has happened — the flattened
+    /// strokes drawn in, or, once a crop/rotate/flip has happened, the flattened
     /// bitmap with whatever has been drawn on it since.
     private func compositeCG() -> CGImage? {
         guard let flat = flattened else {

@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Hosts the SwiftUI clipboard history in a small floating panel.
 final class ClipboardWindowController: NSWindowController {
-    /// App that was frontmost before the history opened — the paste target.
+    /// App that was frontmost before the history opened. The paste target.
     var previousApp: NSRunningApplication?
     private let settings: SettingsStore
     private let manager: ClipboardManager
@@ -13,7 +13,7 @@ final class ClipboardWindowController: NSWindowController {
     /// the app does.
     private let snippets = SnippetStore()
 
-    /// Titled window that closes on Esc — standard for clipboard managers.
+    /// Titled window that closes on Esc: standard for clipboard managers.
     private final class EscWindow: NSWindow {
         override func cancelOperation(_ sender: Any?) { close() }
     }
@@ -35,7 +35,7 @@ final class ClipboardWindowController: NSWindowController {
         self.settings = settings
         self.manager = manager
         // Reopen at the size the user last dragged it to. Only the SIZE is
-        // remembered — position always follows the mouse's screen in willShow.
+        // remembered: position always follows the mouse's screen in willShow.
         let start = Self.savedContentSize()
         let window = EscWindow(
             contentRect: NSRect(x: 0, y: 0, width: start.width, height: start.height),
@@ -47,11 +47,11 @@ final class ClipboardWindowController: NSWindowController {
         window.isReleasedWhenClosed = false
         window.isOpaque = true
         window.backgroundColor = .windowBackgroundColor
-        // Follow the user: join the ACTIVE Space — including another app's
-        // full-screen Space — instead of yanking them back to the desktop.
+        // Follow the user: join the ACTIVE Space, including another app's
+        // full-screen Space, instead of yanking them back to the desktop.
         window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         window.level = .floating
-        // Floor the size so a stray drag / transient layout can't collapse it —
+        // Floor the size so a stray drag / transient layout can't collapse it,
         // and so a garbage 1×1 can never be produced to persist in the first place.
         window.contentMinSize = Self.minSize
         window.center()
@@ -62,7 +62,7 @@ final class ClipboardWindowController: NSWindowController {
         // The paste target was captured once, when the window opened. But this
         // window floats, doesn't hide on deactivate, and stays clickable while
         // the user switches apps: open the history over Mail, ⌘-Tab to Slack,
-        // click a row — and the paste went into Mail, activating it. Track the
+        // click a row. And the paste went into Mail, activating it. Track the
         // front app for as long as the window is up. (Never SnapDesk itself:
         // that would paste into the history window.)
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -83,7 +83,7 @@ final class ClipboardWindowController: NSWindowController {
     /// Host the SwiftUI view WITHOUT letting it drive the window size. Default
     /// `sizingOptions` includes `.preferredContentSize`, which snaps the window
     /// back to the view's fitting size every time the content controller is
-    /// (re)assigned — that's what threw away the user's resized frame on reopen.
+    /// (re)assigned: that's what threw away the user's resized frame on reopen.
     private func makeHosting() -> NSHostingController<ClipboardHistoryView> {
         let hc = NSHostingController(rootView: makeRootView())
         hc.sizingOptions = []
@@ -100,7 +100,7 @@ final class ClipboardWindowController: NSWindowController {
                 // rewrite the pasteboard and send a second Command-V into the
                 // app the user is now looking at. The closed window is the latch.
                 guard let self, self.window?.isVisible == true else { return }
-                // No `movingToTop:` here — a paste leaves the history order alone.
+                // No `movingToTop:` here: a paste leaves the history order alone.
                 self.manager.copyToPasteboard(item)
                 self.window?.close()
                 Paster.paste(to: self.previousApp, activate: self.settings.activateAfterPaste)
@@ -117,11 +117,11 @@ final class ClipboardWindowController: NSWindowController {
         // a fraction of the list. Rebuilding also guarantees no per-row state
         // can outlive a session and quietly disable a row.
         window?.contentViewController = makeHosting()
-        // Solid background follows the system appearance — always crisp & readable.
+        // Solid background follows the system appearance, always crisp & readable.
         window?.appearance = nil
         // FORCE the intended size every open. Swapping the content controller
         // (for the @State reset) can nudge the frame, so don't trust whatever
-        // it is now — set it to the user's last saved size (or default), then
+        // it is now: set it to the user's last saved size (or default), then
         // center on the mouse's screen. This is what makes reopen == last size.
         if let w = window {
             let size = Self.savedContentSize()
@@ -141,7 +141,7 @@ final class ClipboardWindowController: NSWindowController {
 extension ClipboardWindowController: NSWindowDelegate {
     /// Hard floor on every live resize (corner drag included). `contentMinSize`
     /// proved unreliable under `.fullSizeContentView`; intercepting the proposed
-    /// frame here and clamping it is authoritative — the window can grow but
+    /// frame here and clamping it is authoritative. The window can grow but
     /// never shrink below its default size.
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
         // minSize is CONTENT size → convert to the matching FRAME floor.
@@ -154,7 +154,7 @@ extension ClipboardWindowController: NSWindowDelegate {
     /// Persist the size the user dragged to, so the next open matches it.
     func windowDidResize(_ notification: Notification) {
         guard let w = window, w.isVisible else { return }   // ignore setup/teardown transients
-        // Save CONTENT size (what init/willShow restore) — not the outer frame,
+        // Save CONTENT size (what init/willShow restore), not the outer frame,
         // whose title-bar height would otherwise accumulate on every reopen.
         let size = w.contentRect(forFrameRect: w.frame).size
         guard size.width >= Self.minSize.width, size.height >= Self.minSize.height else { return }
@@ -191,7 +191,7 @@ struct ClipboardHistoryView: View {
     @State private var search = ""
     @State private var filter: ClipboardRows.Filter = .all
     /// Shared across every row so a click on ANY row supersedes a paste queued by
-    /// another — see `ClickCoordinator`.
+    /// another: see `ClickCoordinator`.
     @State private var clicks = ClickCoordinator()
     /// Keyboard cursor into the filtered rows. A clipboard manager is a
     /// keyboard tool: reach for the mouse and it's already slower than ⌘V.
@@ -199,7 +199,7 @@ struct ClipboardHistoryView: View {
     /// The row `selected` points at, by id, so the cursor can be put back on the
     /// same row after the list re-sorts.
     @State private var selectedID: UUID?
-    /// Multi-row selection for merge — ids, not indexes. See `ClipboardSelection`.
+    /// Multi-row selection for merge: ids, not indexes. See `ClipboardSelection`.
     @State private var selection = ClipboardSelection()
     @State private var sheet: ClipboardSheet?
 
@@ -227,7 +227,7 @@ struct ClipboardHistoryView: View {
                     Text(manager.items.isEmpty ? "Nothing copied yet" : "No matches")
                         .foregroundStyle(.secondary).font(.callout)
                     if manager.items.isEmpty {
-                        Text("Copy any text, image or link — it shows up here.\nOne click pastes it back; double-click copies it to the top.\n⌘N saves a snippet of your own.")
+                        Text("Copy any text, image or link. It shows up here.\nOne click pastes it back; double-click copies it to the top.\n⌘N saves a snippet of your own.")
                             .font(.caption).foregroundStyle(.tertiary)
                             .multilineTextAlignment(.center)
                     }
@@ -253,7 +253,7 @@ struct ClipboardHistoryView: View {
                     .onChange(of: selected) {
                         guard rows.indices.contains(selected) else { return }
                         // Remember WHICH row the cursor is on, not just where it
-                        // sat — see the re-anchor below.
+                        // sat: see the re-anchor below.
                         selectedID = rows[selected].id
                         withAnimation(.easeOut(duration: 0.12)) {
                             proxy.scrollTo(rows[selected].id, anchor: .center)
@@ -264,7 +264,7 @@ struct ClipboardHistoryView: View {
 
             if selection.isEmpty == false { selectionBar(rows: rows) }
         }
-        // Default is the minimum — grow only, never shrink below it.
+        // Default is the minimum: grow only, never shrink below it.
         .frame(minWidth: 400, minHeight: 560)
         .background(Color(nsColor: .windowBackgroundColor))
         .background(KeyCommands { action in handle(action, rows: rows) })
@@ -279,7 +279,7 @@ struct ClipboardHistoryView: View {
         .onChange(of: filter) { selection.prune(to: filtered.map(\.id)); moveCursorToTop(filtered) }
         // The list re-sorts under the person: a copy arrives every half second and
         // lands at the top, a star floats a row up. The cursor is an INDEX, so it
-        // used to stay in slot 8 while a different row slid into it — and ↵ pasted,
+        // used to stay in slot 8 while a different row slid into it. And ↵ pasted,
         // ⌘⌫ deleted, that row instead. Follow the row itself. `ClipboardSelection`
         // already works by id for exactly this reason.
         .onChange(of: rows.map(\.id)) { _, ids in
@@ -289,7 +289,7 @@ struct ClipboardHistoryView: View {
         }
     }
 
-    /// Cursor back to the first row, id included — a plain `selected = 0` left the
+    /// Cursor back to the first row, id included: a plain `selected = 0` left the
     /// remembered id pointing at a row that is no longer in the list.
     private func moveCursorToTop(_ rows: [ClipboardItem]) {
         selected = 0
@@ -314,7 +314,7 @@ struct ClipboardHistoryView: View {
         .background(Color.primary.opacity(0.06))
     }
 
-    /// Joins the selected rows into ONE new history entry — `ClipboardMerge` owns
+    /// Joins the selected rows into ONE new history entry: `ClipboardMerge` owns
     /// the separator and the order. With nothing selected it merges the row under
     /// the cursor, which is how a single item gets its trailing newline stripped
     /// into a clean entry.
@@ -364,14 +364,14 @@ struct ClipboardHistoryView: View {
         }
     }
 
-    /// Text only — there is nothing to type at an image. The stored row is never
+    /// Text only: there is nothing to type at an image. The stored row is never
     /// rewritten either way; see `ClipboardEdit`.
     private func beginEditThenPaste(_ item: ClipboardItem) {
         guard let text = item.text else { return }
         sheet = ClipboardSheet(mode: .paste, source: item, body: text)
     }
 
-    /// Prefilled from a row when there is one — "keep this one" is the usual reason
+    /// Prefilled from a row when there is one: "keep this one" is the usual reason
     /// to reach for a snippet in the first place.
     private func beginNewSnippet(from item: ClipboardItem?) {
         let text = item?.text ?? ""
@@ -383,7 +383,7 @@ struct ClipboardHistoryView: View {
         sheet = ClipboardSheet(mode: .snippet(item.id), title: title, body: item.text ?? "")
     }
 
-    /// A snippet row routes to `SnippetStore`, a captured row to the history —
+    /// A snippet row routes to `SnippetStore`, a captured row to the history:
     /// same key, same context-menu item, told apart by the row itself.
     private func deleteRow(_ item: ClipboardItem) {
         if item.isSnippet { snippets.delete(id: item.id) } else { manager.delete(item) }
@@ -413,8 +413,8 @@ struct ClipboardHistoryView: View {
         switch action {
         // ⌘N and ⌘⇧S are the two actions that are not about a row, and gating them on
         // a non-empty list killed them exactly where they matter most. The empty
-        // state's own copy says "⌘N saves a snippet of your own" — a line that can
-        // only be read while the list IS empty — and once the Snippets filter was on
+        // state's own copy says "⌘N saves a snippet of your own": a line that can
+        // only be read while the list IS empty. And once the Snippets filter was on
         // with nothing in it, ⌘⇧S could no longer toggle back to All, leaving no
         // keyboard way out. Every case below that dereferences a row bounds-checks
         // itself, so the emptiness test belongs here rather than over everything.
@@ -484,7 +484,7 @@ struct ClipboardHistoryView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("New snippet")
-            .help("New snippet — a named entry of your own (⌘N)")
+            .help("New snippet: an entry you name yourself (⌘N)")
             Menu {
                 Button("New snippet…") { beginNewSnippet(from: nil) }
                 Button("Merge selected") { mergeSelection(rows: filtered) }
@@ -509,6 +509,8 @@ struct ClipboardHistoryView: View {
             if !search.isEmpty {
                 Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
                     .buttonStyle(.plain).foregroundStyle(.tertiary)
+                    .accessibilityLabel("Clear search")
+                    .help("Clear search")
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
@@ -518,7 +520,7 @@ struct ClipboardHistoryView: View {
 
     private var filterChips: some View {
         // Six chips are wider than the window's 400pt floor, and a hidden
-        // scrollbar meant the last chip and a half — Pinned among them — simply
+        // scrollbar meant the last chip and a half, Pinned among them, simply
         // weren't there, with no cue that anything was off-screen. Fit them when
         // they fit; scroll visibly when they don't.
         ViewThatFits(in: .horizontal) {
@@ -543,13 +545,13 @@ struct ClipboardHistoryView: View {
 /// focus so the user can filter by typing, and a focused TextField consumes the
 /// arrow keys (caret movement) before any focus-based key modifier would see
 /// them. Intercepting at the event level is the only way both behaviours can
-/// coexist — and it's the same pattern `HotkeyRecorder` already uses here.
+/// coexist. And it's the same pattern `HotkeyRecorder` already uses here.
 ///
 /// Only these exact keys are claimed; everything else falls through to the field.
 private struct KeyCommands: NSViewRepresentable {
     enum Action {
         case up, down, paste, delete, number(Int)
-        /// Shift+arrow — grow the multi-selection.
+        /// Shift+arrow: grow the multi-selection.
         case extendUp, extendDown
         case merge, edit, newSnippet, editSnippet, snippetsFilter
         /// Reorder a snippet: -1 up, +1 down.
@@ -576,7 +578,7 @@ private struct KeyCommands: NSViewRepresentable {
                 // Only while OUR window is the key window. A local monitor sees every
                 // keyDown in the app, and this view outlives a close (the window is
                 // not released), so an installed monitor would otherwise swallow ↵ /
-                // ⌘E / ⌘N typed into Settings — or into this window's own sheet,
+                // ⌘E / ⌘N typed into Settings: or into this window's own sheet,
                 // which is a separate key window.
                 guard let self, self.window?.isKeyWindow == true,
                       let action = Self.action(for: e) else { return e }
@@ -606,14 +608,14 @@ private struct KeyCommands: NSViewRepresentable {
                 if cmd { return nil }
                 return shift ? .extendDown : .down
             case 36, 76: return cmd ? nil : .paste          // ↵ / numpad ↵
-            case 51: return cmd ? .delete : nil             // ⌘⌫ — plain ⌫ edits the search text
+            case 51: return cmd ? .delete : nil             // ⌘⌫ only; plain ⌫ edits the search text
             default: break
             }
             guard cmd, let ch = e.charactersIgnoringModifiers, ch.count == 1 else { return nil }
             // ⌘1…⌘9 → paste that numbered row (the number shown on each row).
             if let n = Int(ch), n >= 1, n <= 9 { return .number(n) }
             // `charactersIgnoringModifiers` still applies Shift, so "M" arrives for
-            // ⌘⇧M — match lowercased and read the flag instead. ⌘A/C/V/X/Z are
+            // ⌘⇧M: match lowercased and read the flag instead. ⌘A/C/V/X/Z are
             // deliberately absent: they belong to the search field.
             switch ch.lowercased() {
             case "m" where shift: return .merge
@@ -654,7 +656,7 @@ private struct FilterChip: View {
 /// double-click; while it waits, a click on ANY row (or the double-click that
 /// turns into a copy) bumps `epoch`, and a deferred paste only fires if its
 /// captured epoch still matches. That stops a paste queued on row A from firing
-/// after the user moved on to copy row B — the window would otherwise close and
+/// after the user moved on to copy row B. The window would otherwise close and
 /// paste the wrong item. Reference type so all rows share one counter.
 private final class ClickCoordinator {
     private(set) var epoch = 0
@@ -704,7 +706,7 @@ private struct ClipboardRow: View {
     /// Deliberately NOT `NSEvent.doubleClickInterval` (0.5 s by default): that
     /// value is the ceiling for how SLOW a double-click may be, and making every
     /// paste sit through it feels broken. 0.25 s catches real double-clicks, and
-    /// costs nothing here — the old code already spent 0.22 s letting the click
+    /// costs nothing here. The old code already spent 0.22 s letting the click
     /// flash register before pasting, so this replaces that wait rather than
     /// adding to it.
     private static let doubleClickWindow = Duration.milliseconds(250)
@@ -713,7 +715,7 @@ private struct ClipboardRow: View {
     ///
     /// The single click CANNOT act immediately: pasting closes the window, so the
     /// second click would never arrive to be seen. It queues the paste and waits
-    /// out `doubleClickWindow` instead — while the highlight comes up at once, so
+    /// out `doubleClickWindow` instead, while the highlight comes up at once, so
     /// the click still feels instant.
     ///
     /// This and the two `commit` methods below are deliberately NOT `@MainActor`:
@@ -724,7 +726,7 @@ private struct ClipboardRow: View {
     private func handleClick() {
         // A modifier-click is a SELECTION gesture and never a paste. Checked first
         // and returning immediately, so none of the click timing below is reached
-        // — that discrimination is tuned and must stay exactly as it is.
+        //. That discrimination is tuned and must stay exactly as it is.
         //
         // `NSEvent.modifierFlags` (live keyboard state) rather than the tap's own
         // event: SwiftUI's tap gesture carries no modifier information, and this
@@ -732,11 +734,11 @@ private struct ClipboardRow: View {
         let flags = NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if flags.contains(.shift) || flags.contains(.command) {
             // A modifier-click can't fire a paste, but it must also KILL one already
-            // queued by an earlier plain click — which is the standard range gesture:
+            // queued by an earlier plain click, which is the standard range gesture:
             // click the first row, Shift-click the last. The first row's paste used to
             // wake 250 ms later, close the window and send ⌘V into the app behind,
             // pasting a row nobody chose into (in a chat field) a message that then
-            // gets sent — and the multi-selection being built was thrown away with the
+            // gets sent. And the multi-selection being built was thrown away with the
             // window. Bumping the SHARED epoch is the load-bearing half: the queued
             // paste almost always belongs to a different row, whose `pendingPaste`
             // this view cannot reach.
@@ -758,7 +760,7 @@ private struct ClipboardRow: View {
         flash = true   // acknowledge the press; nothing is copied yet
         let epoch = clicks.bump()   // this click supersedes any pending paste elsewhere
         // `@MainActor` explicitly: this method is nonisolated, so a plain
-        // `Task {}` would inherit that and run the body off the main actor —
+        // `Task {}` would inherit that and run the body off the main actor:
         // where touching @State, the pasteboard and NSSound is a race.
         pendingPaste = Task { @MainActor in
             try? await Task.sleep(for: Self.doubleClickWindow)
@@ -770,7 +772,7 @@ private struct ClipboardRow: View {
         }
     }
 
-    /// Two clicks: copy only, and promote the item to the top — a deliberate
+    /// Two clicks: copy only, and promote the item to the top. A deliberate
     /// re-copy IS a copy event, so the history should show it as the newest
     /// thing. The window STAYS OPEN so several items can be collected in a row;
     /// close with Esc / the red dot. Told apart from a paste by its own sound and
@@ -782,7 +784,7 @@ private struct ClipboardRow: View {
     }
 
     /// One click: copy, close the window, paste into the app the user came from.
-    /// No extra delay before the paste — the double-click window already gave the
+    /// No extra delay before the paste. The double-click window already gave the
     /// highlight its moment on screen.
     private func commitPaste() {
         if settings.playSound { Sounds.playOut() }
@@ -804,7 +806,7 @@ private struct ClipboardRow: View {
 
     /// The VoiceOver LABEL for the row. `children: .combine` picks up the text of
     /// a text/link/colour row on its own, but an image row is nothing but an
-    /// `Image(nsImage:)` — with no label it announces as an unnamed button.
+    /// `Image(nsImage:)`, with no label it announces as an unnamed button.
     private var accessibilityDescription: String {
         if let title = item.title { return "Snippet, \(title)" }
         return item.isImage ? "Image" : item.preview
@@ -824,7 +826,7 @@ private struct ClipboardRow: View {
             } else {
                 // 28×28 tappable area around the 13pt glyph. At the old 18×16 a
                 // near-miss fell through to the row and PASTED-and-closed instead of
-                // starring — the most destructive possible mis-hit here.
+                // starring. The most destructive possible mis-hit here.
                 Button { manager.togglePin(item) } label: {
                     Image(systemName: item.pinned ? "star.fill" : "star")
                         .font(.system(size: 13))
@@ -841,7 +843,7 @@ private struct ClipboardRow: View {
             // it on the row would need `children: .combine`, which swallows the
             // star button beside it and leaves pinning unreachable to VoiceOver.
             // A double-click is also not something VoiceOver can ask for, so both
-            // actions are exposed by name — and neither is a modifier-click, so
+            // actions are exposed by name. And neither is a modifier-click, so
             // selecting for a merge gets its own named action too.
             content.frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityElement(children: .combine)
@@ -862,7 +864,7 @@ private struct ClipboardRow: View {
                     .font(.system(size: 12)).foregroundStyle(Color.accentColor)
                     .accessibilityHidden(true)
             } else {
-                // Position number — useful to look at, noise to listen to.
+                // Position number: useful to look at, noise to listen to.
                 Text("\(index)")
                     .font(.system(size: 11)).monospacedDigit().foregroundStyle(.tertiary)
                     .accessibilityHidden(true)
@@ -885,7 +887,7 @@ private struct ClipboardRow: View {
         // NSApp.currentEvent's clickCount: that returns whatever event AppKit
         // happens to be dispatching, so a stale or non-mouse event silently ate
         // the click. Two stacked onTapGesture(count:) modifiers are no good
-        // either — SwiftUI still delivers the single tap alongside the double.
+        // either: SwiftUI still delivers the single tap alongside the double.
         .onTapGesture(perform: handleClick)
         // An unstructured Task nobody cancels keeps running; and a pending paste
         // left over from a window the user dismissed would fire into whatever
@@ -894,7 +896,7 @@ private struct ClipboardRow: View {
             pendingPaste?.cancel()
             pendingPaste = nil
             // Clear the highlight too. It is switched on by the FIRST click and
-            // only switched off by whichever commit follows — so a click on a row
+            // only switched off by whichever commit follows. So a click on a row
             // that then leaves the lazy stack (scrolled away, filtered out) would
             // leave this row lit for the rest of the session.
             flash = false
@@ -903,7 +905,7 @@ private struct ClipboardRow: View {
         .contextMenu {
             Button("Copy") { commitCopy() }
             Button("Paste into previous app") { commitPaste() }
-            // Transforms act on the way OUT only — the stored history entry is a
+            // Transforms act on the way OUT only. The stored history entry is a
             // log of what was copied and is never rewritten.
             if case .text(let raw) = item.kind {
                 let options = TextTransform.available(for: raw)

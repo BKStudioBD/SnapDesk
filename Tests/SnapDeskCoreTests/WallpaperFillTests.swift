@@ -4,7 +4,7 @@ import AppKit
 
 /// The desktop cover has to look like the desktop it replaces. A wallpaper laid
 /// in at the wrong aspect ratio, or a fallback colour that comes out black,
-/// doesn't hide icons — it puts a visibly wrong background into someone's
+/// doesn't hide icons. It puts a visibly wrong background into someone's
 /// screenshot. These pin the maths for the display shapes that actually exist.
 struct WallpaperFillTests {
 
@@ -33,7 +33,7 @@ struct WallpaperFillTests {
             #expect(rect.minY <= bounds.minY + slack, "\(imageSize) left a gap: \(rect)")
             #expect(rect.maxY >= bounds.maxY - slack, "\(imageSize) left a gap: \(rect)")
             #expect(abs(rect.width / rect.height - imageSize.width / imageSize.height) < 0.0001,
-                    "aspect ratio drifted — the wallpaper would look stretched")
+                    "aspect ratio drifted. The wallpaper would look stretched")
             #expect(abs(rect.midX - bounds.midX) < slack)
             #expect(abs(rect.midY - bounds.midY) < slack)
         }
@@ -118,7 +118,7 @@ struct WallpaperFillTests {
 
     // MARK: - Fallback colour
 
-    @Test("A solid picture averages to exactly itself — the solid-colour desktop case")
+    @Test("A solid picture averages to exactly itself. The solid-colour desktop case")
     func averageOfASolidImage() throws {
         let image = try filled([(NSColor(srgbRed: 0.2, green: 0.4, blue: 0.8, alpha: 1),
                                  CGRect(x: 0, y: 0, width: 32, height: 32))])
@@ -128,7 +128,7 @@ struct WallpaperFillTests {
         #expect(abs(average.blueComponent - 0.8) < 0.01)
     }
 
-    @Test("Half black, half white averages to a mid grey — not to whichever pixel got sampled")
+    @Test("Half black, half white averages to a mid grey. Not to whichever pixel got sampled")
     func averageOfASplitImage() throws {
         let image = try filled([
             (.black, CGRect(x: 0, y: 0, width: 32, height: 32)),

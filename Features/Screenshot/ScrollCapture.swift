@@ -2,7 +2,7 @@ import AppKit
 import CoreGraphics
 @preconcurrency import Vision
 
-/// Scrolling capture: pick a region, scroll the content yourself, press Done —
+/// Scrolling capture: pick a region, scroll the content yourself, press Done.
 /// SnapDesk grabs a frame whenever the content changes and stitches the frames
 /// into one tall image by matching the overlap between consecutive shots.
 final class ScrollCapture: NSObject, @unchecked Sendable {
@@ -28,7 +28,7 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
     private var autoGen = 0
     private var capturing = false
     /// While the auto engine runs it OWNS capture: the passive timer/scroll-wheel
-    /// ticks are ignored. They used to race the engine's own grabs — a dropped
+    /// ticks are ignored. They used to race the engine's own grabs: a dropped
     /// tick reads as "no new content", which is exactly how a long page got cut
     /// short before it reached the bottom.
     private var autoMode = false
@@ -38,7 +38,7 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
     /// Vision offsets computed DURING capture so Done stitches instantly instead
     /// of running 100+ registrations at the end. `visionOffsets[i]` = scroll px
     /// between frame i and i+1; the slot is appended (nil) on the main actor the
-    /// moment its frame lands, so the array can never desync from `frames` —
+    /// moment its frame lands, so the array can never desync from `frames`:
     /// a not-yet-computed slot just falls back to the signature search.
     private var visionOffsets: [Int?] = []
     private let alignQueue = DispatchQueue(label: "snapdesk.scroll.align", qos: .userInitiated)
@@ -53,7 +53,7 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
         set { genLock.lock(); defer { genLock.unlock() }; _generation = newValue }
     }
 
-    /// True while a session is running — the hotkey toggles Done.
+    /// True while a session is running. The hotkey toggles Done.
     static var isActive: Bool { current != nil }
 
     @MainActor
@@ -80,8 +80,8 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
         showBorder()
         showBar()
         Notifier.info("Scrolling capture",
-                      "Press Full Page for the whole page — or scroll yourself, then Done.")
-        // Steady cadence + an immediate grab on every scroll tick — the capture
+                      "Press Full Page for the whole page. Or scroll yourself, then Done.")
+        // Steady cadence + an immediate grab on every scroll tick. The capture
         // keeps up with the user instead of lagging 1/3 s behind (smoothness).
         timer = Timer.scheduledTimer(withTimeInterval: 0.18, repeats: true) { [weak self] _ in
             self?.tick()
@@ -89,7 +89,7 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
         scrollMonitor = NSEvent.addGlobalMonitorForEvents(matching: .scrollWheel) { [weak self] _ in
             self?.tick()
         }
-        // Esc cancels — a global monitor so it works while the user is scrolling
+        // Esc cancels: a global monitor so it works while the user is scrolling
         // the OTHER app. Return is deliberately NOT global: the user is typing in
         // that other app, and hijacking its Return (submitting forms, inserting
         // newlines) is worse than the convenience. Full Page starts/pauses from
@@ -118,7 +118,7 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
     }
 
     /// Passive path: the 0.18 s timer and every scroll-wheel event. Fire and
-    /// forget — while the auto engine is running it owns capture and these are
+    /// forget, while the auto engine is running it owns capture and these are
     /// ignored, so the two can't race for the same frame.
     private func tick() {
         guard !autoMode else { return }
@@ -135,7 +135,7 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
     /// exact grab before deciding to scroll again or call it the bottom.
     ///
     /// - Parameter minChange: signature distance below which the frame counts as
-    ///   "same content". Lower while auto-scrolling — we know we just scrolled,
+    ///   "same content". Lower while auto-scrolling: we know we just scrolled,
     ///   so a small but real change must not be mistaken for a still page.
     @MainActor
     @discardableResult
@@ -154,11 +154,11 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
         let px = CGRect(x: r.minX * k, y: r.minY * k, width: r.width * k, height: r.height * k)
             .integral.intersection(CGRect(x: 0, y: 0, width: full.width, height: full.height))
         guard !px.isEmpty, let shared = full.cropping(to: px) else { return .failed }
-        // Signature + dedup on the CHEAP shared crop first — only frames we
+        // Signature + dedup on the CHEAP shared crop first: only frames we
         // actually keep pay for the full-buffer deepCopy (idle ticks on a paused
         // page were allocating + discarding a full crop each).
-        // Both are full-resolution pixel passes — a downsample, then a redraw of
-        // a buffer that is ~65 MB on a large Retina selection — and they run on
+        // Both are full-resolution pixel passes: a downsample, then a redraw of
+        // a buffer that is ~65 MB on a large Retina selection. And they run on
         // every timer tick and every scroll event, up to 8 Hz. On the main thread
         // that stutters every window on the Mac. Order is unaffected: only one
         // capture is ever in flight (the `capturing` latch; the auto engine awaits
@@ -174,7 +174,7 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
         countLabel?.stringValue = "\(frames.count)"
 
         // Pre-align this pair off-main. The slot is reserved NOW, in order, on
-        // the main actor — the Vision result is written back into that exact
+        // the main actor. The Vision result is written back into that exact
         // index later, so `visionOffsets` stays index-aligned with `frames` no
         // matter how the async work interleaves.
         if let prev {
@@ -184,7 +184,7 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
             alignQueue.async { [weak self] in
                 // A registration pass costs real CPU and pins BOTH frames until
                 // it returns. If the session ended or the run was discarded while
-                // this waited its turn, nobody will read the answer — bail here so
+                // this waited its turn, nobody will read the answer: bail here so
                 // the frames are released with it instead of after.
                 guard let self, self.generation == gen else { return }
                 let off = Self.visionScroll(prev, crop)
@@ -220,14 +220,14 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
         guard save, !frames.isEmpty else { return }
 
         Notifier.info("Stitching…", "\(frames.count) frames")
-        // Offsets are main-actor state, so this snapshot is race-free — no
+        // Offsets are main-actor state, so this snapshot is race-free, no
         // blocking wait on the align queue. A pair whose Vision result hasn't
         // landed yet is simply nil and falls back to the signature search.
         let offs = visionOffsets
         DispatchQueue.global(qos: .userInitiated).async {
             guard let stitched = ScrollStitcher.stitch(frames: frames, signatures: sigs, offsets: offs,
                                                   visionOffset: { Self.visionScroll($0, $1) }) else {
-                DispatchQueue.main.async { Notifier.error("Scrolling capture failed", "Couldn't stitch the frames.") }
+                DispatchQueue.main.async { Notifier.error("Scrolling capture failed", "Couldn't stitch the frames. Scroll more slowly next time, so each grab overlaps the one before.") }
                 return
             }
             DispatchQueue.main.async {
@@ -251,7 +251,7 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
             .appendingPathComponent("SnapDesk Scroll \(f.string(from: Date())).png")
         // The sound is the one thing cheap enough to fire NOW. Handing an NSImage
         // to the pasteboard serialises an UNCOMPRESSED TIFF synchronously, and the
-        // PNG for the file is another full-image encode — on a stitch that can be
+        // PNG for the file is another full-image encode: on a stitch that can be
         // tens of thousands of rows tall, both froze the UI for seconds at the
         // exact moment the app said it was finished. Encode off the main thread
         // and hand the pasteboard finished bytes; the "copied" toast waits for the
@@ -265,7 +265,7 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
             DispatchQueue.main.async {
                 // `clearContents()` has already run by the time a write can fail,
                 // so an unchecked failure leaves the clipboard EMPTY under a toast
-                // that claims a copy — say what actually happened instead.
+                // that claims a copy: say what actually happened instead.
                 var copied = false
                 if let tiff {
                     NSPasteboard.general.clearContents()
@@ -275,14 +275,14 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
                               copied ? "Copied to clipboard" : "Saving it to a file")
             }
             // Both of these used to fail in SILENCE, straight after a toast that
-            // said the shot was being saved to a file — and the clipboard write
+            // said the shot was being saved to a file. And the clipboard write
             // above may have failed too, so that could be the only copy. A stitch
             // is minutes of scrolling nobody can repeat from memory, so a lost one
             // has to say it is lost.
             guard let data = AnnotationRenderer.encode(cg, format: .png, quality: 1) else {
                 DispatchQueue.main.async {
                     Notifier.error("Scrolling capture not saved",
-                                   "Couldn't encode the stitched image.")
+                                   "Couldn't encode the stitched image. Nothing was written to disk.")
                 }
                 return
             }
@@ -301,7 +301,7 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
         }
     }
 
-    /// CGImage.cropping() shares the ENTIRE source backing store — a small
+    /// CGImage.cropping() shares the ENTIRE source backing store: a small
     /// crop of a 5K screenshot pins ~60 MB. Redraw into a right-sized buffer.
     private static func deepCopy(_ img: CGImage) -> CGImage? {
         guard let ctx = CGContext(data: nil, width: img.width, height: img.height,
@@ -313,7 +313,7 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
         return ctx.makeImage()
     }
 
-    /// Vision translational registration between two frames — the ScrollSnap /
+    /// Vision translational registration between two frames. The ScrollSnap /
     /// macshot technique (proven smoother than hand-rolled matching). 5 full-
     /// width bands; ≥4 of 5 must agree within 3 px (bands over a sticky header
     /// report ~0 and get outvoted). Returns scroll amount in pixels (down > 0).
@@ -371,7 +371,7 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
 
     // MARK: - Auto-scroll
 
-    /// The area's centre in GLOBAL CG (top-left origin) coords — scroll events
+    /// The area's centre in GLOBAL CG (top-left origin) coords: scroll events
     /// are delivered to the window under this point.
     private var scrollPointCG: CGPoint {
         let primaryH = NSScreen.screens.first { $0.frame.origin == .zero }?.frame.height
@@ -404,7 +404,7 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
             // generation may reset it.
             defer { if self.autoGen == myGen { self.autoMode = false } }
             // "Full Page": rewind to the very TOP first, then capture straight
-            // down to the bottom — so one press grabs the WHOLE page regardless
+            // down to the bottom. So one press grabs the WHOLE page regardless
             // of where the user was scrolled to. Manual scrolling stays partial.
             Self.log("=== Full Page pressed · area \(Int(self.globalRect.width))×\(Int(self.globalRect.height))pt · scrollPoint \(pt) · step \(stepPx)px")
             self.stage("Rewinding to top…")
@@ -425,9 +425,9 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
             // run early and lose the rest of the page.)
             var still = 0
             // A descent has to be able to END on its own. `.failed` resets the
-            // bottom counter, so a screen that can no longer be captured — a
+            // bottom counter, so a screen that can no longer be captured (a
             // stale `selection.screen` after a display slept or was unplugged
-            // throws every single time — left this looping forever, posting
+            // throws every single time) left this looping forever, posting
             // scroll wheel events into whatever app is under the pointer twice a
             // second. A consecutive-failure cap and a wall clock (as `scrollToTop`
             // already has) end the session with a message instead.
@@ -435,13 +435,13 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
             let deadline = Date().addingTimeInterval(300)
             while self.autoRunning, !Task.isCancelled, ScrollCapture.isActive {
                 guard Date() < deadline else {
-                    self.stage("Stopped — took too long")
+                    self.stage("Stopped (took too long)")
                     Notifier.info("Full Page stopped",
-                                  "Five minutes is the limit — stitching what's captured.")
+                                  "Five minutes is the limit. Stitching what's captured.")
                     self.finish(save: true)
                     return
                 }
-                // Smooth sub-steps — one big jump breaks lazy-loading pages.
+                // Smooth sub-steps, one big jump breaks lazy-loading pages.
                 for _ in 0..<3 where self.autoRunning {
                     Self.postScroll(-(stepPx / 3), at: pt)
                     try? await Task.sleep(nanoseconds: 140_000_000)
@@ -469,7 +469,7 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
                     if fails >= 5 {
                         self.stage("Can't read the screen")
                         Notifier.error("Full Page stopped",
-                                       "Couldn't capture the screen — keeping the frames it got.")
+                                       "Couldn't capture the screen. Keeping the frames it got.")
                         self.finish(save: true)
                         return
                     }
@@ -484,7 +484,7 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
     /// Put the pointer over the content AND make the window server notice.
     /// `CGWarpMouseCursorPosition` moves the cursor without generating a move
     /// event, so the "window under the pointer" that scroll events are routed to
-    /// can stay stale — the wheel events then land on whatever was hovered
+    /// can stay stale. The wheel events then land on whatever was hovered
     /// before, and nothing scrolls at all.
     private func focusPointer(at pt: CGPoint) {
         CGWarpMouseCursorPosition(pt)
@@ -505,7 +505,7 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
 
     /// Rewind the content to its TOP with big upward scrolls, until the area
     /// stops changing. Nothing is stored. Returns whether the content EVER moved
-    /// — false means our scroll events aren't reaching it, which the caller
+    ///: false means our scroll events aren't reaching it, which the caller
     /// reports instead of capturing a bogus single-screen "full page".
     @MainActor
     private func scrollToTop(_ pt: CGPoint) async -> Bool {
@@ -563,7 +563,7 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
         }
     }
 
-    /// A cheap row-signature of the area right now (no dedup, no store) — used
+    /// A cheap row-signature of the area right now (no dedup, no store): used
     /// to detect when scroll-to-top has bottomed out at the top.
     @MainActor
     private func areaSignatureNow() async -> [Float]? {
@@ -584,7 +584,7 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
     /// Discard everything captured so far and start fresh (used after rewinding
     /// to the top). Bumping the generation makes any alignment still running for
     /// the discarded frames drop its result instead of writing it into the new
-    /// run's offsets — that mismatch used to garble the seam it landed on.
+    /// run's offsets. That mismatch used to garble the seam it landed on.
     @MainActor
     private func resetCapture() {
         generation += 1

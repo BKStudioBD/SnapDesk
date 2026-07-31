@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Caches, temporary files, logs and the Trash — grouped, sized, and ticked
+/// Caches, temporary files, logs and the Trash: grouped, sized, and ticked
 /// before anything is removed.
 ///
 /// The state lives in `CleanModel`, owned by the window, so leaving this tab
@@ -76,7 +76,7 @@ struct CleanTab: View {
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("Emptying the Trash deletes those items for good — they can't be put back. Everything else you ticked is moved to the Trash and can be.")
+            Text("Emptying the Trash deletes those items for good. They can't be put back. Everything else you ticked is moved to the Trash and can be.")
         }
         .task { await model.scanIfNeeded() }
     }

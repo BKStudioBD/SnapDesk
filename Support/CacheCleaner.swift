@@ -20,7 +20,7 @@ struct CacheCategory: Identifiable, Sendable, Hashable {
     let name: String
     let detail: String
     let symbol: String
-    /// Directories whose CONTENTS may be removed — never the directory itself.
+    /// Directories whose CONTENTS may be removed, never the directory itself.
     let paths: [URL]
     /// Ticked when the window opens. Anything that deletes rather than rebuilds
     /// (the Trash) is false: a permanent delete is never a default.
@@ -29,8 +29,8 @@ struct CacheCategory: Identifiable, Sendable, Hashable {
     /// measured or cleaned twice.
     let excluding: Set<String>
     /// Bundle ids of the app this row's cache belongs to, for the rows that are
-    /// about one app. Those rows list the CHILDREN of that app's cache folder —
-    /// `Cache`, `Code Cache`, `GPUCache` — so no item name can say whose they
+    /// about one app. Those rows list the CHILDREN of that app's cache folder:
+    /// `Cache`, `Code Cache`, `GPUCache`. So no item name can say whose they
     /// are; only the row knows, and the running-app guard needs to be told.
     var owners: Set<String> = []
 
@@ -43,7 +43,7 @@ struct CacheCategory: Identifiable, Sendable, Hashable {
 /// temporary files, logs and (opt-in) the Trash.
 ///
 /// Two rules hold everywhere in here. Only the CONTENTS of a known cache
-/// directory are removed, never the directory itself — an app that finds its
+/// directory are removed, never the directory itself: an app that finds its
 /// cache folder missing can behave far worse than one that finds it empty. And
 /// anything written in the last ten minutes is left alone, because `unlink`
 /// succeeds on a file another process still holds open, and a cache database
@@ -53,7 +53,7 @@ enum CacheCleaner {
     // MARK: - Catalog
 
     /// Every category SnapDesk knows how to clean, for the given home directory.
-    /// Pure: no disk access, no filtering — call `present(in:)` for what exists.
+    /// Pure: no disk access, no filtering. Call `present(in:)` for what exists.
     static func catalog(home: URL) -> [CacheCategory] {
         let library = home.appending(path: "Library")
         let caches = library.appending(path: "Caches")
@@ -61,9 +61,9 @@ enum CacheCleaner {
 
         var out: [CacheCategory] = []
 
-        // Developer — the biggest and safest wins on a working Mac.
+        // Developer. The biggest and safest wins on a working Mac.
         out.append(.init(id: "xcode.derived", group: .developer, name: "Xcode DerivedData",
-                         detail: "Build products and indexes — rebuilt on the next build",
+                         detail: "Build products and indexes, rebuilt on the next build",
                          symbol: "hammer",
                          paths: [library.appending(path: "Developer/Xcode/DerivedData")],
                          defaultOn: true, excluding: []))
@@ -73,7 +73,7 @@ enum CacheCleaner {
                          paths: [library.appending(path: "Developer/Xcode/iOS DeviceSupport")],
                          defaultOn: true, excluding: []))
         out.append(.init(id: "simulator.caches", group: .developer, name: "Simulator caches",
-                         detail: "CoreSimulator's own cache — not your simulators",
+                         detail: "CoreSimulator's own cache (not your simulators)",
                          symbol: "square.stack",
                          paths: [inCaches("com.apple.dt.Xcode"), inCaches("com.apple.CoreSimulator")],
                          defaultOn: true, excluding: []))
@@ -101,7 +101,7 @@ enum CacheCleaner {
                          paths: [inCaches("pip"), home.appending(path: ".cache/pip")],
                          defaultOn: true, excluding: []))
 
-        // Browsers — cleared every day by the browser itself; safe, and big.
+        // Browsers: cleared every day by the browser itself; safe, and big.
         out.append(.init(id: "chrome", group: .browsers, name: "Chrome",
                          detail: "Page and code caches",
                          symbol: "globe",
@@ -123,7 +123,7 @@ enum CacheCleaner {
                          paths: [inCaches("company.thebrowser.Browser")],
                          defaultOn: true, excluding: [], owners: ["company.thebrowser.Browser"]))
 
-        // Apps — the Electron trio that quietly grow the most.
+        // Apps. The Electron trio that quietly grow the most.
         out.append(.init(id: "spotify", group: .apps, name: "Spotify",
                          detail: "Streamed audio cache",
                          symbol: "music.note",
@@ -140,13 +140,13 @@ enum CacheCleaner {
                          paths: [inCaches("com.hnc.Discord")],
                          defaultOn: true, excluding: [], owners: ["com.hnc.Discord"]))
 
-        // System — what is left, so nothing is counted twice.
+        // System: what is left, so nothing is counted twice.
         //
         // "Other app caches" lists the CHILDREN of ~/Library/Caches, so the
         // exclusions have to be child names: for a nested path like
         // `Caches/Google/Chrome` that is `Google`, not `Chrome`. Comparing URLs
-        // directly does not work here — an appended path carries a trailing
-        // slash its parent does not — so this walks the path components instead.
+        // directly does not work here: an appended path carries a trailing
+        // slash its parent does not. So this walks the path components instead.
         let cachesComponents = caches.standardizedFileURL.pathComponents
         let named = Set(out.flatMap(\.paths).compactMap { path -> String? in
             let components = path.standardizedFileURL.pathComponents
@@ -170,7 +170,7 @@ enum CacheCleaner {
                          paths: [library.appending(path: "Logs")],
                          defaultOn: true, excluding: []))
         out.append(.init(id: "trash", group: .system, name: "Empty the Trash",
-                         detail: "Deletes for good — this one is not reversible",
+                         detail: "Deletes for good (this one is not reversible)",
                          symbol: "trash",
                          paths: [home.appending(path: ".Trash")],
                          defaultOn: false, excluding: []))
@@ -185,7 +185,7 @@ enum CacheCleaner {
         }
     }
 
-    /// Build the catalog and drop what isn't installed — off the main actor,
+    /// Build the catalog and drop what isn't installed: off the main actor,
     /// since "does this path exist" is a stat() per entry and the window asks
     /// for it while it is opening.
     static func presentCatalogInBackground() async -> [CacheCategory] {
@@ -220,7 +220,7 @@ enum CacheCleaner {
     // MARK: - Cleaning
 
     /// Remove what the categories cover, newest-touched files spared. Returns
-    /// the bytes actually freed — measured per item BEFORE removing it, so a
+    /// the bytes actually freed: measured per item BEFORE removing it, so a
     /// protected file that fails to delete never inflates the total.
     ///
     /// Categories run one after another on purpose: the whole point is to reduce
@@ -243,7 +243,7 @@ enum CacheCleaner {
         let runningIDs = category.isTrash ? [] : runningBundleIDs()
         // The whole row goes untouched while its app is up. The per-item guard
         // below cannot catch this one: a per-app row's items are that app's
-        // `Cache` and `GPUCache` folders, and neither name mentions the app —
+        // `Cache` and `GPUCache` folders, and neither name mentions the app,
         // so a running Slack or Spotify was losing the cache it had open.
         guard !isOwnedByRunningApp(category, runningIDs: runningIDs) else { return 0 }
         for item in removableItems(in: category) {
@@ -253,7 +253,7 @@ enum CacheCleaner {
             do {
                 // Emptying the Trash is the ONE permanent delete in SnapDesk,
                 // and the UI names it before it happens. Everything else goes to
-                // the Trash like the uninstaller and the build-folder sweep do —
+                // the Trash like the uninstaller and the build-folder sweep do:
                 // a cache directory can hold something a vendor parked there
                 // (an IDE's local history, say) that no unlink should decide is
                 // disposable.
@@ -264,7 +264,7 @@ enum CacheCleaner {
                 }
                 freed += bytes
             } catch {
-                // Locked, owned by another user, or protected — leave it.
+                // Locked, owned by another user, or protected: leave it.
             }
         }
         return freed
@@ -290,7 +290,7 @@ enum CacheCleaner {
         return out
     }
 
-    /// True if the item — or anything nested inside it — was modified after
+    /// True if the item, or anything nested inside it, was modified after
     /// `cutoff`. A folder's own timestamp does not move when a file deep inside
     /// it is written, so the whole tree has to be asked. Stops at the first hit,
     /// and includes hidden files: the lock and write-ahead-log files that mark a
@@ -319,7 +319,7 @@ enum CacheCleaner {
         let fm = FileManager.default
         // `fileIdentifier` comes along so a block referenced from several places
         // is counted once. pnpm hard-links every package from its store into
-        // each project's node_modules, and APFS clones do the same for copies —
+        // each project's node_modules, and APFS clones do the same for copies:
         // summed naively, twelve projects reported ~5 GB that emptying the Trash
         // would never give back.
         let keys: Set<URLResourceKey> = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey,
@@ -355,14 +355,14 @@ enum CacheCleaner {
     }
 
     /// The same question for a whole row. A row that names one app answers it
-    /// from `owners`, because its items never can — they are the children of
+    /// from `owners`, because its items never can. They are the children of
     /// that app's cache folder, not the folder itself. Rows with no owner (the
     /// catch-all, the temporary files) fall through to the per-item check.
     static func isOwnedByRunningApp(_ category: CacheCategory, runningIDs: Set<String>) -> Bool {
         category.owners.contains { runningIDs.contains($0.lowercased()) }
     }
 
-    /// Bundle ids of everything running, lowercased — read once per pass.
+    /// Bundle ids of everything running, lowercased: read once per pass.
     static func runningBundleIDs() -> Set<String> {
         Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier).map { $0.lowercased() })
     }
