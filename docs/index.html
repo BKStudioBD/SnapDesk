@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SnapDesk — capture · annotate · OCR · record · clean, for macOS</title>
-<meta name="description" content="One lightweight, fully native macOS menu-bar app: screenshots with annotation, on-device OCR, color picker, clipboard history, and screen recording with a trim timeline. 100% on-device — no network.">
+<title>SnapDesk · capture, annotate, OCR, record and clean, for macOS</title>
+<meta name="description" content="One lightweight, fully native macOS menu-bar app: screenshots with annotation, on-device OCR, color picker, clipboard history, and screen recording with a trim timeline. Everything is computed on your Mac.">
 <style>
   :root{
     --bg:#0b0e17; --card:#131826; --line:#232a3d; --text:#e8ecf5; --muted:#98a2b8;
@@ -66,11 +66,11 @@
       </svg>
     </div>
     <h1>SnapDesk</h1>
-    <p class="tag">One lightweight, fully native macOS menu-bar app — capture, annotate, OCR, color-pick, clipboard, screen-record and clean, all in one place.</p>
-    <p class="sub">Screenshots, OCR, color picking, clipboard history and screen recording — one native app, nothing else to install.</p>
+    <p class="tag">One lightweight, fully native macOS menu-bar app for capture, annotation, OCR, color picking, clipboard history, screen recording and cleaning.</p>
+    <p class="sub">Screenshots, OCR, color picking, clipboard history and screen recording in one native app, with nothing else to install.</p>
     <div class="badges">
       <span class="badge">Apple Silicon &amp; Intel · macOS 14+</span>
-      <span class="badge">100% on-device · no network</span>
+      <span class="badge">On-device · nothing uploaded</span>
       <span class="badge">Native · tiny binary</span>
       <span class="badge">Open source</span>
     </div>
@@ -83,7 +83,7 @@
   <section>
     <h2>Install in one command</h2>
     <div class="install">
-      <p>Paste this into Terminal — it downloads, installs to Applications, clears the Gatekeeper flag, and launches. No drag, no warning.</p>
+      <p>Paste this into Terminal. It downloads, installs to Applications, clears the Gatekeeper flag, and launches. No drag, no warning.</p>
       <pre><code>curl -fsSL https://raw.githubusercontent.com/BKStudioBD/SnapDesk/main/install.sh | bash</code></pre>
       <p class="hint">Prefer manual? Grab the <a href="https://github.com/BKStudioBD/SnapDesk/releases/latest">ZIP</a>, move SnapDesk to Applications, and right-click → Open the first time.</p>
     </div>
@@ -93,15 +93,15 @@
     <h2>Everything it does</h2>
     <div class="grid">
       <div class="feat"><h3><span class="ico">📸</span> Capture &amp; Annotate <span class="k">⌃1</span></h3><p>Drag a region or click a window to snap it, then mark up with arrows, boxes, blur, steps, text and spotlight. Copy, save or pin on top.</p></div>
-      <div class="feat"><h3><span class="ico">🔤</span> Grab Text (OCR) <span class="k">⌃2</span></h3><p>Drag over any text on screen — recognized on-device (Apple Vision) and copied instantly. Only the selected area dims.</p></div>
-      <div class="feat"><h3><span class="ico">🎨</span> Pick a Color <span class="k">⌃3</span></h3><p>Magnified eyedropper → copies the color as HEX or RGB, and keeps your last 16 picks as swatches.</p></div>
+      <div class="feat"><h3><span class="ico">🔤</span> Grab Text (OCR) <span class="k">⌃2</span></h3><p>Drag over any text on screen. It is recognized on-device (Apple Vision) and copied instantly, and only the selected area dims.</p></div>
+      <div class="feat"><h3><span class="ico">🎨</span> Pick a Color <span class="k">⌃3</span></h3><p>A magnified eyedropper copies the color as HEX or RGB, and keeps your last 16 picks as swatches.</p></div>
       <div class="feat"><h3><span class="ico">📋</span> Clipboard History <span class="k">⌃4</span></h3><p>Searchable history of text &amp; images. One click pastes into the app you came from; double-click just copies. Passwords never saved.</p></div>
       <div class="feat"><h3><span class="ico">🎥</span> Record Screen <span class="k">⌃5</span></h3><p>Region or full screen, with audio, mic, webcam bubble, on-device captions and privacy blur. Trim timeline with mid-video cuts + export.</p></div>
-      <div class="feat"><h3><span class="ico">📜</span> Scrolling Capture <span class="k">⌃6</span></h3><p>Auto-scroll a long page hands-free — SnapDesk stitches it into one tall image and opens the result.</p></div>
-      <div class="feat"><h3><span class="ico">🔁</span> Grab Text Again <span class="k">⌃7</span></h3><p>Re-reads the last OCR area with no drag — the quick way to keep copying a value that changes.</p></div>
+      <div class="feat"><h3><span class="ico">📜</span> Scrolling Capture <span class="k">⌃6</span></h3><p>Press Full Page and SnapDesk scrolls from the top for you, or scroll yourself. Either way the frames are stitched into one tall image.</p></div>
+      <div class="feat"><h3><span class="ico">🔁</span> Grab Text Again <span class="k">⌃7</span></h3><p>Re-reads the last OCR area with no drag, the quick way to keep copying a value that changes.</p></div>
       <div class="feat"><h3><span class="ico">🗂</span> Text Stack <span class="k">⌃8</span></h3><p>Collect several OCR grabs into one clipboard payload, then paste them all at once.</p></div>
       <div class="feat"><h3><span class="ico">🧹</span> Cleaner</h3><p>Dashboard of CPU, memory, disk and network, plus three ways to get space back: grouped caches, rebuildable build folders (node_modules, DerivedData, .build), and a deep app uninstaller. Everything goes to the Trash.</p></div>
-      <div class="feat"><h3><span class="ico">⚙️</span> Built for macOS</h3><p>Menu-bar only, rebindable shortcuts, launch at login, one crisp custom icon, instant UI. Pure Swift on Apple frameworks — no dependencies.</p></div>
+      <div class="feat"><h3><span class="ico">⚙️</span> Built for macOS</h3><p>Menu-bar only, rebindable shortcuts, launch at login, one crisp custom icon, instant UI. Pure Swift on Apple frameworks, no dependencies.</p></div>
     </div>
   </section>
 
@@ -110,7 +110,7 @@
       <span class="ico">🔒</span>
       <div>
         <h3 style="margin:0 0 4px;font-size:16px">Private by design</h3>
-        <p style="margin:0;color:var(--muted);font-size:14px">OCR, captions, image processing and cleaning all run on your Mac. SnapDesk has no network code — nothing is ever uploaded. Clipboard history ignores anything marked secret, so passwords from your password manager are never stored.</p>
+        <p style="margin:0;color:var(--muted);font-size:14px">OCR, captions, image processing and cleaning all run on your Mac, and nothing is ever uploaded. The one network call in the app is an update check against the public GitHub releases list, off unless you turn it on. Clipboard history ignores anything marked secret, so passwords from your password manager are never stored.</p>
       </div>
     </div>
   </section>
