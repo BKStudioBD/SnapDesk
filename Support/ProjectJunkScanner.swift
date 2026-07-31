@@ -71,16 +71,32 @@ enum JunkRules {
     /// Xcode project is not the `build` a bundler writes.
     static func kind(for directoryName: String) -> JunkKind? { byName[directoryName] }
 
+    /// Extensions that make a directory ONE thing rather than a folder: an app,
+    /// a framework, a plug-in. Their insides are shipped contents, not build
+    /// output — an Electron app carries a real `node_modules` under
+    /// `Contents/Resources/app`, and trashing it breaks that app for good, with
+    /// nothing to rebuild it from.
+    private static let packageExtensions: Set<String> = [
+        "app", "appex", "bundle", "framework", "plugin", "kext", "xpc", "prefpane",
+        "qlgenerator", "mdimporter", "component", "photoslibrary", "rtfd", "dsym",
+    ]
+
+    /// Whether a directory name is a package bundle.
+    static func isPackage(_ name: String) -> Bool {
+        packageExtensions.contains((name as NSString).pathExtension.lowercased())
+    }
+
     /// Directories the walk refuses to enter.
     ///
     /// Every dotfile directory is skipped, which is what keeps a global cache
     /// like `~/.nvm` or `~/.npm` out of a scan that is supposed to be about
     /// projects — the dot-named junk kinds are matched BEFORE this is asked, so
-    /// `.build` and `.venv` are still found. `Library` and `Applications` belong
-    /// to the Clean and Uninstall tabs, and following symlinks turns a walk into
-    /// a loop.
+    /// `.build` and `.venv` are still found. Packages are skipped whole.
+    /// `Library` and `Applications` belong to the Clean and Uninstall tabs, and
+    /// following symlinks turns a walk into a loop.
     static func shouldDescend(into name: String) -> Bool {
         if name.hasPrefix(".") { return false }
+        if isPackage(name) { return false }
         return name != "Library" && name != "Applications"
     }
 
@@ -114,12 +130,17 @@ enum ProjectJunkScanner {
 
         while let (directory, depth) = stack.popLast() {
             guard depth <= maxDepth else { continue }
+            // No `.skipsPackageDescendants` here: that option exists for the
+            // enumerator API and this walk is hand-rolled, so asking for it did
+            // nothing at all — the skip has to happen below, per child.
             guard let children = try? fm.contentsOfDirectory(
-                at: directory, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
-                options: [.skipsPackageDescendants]) else { continue }
+                at: directory,
+                includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey, .isPackageKey])
+            else { continue }
 
             for child in children {
-                let values = try? child.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+                let values = try? child.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey,
+                                                                 .isPackageKey])
                 guard values?.isDirectory == true, values?.isSymbolicLink != true else { continue }
                 let name = child.lastPathComponent
 
@@ -130,7 +151,10 @@ enum ProjectJunkScanner {
                                           isGlobalHome: JunkRules.isGlobalHome(name, atDepth: depth)))
                     continue                      // matched — do not descend into it
                 }
-                if JunkRules.shouldDescend(into: name) {
+                // A package is asked of the file system as well as of the name:
+                // the name rule covers the extensions, the resource value covers
+                // the ones an installed app declared for itself.
+                if values?.isPackage != true, JunkRules.shouldDescend(into: name) {
                     stack.append((child, depth + 1))
                 }
             }

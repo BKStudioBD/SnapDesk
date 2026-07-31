@@ -28,9 +28,31 @@ enum UninstallMatch {
         guard !bundleID.isEmpty else { return false }
         let haystack = name.lowercased(), needle = bundleID.lowercased()
         guard let range = haystack.range(of: needle) else { return false }
-        guard range.upperBound < haystack.endIndex else { return true }
-        let next = haystack[range.upperBound]
-        return !next.isLetter && !next.isNumber
+        let rest = haystack[range.upperBound...]
+        guard let next = rest.first else { return true }
+        // A DOT is not a boundary. `com.google.Chrome.canary` is Chrome Canary's
+        // own identifier — a separate product, still installed, whose prefs,
+        // cookies and saved state were arriving here pre-ticked. Past the id only
+        // a file-type suffix may follow; a word that isn't one is more identifier.
+        guard next == "." else { return !next.isLetter && !next.isNumber }
+        return rest.dropFirst()
+            .split(separator: ".", omittingEmptySubsequences: false)
+            .allSatisfy(isFileSuffix)
+    }
+
+    /// What macOS appends to a bundle id when it names a file after it. Kept
+    /// short on purpose: a missed leftover costs kilobytes, and claiming another
+    /// product's folder costs the logins inside it.
+    private static let fileSuffixes: Set<String> = [
+        "plist", "lockfile", "savedstate", "binarycookies", "sfl2", "sfl3", "log",
+    ]
+
+    /// A dotted piece that ends a filename rather than continuing an identifier.
+    /// The long hex-and-dash form is a ByHost preference's host id
+    /// (`com.foo.App.<UUID>.plist`), which is still the app's own file.
+    private static func isFileSuffix(_ part: Substring) -> Bool {
+        if fileSuffixes.contains(String(part)) { return true }
+        return part.count >= 32 && part.allSatisfy { $0.isHexDigit || $0 == "-" }
     }
 
     /// The app's name, delimited by non-alphanumerics. "Snap" must not claim

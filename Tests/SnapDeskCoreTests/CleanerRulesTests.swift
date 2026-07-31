@@ -42,6 +42,34 @@ struct CacheCatalogTests {
         #expect(outside.allSatisfy { $0.contains("/T/") || $0.hasPrefix("/var") || $0.hasPrefix("/private") })
     }
 
+    @Test("Every per-app row names the app it belongs to",
+          arguments: ["chrome", "safari", "firefox", "arc", "spotify", "slack", "discord"])
+    func perAppRowsNameTheirOwner(_ id: String) throws {
+        // Without it the running-app guard has nothing to compare: the row's
+        // items are that app's `Cache` and `GPUCache` folders, and no name there
+        // says whose they are.
+        let row = try #require(CacheCleaner.catalog(home: home).first { $0.id == id })
+        #expect(row.owners.isEmpty == false)
+    }
+
+    @Test("The owner is matched however the catalog spelled it")
+    func ownerMatchIsCaseInsensitive() throws {
+        // Running bundle ids arrive lowercased; the catalog writes them the way
+        // the app does — `com.google.Chrome`.
+        let chrome = try #require(CacheCleaner.catalog(home: home).first { $0.id == "chrome" })
+        #expect(CacheCleaner.isOwnedByRunningApp(chrome, runningIDs: ["com.google.chrome"]))
+        #expect(CacheCleaner.isOwnedByRunningApp(chrome, runningIDs: ["com.apple.safari"]) == false)
+    }
+
+    @Test("A row that isn't about one app has no owner to check")
+    func catchAllRowsHaveNoOwner() throws {
+        let catalog = CacheCleaner.catalog(home: home)
+        for id in ["other.caches", "temp", "logs", "trash"] {
+            let row = try #require(catalog.first { $0.id == id })
+            #expect(row.owners.isEmpty)
+        }
+    }
+
     @Test("Ids are unique, or a size lands on the wrong row")
     func idsAreUnique() {
         let ids = CacheCleaner.catalog(home: home).map(\.id)
@@ -153,6 +181,22 @@ struct JunkRulesTests {
         #expect(JunkRules.kind(for: ".build") != nil)
         #expect(JunkRules.kind(for: ".venv") != nil)
         #expect(JunkRules.shouldDescend(into: ".build") == false)
+    }
+
+    @Test("A package is never walked into", .tags(.regression),
+          arguments: ["Slack.app", "Sparkle.framework", "Mail.bundle", "Share.appex",
+                      "Photos.photoslibrary", "Preview.qlgenerator"])
+    func skipsPackages(_ name: String) {
+        // An Electron app ships a REAL node_modules inside
+        // Contents/Resources/app. It was found, ticked, and trashing it breaks
+        // the app for good — nothing rebuilds an app's own contents.
+        #expect(JunkRules.isPackage(name))
+        #expect(JunkRules.shouldDescend(into: name) == false)
+    }
+
+    @Test("A project folder is not a package", arguments: ["Dev", "node_modules", "my.project", "src"])
+    func plainFoldersAreNotPackages(_ name: String) {
+        #expect(JunkRules.isPackage(name) == false)
     }
 
     @Test("Library and Applications belong to the other tabs")

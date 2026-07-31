@@ -101,6 +101,10 @@ enum SystemStats {
     /// Free and total bytes on the boot volume. "Important usage" is the figure
     /// Finder shows — it counts purgeable space the system would reclaim for a
     /// real write, which a raw `volumeAvailableCapacity` does not.
+    ///
+    /// The one reading in here that is NOT microseconds: totting up purgeable
+    /// and snapshot space takes tens to hundreds of milliseconds, so call
+    /// `diskInBackground()` from anything that samples on a timer.
     static func disk() -> (free: UInt64, total: UInt64) {
         let url = URL(fileURLWithPath: NSHomeDirectory())
         guard let values = try? url.resourceValues(forKeys: [
@@ -109,6 +113,13 @@ enum SystemStats {
         let free = UInt64(max(0, values.volumeAvailableCapacityForImportantUsage ?? 0))
         let total = UInt64(max(0, values.volumeTotalCapacity ?? 0))
         return (free, total)
+    }
+
+    /// The same reading off the main actor. It blocks on the volume rather than
+    /// suspending, which is a dispatch queue's job and not the cooperative
+    /// pool's — see `BackgroundWork`.
+    static func diskInBackground() async -> (free: UInt64, total: UInt64) {
+        await BackgroundWork.run { disk() }
     }
 
     // MARK: - Network

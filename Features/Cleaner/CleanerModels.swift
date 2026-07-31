@@ -83,6 +83,13 @@ final class DeveloperModel {
     var selectedBytes: UInt64 { selectedItems.reduce(0) { $0 + $1.size } }
     var totalBytes: UInt64 { items.reduce(0) { $0 + $1.size } }
 
+    /// Everything Select All would tick — the rows the scan left alone are not
+    /// counted, so the button doesn't sit on "Select All" after it was used.
+    var allSelected: Bool {
+        let selectable = items.filter(\.safeToPreselect)
+        return !selectable.isEmpty && selectable.allSatisfy { selected.contains($0.id) }
+    }
+
     func scanIfNeeded() async {
         guard !scanned else { return }
         scanned = true

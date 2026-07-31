@@ -5,9 +5,9 @@ import Observation
 ///
 /// The loop is structured: the view starts it with `.task`, so closing the
 /// window cancels it and nothing keeps sampling behind a window nobody is
-/// looking at. Each reading is a handful of syscalls measured in microseconds,
-/// which is why they run right here on the main actor instead of paying for a
-/// thread hop.
+/// looking at. Every reading but one is a handful of syscalls measured in
+/// microseconds, which is why they run right here on the main actor instead of
+/// paying for a thread hop; free disk space is the exception.
 @MainActor
 @Observable
 final class SystemMonitor {
@@ -17,20 +17,27 @@ final class SystemMonitor {
     /// Sample once a second until cancelled.
     func run() async {
         previous = SystemStats.counters()
-        update()
+        await update()
         while !Task.isCancelled {
             do { try await Task.sleep(for: .seconds(1)) } catch { return }
-            update()
+            await update()
         }
     }
 
     /// Take a reading now — used after a memory clean, so the numbers move the
     /// moment the work finishes rather than up to a second later.
-    func update() {
+    func update() async {
         let current = SystemStats.counters()
-        sample = SystemStats.sample(from: previous, to: current,
-                                    memory: SystemStats.memory(), disk: SystemStats.disk())
+        // Counted against the previous reading BEFORE the hop below, so the
+        // button's extra update and the timer's cannot both measure from it.
+        let last = previous
         previous = current
+        // The disk figure is the expensive one — purgeable and snapshot space,
+        // hundreds of milliseconds of it — and asking for it on the main actor
+        // once a second is a window that stutters the whole time it is open.
+        let disk = await SystemStats.diskInBackground()
+        sample = SystemStats.sample(from: last, to: current,
+                                    memory: SystemStats.memory(), disk: disk)
     }
 }
 
@@ -115,7 +122,7 @@ struct DashboardTab: View {
         isCleaning = true
         result = nil
         let (before, after) = await RAMCleaner.clean()
-        monitor.update()
+        await monitor.update()
         isCleaning = false
         result = after > before
             ? "Freed \(SystemStats.format(after - before))"

@@ -24,6 +24,30 @@ struct UninstallMatchTests {
         #expect(UninstallMatch.matchesBundleID("com.google.Chrome2", bundleID: "com.google.Chrome") == false)
     }
 
+    @Test("A dot does not end the match — a longer id is another product",
+          .tags(.regression))
+    func aDotIsNotABoundary() {
+        // The bug this pins: `com.google.Chrome.canary` shares Chrome's id as a
+        // prefix, so Chrome Canary's preferences, cookies and saved state
+        // arrived in an uninstall of Chrome already ticked.
+        #expect(!UninstallMatch.matchesBundleID("com.google.Chrome.canary",
+                                                bundleID: "com.google.Chrome"))
+        #expect(!UninstallMatch.matchesBundleID("com.google.Chrome.canary.plist",
+                                                bundleID: "com.google.Chrome"))
+        #expect(!UninstallMatch.matchesBundleID("com.google.Chrome.canary.savedState",
+                                                bundleID: "com.google.Chrome"))
+        #expect(!UninstallMatch.matchesBundleID("com.google.Chrome.canary.binarycookies",
+                                                bundleID: "com.google.Chrome"))
+    }
+
+    @Test("A per-host preference is still the app's own file")
+    func matchesByHostPreferences() {
+        // ~/Library/Preferences/ByHost names the file after the id AND the Mac.
+        #expect(UninstallMatch.matchesBundleID(
+            "com.google.Chrome.0000AA11-2B33-4C55-D6E7-889900AABBCC.plist",
+            bundleID: "com.google.Chrome"))
+    }
+
     @Test("Case doesn't matter — the file system's does not either")
     func caseInsensitive() {
         #expect(UninstallMatch.matchesBundleID("COM.GOOGLE.CHROME.plist", bundleID: "com.google.Chrome"))

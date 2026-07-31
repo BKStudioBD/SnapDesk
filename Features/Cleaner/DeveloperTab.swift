@@ -15,9 +15,14 @@ struct DeveloperTab: View {
             CleanerListHeader(total: SystemStats.format(model.totalBytes),
                               caption: "across \(model.items.count) build folder\(model.items.count == 1 ? "" : "s")",
                               hasRows: !model.items.isEmpty,
-                              allSelected: !model.items.isEmpty
-                                && model.selected.count >= model.items.count) { selectAll in
-                model.selected = selectAll ? Set(model.items.map(\.id)) : []
+                              allSelected: model.allSelected) { selectAll in
+                // Select All arms only what the scan was willing to tick itself.
+                // The rest — a `build` folder that might be somebody's source,
+                // `~/.gradle` with its signing passwords — stays for the person
+                // to choose one row at a time.
+                model.selected = selectAll
+                    ? Set(model.items.filter(\.safeToPreselect).map(\.id))
+                    : []
             }
 
             Divider()

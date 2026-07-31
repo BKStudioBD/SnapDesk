@@ -76,6 +76,23 @@ struct CleanerSafetyTests {
         #expect(CacheCleaner.isOwnedByRunningApp(other, runningIDs: running) == false)
     }
 
+    @Test("A per-app row is skipped whole while its app runs", .tags(.regression))
+    func skipsARunningAppsWholeRow() {
+        // The bug this pins: the row lists what is INSIDE Slack's cache folder,
+        // so the per-item guard is asked about `Cache` and `GPUCache` — names
+        // that match no bundle id ever — and a running Slack lost the cache it
+        // was holding open.
+        let running: Set<String> = ["com.tinyspeck.slackmacgap"]
+        let folder = URL(fileURLWithPath: "/tmp/Caches/com.tinyspeck.slackmacgap")
+        let slack = CacheCategory(id: "slack", group: .apps, name: "Slack", detail: "",
+                                  symbol: "message", paths: [folder], defaultOn: true,
+                                  excluding: [], owners: ["com.tinyspeck.slackmacgap"])
+        #expect(CacheCleaner.isOwnedByRunningApp(folder.appending(path: "GPUCache"),
+                                                 runningIDs: running) == false)
+        #expect(CacheCleaner.isOwnedByRunningApp(slack, runningIDs: running))
+        #expect(CacheCleaner.isOwnedByRunningApp(slack, runningIDs: []) == false)
+    }
+
     // MARK: - What the build-folder scan would tick
 
     @Test("A match stops the descent — the node_modules inside a node_modules is not its own row",
@@ -110,6 +127,21 @@ struct CleanerSafetyTests {
                                                    withDestinationURL: outside.appending(path: "node_modules"))
 
         #expect(ProjectJunkScanner.scan(roots: [root], maxDepth: 6).isEmpty)
+    }
+
+    @Test("The walk never enters an app bundle", .tags(.regression))
+    func neverWalksIntoAPackage() throws {
+        let root = try scratch()
+        defer { try? FileManager.default.removeItem(at: root) }
+        // What an Electron app looks like on disk. That node_modules is the
+        // app's own shipped code: it was listed AND pre-ticked, and moving it to
+        // the Trash breaks the app permanently.
+        try makeDirectory(root.appending(path: "Downloads/Editor.app/Contents/Resources/app/node_modules"))
+        try makeDirectory(root.appending(path: "project/node_modules"))
+
+        let found = ProjectJunkScanner.scan(roots: [root], maxDepth: 7)
+        #expect(found.count == 1)
+        #expect(found.first?.url.path.hasSuffix("project/node_modules") == true)
     }
 
     @Test("A dot-directory straight under the root is a tool's home — listed, never pre-ticked",

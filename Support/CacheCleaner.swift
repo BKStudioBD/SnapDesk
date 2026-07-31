@@ -28,6 +28,11 @@ struct CacheCategory: Identifiable, Sendable, Hashable {
     /// Child names to leave alone, so a folder owned by another category is not
     /// measured or cleaned twice.
     let excluding: Set<String>
+    /// Bundle ids of the app this row's cache belongs to, for the rows that are
+    /// about one app. Those rows list the CHILDREN of that app's cache folder —
+    /// `Cache`, `Code Cache`, `GPUCache` — so no item name can say whose they
+    /// are; only the row knows, and the running-app guard needs to be told.
+    var owners: Set<String> = []
 
     /// Emptying the Trash is a permanent delete; everything else is a cache the
     /// owning app rebuilds, so the in-use guard does not apply there.
@@ -101,39 +106,39 @@ enum CacheCleaner {
                          detail: "Page and code caches",
                          symbol: "globe",
                          paths: [inCaches("Google/Chrome")],
-                         defaultOn: true, excluding: []))
+                         defaultOn: true, excluding: [], owners: ["com.google.Chrome"]))
         out.append(.init(id: "safari", group: .browsers, name: "Safari",
                          detail: "Page cache and web data",
                          symbol: "safari",
                          paths: [inCaches("com.apple.Safari"), library.appending(path: "Safari/Favicon Cache")],
-                         defaultOn: true, excluding: []))
+                         defaultOn: true, excluding: [], owners: ["com.apple.Safari"]))
         out.append(.init(id: "firefox", group: .browsers, name: "Firefox",
                          detail: "Page and startup caches",
                          symbol: "globe",
                          paths: [inCaches("Firefox")],
-                         defaultOn: true, excluding: []))
+                         defaultOn: true, excluding: [], owners: ["org.mozilla.firefox"]))
         out.append(.init(id: "arc", group: .browsers, name: "Arc",
                          detail: "Page and code caches",
                          symbol: "globe",
                          paths: [inCaches("company.thebrowser.Browser")],
-                         defaultOn: true, excluding: []))
+                         defaultOn: true, excluding: [], owners: ["company.thebrowser.Browser"]))
 
         // Apps — the Electron trio that quietly grow the most.
         out.append(.init(id: "spotify", group: .apps, name: "Spotify",
                          detail: "Streamed audio cache",
                          symbol: "music.note",
                          paths: [inCaches("com.spotify.client")],
-                         defaultOn: true, excluding: []))
+                         defaultOn: true, excluding: [], owners: ["com.spotify.client"]))
         out.append(.init(id: "slack", group: .apps, name: "Slack",
                          detail: "Message and image cache",
                          symbol: "message",
                          paths: [inCaches("com.tinyspeck.slackmacgap")],
-                         defaultOn: true, excluding: []))
+                         defaultOn: true, excluding: [], owners: ["com.tinyspeck.slackmacgap"]))
         out.append(.init(id: "discord", group: .apps, name: "Discord",
                          detail: "Message and image cache",
                          symbol: "bubble.left.and.bubble.right",
                          paths: [inCaches("com.hnc.Discord")],
-                         defaultOn: true, excluding: []))
+                         defaultOn: true, excluding: [], owners: ["com.hnc.Discord"]))
 
         // System — what is left, so nothing is counted twice.
         //
@@ -236,6 +241,11 @@ enum CacheCleaner {
         let cutoff = Date().addingTimeInterval(-recentWindow)
         var freed: UInt64 = 0
         let runningIDs = category.isTrash ? [] : runningBundleIDs()
+        // The whole row goes untouched while its app is up. The per-item guard
+        // below cannot catch this one: a per-app row's items are that app's
+        // `Cache` and `GPUCache` folders, and neither name mentions the app —
+        // so a running Slack or Spotify was losing the cache it had open.
+        guard !isOwnedByRunningApp(category, runningIDs: runningIDs) else { return 0 }
         for item in removableItems(in: category) {
             if !category.isTrash, wasTouched(item, after: cutoff) { continue }
             if !category.isTrash, isOwnedByRunningApp(item, runningIDs: runningIDs) { continue }
@@ -342,6 +352,14 @@ enum CacheCleaner {
     /// it means broken images and cache errors until it is relaunched.
     static func isOwnedByRunningApp(_ url: URL, runningIDs: Set<String>) -> Bool {
         runningIDs.contains(url.lastPathComponent.lowercased())
+    }
+
+    /// The same question for a whole row. A row that names one app answers it
+    /// from `owners`, because its items never can — they are the children of
+    /// that app's cache folder, not the folder itself. Rows with no owner (the
+    /// catch-all, the temporary files) fall through to the per-item check.
+    static func isOwnedByRunningApp(_ category: CacheCategory, runningIDs: Set<String>) -> Bool {
+        category.owners.contains { runningIDs.contains($0.lowercased()) }
     }
 
     /// Bundle ids of everything running, lowercased — read once per pass.

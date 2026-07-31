@@ -185,7 +185,11 @@ private struct UninstallDetail: View {
     private func uninstall() async {
         isRemoving = true
         let removingBundle = picked.contains { $0.url == app.url }
-        if removingBundle, await AppUninstaller.quit(app) == false {
+        // Quit first whatever is being removed, not just the bundle: untick the
+        // .app to "reset" an app and the container and preferences still go —
+        // the ones it has open right now, and rewrites from memory on the way
+        // out. `quit` returns immediately when the app isn't running.
+        if await AppUninstaller.quit(app) == false {
             // It is still running, and it is never killed — a save prompt may be
             // waiting for an answer. Removing a live bundle would fail anyway.
             isRemoving = false
