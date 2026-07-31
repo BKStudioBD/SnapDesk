@@ -32,6 +32,10 @@ enum MenuBarIcon {
             return true
         }
         img.isTemplate = true
+        // The status item is an icon and nothing else, so this string IS the
+        // control's name to VoiceOver — without it the menu bar holds an
+        // unnamed button.
+        img.accessibilityDescription = "SnapDesk"
         return img
     }
 
@@ -45,6 +49,9 @@ enum MenuBarIcon {
             return true
         }
         img.isTemplate = false   // keep it red, not a template tint
+        // "Recording" is carried by the colour alone otherwise, which no
+        // screen reader and no colour-blind user can read.
+        img.accessibilityDescription = "SnapDesk — recording"
         return img
     }
 

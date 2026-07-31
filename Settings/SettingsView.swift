@@ -272,9 +272,15 @@ private struct RecordingTab: View {
             }
         }
         .glassForm()
-        .onAppear {
-            micDevices = MicCapture.devices()
-            driveAvailable = DriveUpload.isAvailable
+        // Both off the main thread. `DriveUpload.isAvailable` enumerates
+        // ~/Library/CloudStorage, and those are FileProvider mounts: when Google
+        // Drive isn't running, or is still signing in, that `stat` blocks for
+        // SECONDS — which froze the whole Settings window the moment this tab
+        // opened. The mic scan is hardware discovery and belongs off main for the
+        // same reason. `.task` also cancels itself if the tab goes away first.
+        .task {
+            micDevices = await BackgroundWork.run { MicCapture.devices() }
+            driveAvailable = await BackgroundWork.run { DriveUpload.isAvailable }
         }
     }
 
@@ -367,7 +373,12 @@ private struct ScreenshotTab: View {
                 }
                 HStack {
                     Text("Stroke width")
+                    // The Text beside it is not the slider's label as far as
+                    // VoiceOver is concerned — unlabelled, it announced a bare
+                    // percentage with no clue what it controlled.
                     Slider(value: $settings.defaultLineWidth, in: 1...14)
+                        .accessibilityLabel("Stroke width")
+                        .accessibilityValue("\(Int(settings.defaultLineWidth)) points")
                     Text("\(Int(settings.defaultLineWidth))").monospacedDigit().foregroundStyle(.secondary)
                 }
                 // The live drag stays local. Bound straight to the store, every
@@ -399,6 +410,8 @@ private struct ScreenshotTab: View {
                     HStack {
                         Text("JPEG quality")
                         Slider(value: $settings.jpegQuality, in: 0.3...1.0)
+                            .accessibilityLabel("JPEG quality")
+                            .accessibilityValue("\(Int(settings.jpegQuality * 100)) percent")
                         Text("\(Int(settings.jpegQuality * 100))%").monospacedDigit().foregroundStyle(.secondary)
                     }
                 }
@@ -597,6 +610,11 @@ private struct ColorTab: View {
 
 private struct ClipboardTab: View {
     @EnvironmentObject var settings: SettingsStore
+    /// bundle id → display name, resolved once per list change. Doing it in
+    /// `body` meant a LaunchServices query plus a `displayName` disk read for
+    /// every ignored app on every re-render — and this tab re-renders on ANY
+    /// change published by the store, including a colour drag two panes away.
+    @State private var appLabels: [String: String] = [:]
     var body: some View {
         Form {
             Section("History") {
@@ -634,13 +652,14 @@ private struct ClipboardTab: View {
                     Text("Copies from these apps are never saved.").font(.caption).foregroundStyle(.secondary)
                 }
                 ForEach(settings.ignoreApps, id: \.self) { bundleID in
+                    let label = appLabels[bundleID] ?? bundleID
                     HStack {
-                        Text(appLabel(bundleID))
+                        Text(label)
                         Spacer()
                         Button { settings.ignoreApps.removeAll { $0 == bundleID } } label: {
                             Image(systemName: "minus.circle.fill").foregroundStyle(.secondary)
                         }.buttonStyle(.borderless)
-                        .accessibilityLabel("Remove \(appLabel(bundleID)) from the ignore list")
+                        .accessibilityLabel("Remove \(label) from the ignore list")
                         .help("Remove from list")
                     }
                 }
@@ -648,13 +667,22 @@ private struct ClipboardTab: View {
             }
         }
         .glassForm()
+        // Off the main thread, and only when the list actually changes — same
+        // reason the Recording pane moved its mic scan and Drive check off it.
+        .task(id: settings.ignoreApps) {
+            let ids = settings.ignoreApps
+            appLabels = await BackgroundWork.run { Self.resolveLabels(ids) }
+        }
     }
 
-    private func appLabel(_ bundleID: String) -> String {
-        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
-            return FileManager.default.displayName(atPath: url.path)
+    private static func resolveLabels(_ bundleIDs: [String]) -> [String: String] {
+        var out: [String: String] = [:]
+        for id in bundleIDs {
+            guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id)
+            else { continue }   // app uninstalled → the bundle id itself is the label
+            out[id] = FileManager.default.displayName(atPath: url.path)
         }
-        return bundleID
+        return out
     }
 
     private func chooseApp() {
@@ -663,10 +691,17 @@ private struct ClipboardTab: View {
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = [.application]
         panel.directoryURL = URL(fileURLWithPath: "/Applications")
-        if panel.runModal() == .OK, let url = panel.url,
-           let id = Bundle(url: url)?.bundleIdentifier, !settings.ignoreApps.contains(id) {
-            settings.ignoreApps.append(id)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        // A bundle with no identifier (a wrapped script, a broken .app) can't be
+        // matched against a copy's source, so it can't be ignored. Saying so
+        // beats an Add button that silently does nothing.
+        guard let id = Bundle(url: url)?.bundleIdentifier else {
+            Notifier.error("Can't ignore that app",
+                           "\(url.deletingPathExtension().lastPathComponent) has no bundle identifier, so SnapDesk can't tell its copies apart.")
+            return
         }
+        guard !settings.ignoreApps.contains(id) else { return }   // already listed, visibly
+        settings.ignoreApps.append(id)
     }
 }
 

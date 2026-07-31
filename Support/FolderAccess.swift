@@ -7,10 +7,20 @@ import Foundation
 enum FolderAccess {
     /// Persist a security-scoped bookmark for a user-picked folder.
     static func remember(_ url: URL, key: String) {
-        if let data = try? url.bookmarkData(options: .withSecurityScope,
+        let defaultsKey = "bookmark." + key
+        do {
+            let data = try url.bookmarkData(options: .withSecurityScope,
                                             includingResourceValuesForKeys: nil,
-                                            relativeTo: nil) {
-            UserDefaults.standard.set(data, forKey: "bookmark." + key)
+                                            relativeTo: nil)
+            UserDefaults.standard.set(data, forKey: defaultsKey)
+        } catch {
+            // Swallowing this left the PREVIOUS folder's bookmark in place: the
+            // next launch re-earned access to a folder the user no longer saves
+            // to, while the one they just picked stayed unwritable under the
+            // sandbox — a save that fails with nothing to point at. Drop the
+            // stale grant so at least the state matches what the app can do.
+            UserDefaults.standard.removeObject(forKey: defaultsKey)
+            NSLog("SnapDesk: couldn't bookmark the \(key) folder: \(error)")
         }
     }
 

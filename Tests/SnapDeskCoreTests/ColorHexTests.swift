@@ -18,6 +18,21 @@ struct ColorHexTests {
         #expect(NSColor(hex: hex) == nil)
     }
 
+    /// `Int(_:radix:)` reads a leading sign, so these are six characters long and
+    /// parse — as a NEGATIVE number, which the shifts then mask into a valid
+    /// looking colour. "-00001" came back as white.
+    @Test("A signed number is not a colour", .tags(.regression),
+          arguments: ["-00001", "+12345", "#-00001", "#+FFFFF", "-FFFFF", "+00000"])
+    func rejectsSignedNumbers(_ hex: String) {
+        #expect(NSColor(hex: hex) == nil)
+    }
+
+    /// Six characters that Unicode calls hex digits but `Int` cannot read.
+    @Test("Non-ASCII digits are rejected too", arguments: ["#ＦＦＦＦＦＦ", "#٠٠٠٠٠٠"])
+    func rejectsNonASCIIDigits(_ hex: String) {
+        #expect(NSColor(hex: hex) == nil)
+    }
+
     @Test func toleratesSurroundingWhitespaceAndMissingHash() throws {
         #expect(NSColor(hex: "  #ffffff  ") != nil)
         let noHash = try #require(NSColor(hex: "ffffff"))

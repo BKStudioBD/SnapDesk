@@ -18,7 +18,12 @@ extension NSColor {
     convenience init?(hex: String) {
         var s = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         if s.hasPrefix("#") { s.removeFirst() }
-        guard s.count == 6, let v = Int(s, radix: 16) else { return nil }
+        // `Int(_:radix:)` accepts a leading sign, so "-00001" parsed as -1 and
+        // the shifts below turned it into a perfectly plausible #FFFFFF — a
+        // wrong colour handed back where the contract promises nil. Require six
+        // real hex digits before trusting the number.
+        guard s.count == 6, s.allSatisfy({ $0.isASCII && $0.isHexDigit }),
+              let v = Int(s, radix: 16) else { return nil }
         self.init(srgbRed: CGFloat((v >> 16) & 0xFF) / 255,
                   green: CGFloat((v >> 8) & 0xFF) / 255,
                   blue: CGFloat(v & 0xFF) / 255,

@@ -11,7 +11,14 @@ enum DriveUpload {
             .appendingPathComponent("Library/CloudStorage")
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: cloud, includingPropertiesForKeys: nil) else { return nil }
-        guard let drive = entries.first(where: { $0.lastPathComponent.hasPrefix("GoogleDrive-") })
+        // Sorted, not "whatever the directory enumerator hands back first":
+        // someone signed into two Google accounts has two GoogleDrive-<email>
+        // mounts here, and `contentsOfDirectory` promises no order. A recording
+        // could land in a COLLEAGUE'S Drive one run and the user's the next,
+        // which is the sort of surprise a screen recording must never spring.
+        guard let drive = entries.map(\.lastPathComponent)
+            .filter({ $0.hasPrefix("GoogleDrive-") })
+            .sorted().first.map({ cloud.appendingPathComponent($0, isDirectory: true) })
         else { return nil }
         let myDrive = drive.appendingPathComponent("My Drive")
         return FileManager.default.fileExists(atPath: myDrive.path) ? myDrive : drive

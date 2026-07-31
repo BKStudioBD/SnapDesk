@@ -87,6 +87,11 @@ private struct WelcomeView: View {
         .frame(width: 460)
         .onAppear {
             refresh()
+            // Never stack a second poller on the first. The controller is cached
+            // and the window is only ordered out, so a reopen that doesn't pair
+            // with a matching onDisappear would otherwise orphan the old timer —
+            // and an orphan here polls TCC every 1.5s for the app's whole life.
+            pollTimer?.invalidate()
             let t = Timer(timeInterval: 1.5, repeats: true) { _ in refresh() }
             RunLoop.main.add(t, forMode: .common)
             pollTimer = t
@@ -119,7 +124,13 @@ private struct WelcomeView: View {
             }
             Spacer()
             if granted { Text("Granted").font(.caption).foregroundStyle(.green) }
-            else { Button("Grant", action: action) }
+            else {
+                // Two rows, two buttons both titled "Grant": VoiceOver read the
+                // same thing twice with no way to tell which permission it was
+                // about. Only the visual layout carried the difference.
+                Button("Grant", action: action)
+                    .accessibilityLabel("Grant \(title) permission")
+            }
         }
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 10).fill(.primary.opacity(0.05)))

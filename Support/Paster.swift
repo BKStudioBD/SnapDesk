@@ -19,17 +19,27 @@ enum Paster {
 
     static func paste(to target: NSRunningApplication?, activate: Bool) {
         let trusted = Permissions.hasAccessibility
-        if !trusted { _ = Permissions.ensureAccessibility(prompt: true) }   // ask once, non-blocking
+        // `ensureAccessibility(prompt: true)` opens the Accessibility pane
+        // ITSELF, so this call is what has to be gated: without the flag here
+        // every blocked paste yanked System Settings in front of whatever the
+        // user was doing (and the first one opened it twice, because the block
+        // below opened it again). SnapDesk is already registered in the
+        // Accessibility list — AppCoordinator does that silently at launch — so
+        // there is nothing to re-request on later attempts.
+        let asking = !trusted && !openedAccessibilityPane
+        if asking {
+            openedAccessibilityPane = true
+            _ = Permissions.ensureAccessibility(prompt: true)   // non-blocking
+        }
         let followUp = {
+            // The notification stays on EVERY blocked attempt: it is the only
+            // thing telling the user the item is copied and why nothing was
+            // pasted, and a second silent double-click reads as a broken app.
             if !trusted {
                 Notifier.info("Copied — allow paste once",
-                              "Turn ON SnapDesk under Accessibility (Settings just opened), then double-click again. For now press ⌘V.")
-                if !openedAccessibilityPane {
-                    openedAccessibilityPane = true
-                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-                        NSWorkspace.shared.open(url)
-                    }
-                }
+                              asking
+                              ? "Turn ON SnapDesk under Accessibility (Settings just opened), then double-click again. For now press ⌘V."
+                              : "Turn ON SnapDesk under System Settings → Privacy & Security → Accessibility, then double-click again. For now press ⌘V.")
             }
         }
         if let target {

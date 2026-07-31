@@ -25,8 +25,13 @@ final class SettingsWindowController: NSWindowController {
     required init?(coder: NSCoder) { fatalError() }
 
     func show() {
+        NSApp.activate(ignoringOtherApps: true)
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        // Activation can be refused for an accessory app, and then this window
+        // opened BEHIND a full-screen frontmost app — the menu item and the
+        // pre-record gear both looked dead. Force it visible, the same way the
+        // welcome window and the permission alerts already do.
+        window?.orderFrontRegardless()
     }
 }
