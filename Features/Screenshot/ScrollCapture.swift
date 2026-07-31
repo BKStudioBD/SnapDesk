@@ -43,8 +43,15 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
     private var visionOffsets: [Int?] = []
     private let alignQueue = DispatchQueue(label: "snapdesk.scroll.align", qos: .userInitiated)
     /// Bumped whenever the frame list is reset (Full Page rewinds and starts
-    /// over), so alignment results from the discarded run are ignored.
-    private var generation = 0
+    /// over) and when the session ends, so alignment for frames nobody will read
+    /// is abandoned. Read from `alignQueue` as well as the main actor, so unlike
+    /// the rest of the state here it carries its own lock.
+    private let genLock = NSLock()
+    private var _generation = 0
+    private var generation: Int {
+        get { genLock.lock(); defer { genLock.unlock() }; return _generation }
+        set { genLock.lock(); defer { genLock.unlock() }; _generation = newValue }
+    }
 
     /// True while a session is running — the hotkey toggles Done.
     static var isActive: Bool { current != nil }
@@ -150,9 +157,15 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
         // Signature + dedup on the CHEAP shared crop first — only frames we
         // actually keep pay for the full-buffer deepCopy (idle ticks on a paused
         // page were allocating + discarding a full crop each).
-        let sig = Self.rowSignature(shared)
-        if let last = signatures.last, Self.meanDiff(last, sig) < minChange { return .unchanged }
-        guard let crop = Self.deepCopy(shared) else { return .failed }
+        // Both are full-resolution pixel passes — a downsample, then a redraw of
+        // a buffer that is ~65 MB on a large Retina selection — and they run on
+        // every timer tick and every scroll event, up to 8 Hz. On the main thread
+        // that stutters every window on the Mac. Order is unaffected: only one
+        // capture is ever in flight (the `capturing` latch; the auto engine awaits
+        // each grab), so the frame list is still appended in capture order.
+        let sig = await BackgroundWork.run { ScrollStitcher.rowSignature(shared) }
+        if let last = signatures.last, ScrollStitcher.meanDiff(last, sig) < minChange { return .unchanged }
+        guard let crop = await BackgroundWork.run({ Self.deepCopy(shared) }) else { return .failed }
         let prev = frames.last
         frames.append(crop)
         signatures.append(sig)
@@ -169,6 +182,11 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
             visionOffsets.append(nil)
             let gen = generation
             alignQueue.async { [weak self] in
+                // A registration pass costs real CPU and pins BOTH frames until
+                // it returns. If the session ended or the run was discarded while
+                // this waited its turn, nobody will read the answer — bail here so
+                // the frames are released with it instead of after.
+                guard let self, self.generation == gen else { return }
                 let off = Self.visionScroll(prev, crop)
                 Task { @MainActor [weak self] in
                     guard let self, self.generation == gen, slot < self.visionOffsets.count else { return }
@@ -181,6 +199,11 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
 
     private func finish(save: Bool) {
         guard Self.current === self else { return }   // ignore double/stale finish
+        // Whatever is still queued on the align queue is now working for nobody,
+        // and holding the two frames it was handed while it does. The offsets
+        // snapshot below is taken without suspending, so a result that lands
+        // after this point could never have been used anyway.
+        generation += 1
         autoRunning = false
         autoTask?.cancel(); autoTask = nil
         timer?.invalidate(); timer = nil
@@ -202,7 +225,8 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
         // landed yet is simply nil and falls back to the signature search.
         let offs = visionOffsets
         DispatchQueue.global(qos: .userInitiated).async {
-            guard let stitched = Self.stitch(frames: frames, signatures: sigs, offsets: offs) else {
+            guard let stitched = ScrollStitcher.stitch(frames: frames, signatures: sigs, offsets: offs,
+                                                  visionOffset: { Self.visionScroll($0, $1) }) else {
                 DispatchQueue.main.async { Notifier.error("Scrolling capture failed", "Couldn't stitch the frames.") }
                 return
             }
@@ -214,11 +238,6 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
 
     @MainActor
     private static func deliver(_ cg: CGImage, settings: SettingsStore?, scale: CGFloat) {
-        // Clipboard.
-        let ns = NSImage(cgImage: cg, size: NSSize(width: CGFloat(cg.width) / scale,
-                                                   height: CGFloat(cg.height) / scale))
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.writeObjects([ns])
         // File.
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
@@ -230,14 +249,51 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
         }
         let url = URL(fileURLWithPath: dir)
             .appendingPathComponent("SnapDesk Scroll \(f.string(from: Date())).png")
-        // Clipboard, sound and the "copied" toast happen NOW (cheap). The PNG
-        // encode of a tall stitched image is heavy — do it, and the disk write,
-        // OFF the main thread so the UI never hangs; announce the file when done.
+        // The sound is the one thing cheap enough to fire NOW. Handing an NSImage
+        // to the pasteboard serialises an UNCOMPRESSED TIFF synchronously, and the
+        // PNG for the file is another full-image encode — on a stitch that can be
+        // tens of thousands of rows tall, both froze the UI for seconds at the
+        // exact moment the app said it was finished. Encode off the main thread
+        // and hand the pasteboard finished bytes; the "copied" toast waits for the
+        // real write, so it is never announced before it is true. Back-to-back on
+        // one queue rather than two: only one encode's pixels are alive at a time.
         if settings?.playSound == true { Sounds.playIn() }
-        Notifier.info("Scrolling capture ready", "Copied to clipboard")
         DispatchQueue.global(qos: .userInitiated).async {
-            guard let data = AnnotationRenderer.encode(cg, format: .png, quality: 1),
-                  (try? data.write(to: url, options: .atomic)) != nil else { return }
+            let ns = NSImage(cgImage: cg, size: NSSize(width: CGFloat(cg.width) / scale,
+                                                       height: CGFloat(cg.height) / scale))
+            let tiff = ns.tiffRepresentation
+            DispatchQueue.main.async {
+                // `clearContents()` has already run by the time a write can fail,
+                // so an unchecked failure leaves the clipboard EMPTY under a toast
+                // that claims a copy — say what actually happened instead.
+                var copied = false
+                if let tiff {
+                    NSPasteboard.general.clearContents()
+                    copied = NSPasteboard.general.setData(tiff, forType: .tiff)
+                }
+                Notifier.info("Scrolling capture ready",
+                              copied ? "Copied to clipboard" : "Saving it to a file")
+            }
+            // Both of these used to fail in SILENCE, straight after a toast that
+            // said the shot was being saved to a file — and the clipboard write
+            // above may have failed too, so that could be the only copy. A stitch
+            // is minutes of scrolling nobody can repeat from memory, so a lost one
+            // has to say it is lost.
+            guard let data = AnnotationRenderer.encode(cg, format: .png, quality: 1) else {
+                DispatchQueue.main.async {
+                    Notifier.error("Scrolling capture not saved",
+                                   "Couldn't encode the stitched image.")
+                }
+                return
+            }
+            do {
+                try data.write(to: url, options: .atomic)
+            } catch {
+                DispatchQueue.main.async {
+                    Notifier.error("Scrolling capture not saved", error.localizedDescription)
+                }
+                return
+            }
             DispatchQueue.main.async {
                 NSWorkspace.shared.open(url)   // show the result
                 Notifier.info("Scrolling capture saved", url.lastPathComponent)
@@ -255,113 +311,6 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
                                               CGBitmapInfo.byteOrder32Little.rawValue) else { return nil }
         ctx.draw(img, in: CGRect(x: 0, y: 0, width: img.width, height: img.height))
         return ctx.makeImage()
-    }
-
-    // MARK: - Stitching
-
-    /// Per-row signature: 3 horizontal bands (left/mid/right thirds) of a
-    /// 96-wide grayscale downsample → 3 floats per row. Bands keep horizontal
-    /// structure a single row-mean loses, so alignment is far less likely to
-    /// snap to the wrong offset on repetitive content. Layout: [l,m,r] * rows.
-    static let bandsPerRow = 3
-    private static func rowSignature(_ img: CGImage) -> [Float] {
-        let w = 96, h = img.height
-        var buf = [UInt8](repeating: 0, count: w * h)
-        guard let ctx = CGContext(data: &buf, width: w, height: h, bitsPerComponent: 8,
-                                  bytesPerRow: w, space: CGColorSpaceCreateDeviceGray(),
-                                  bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return [] }
-        ctx.interpolationQuality = .low
-        ctx.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
-        var sig = [Float](repeating: 0, count: h * bandsPerRow)
-        let third = w / 3
-        for y in 0..<h {
-            for b in 0..<bandsPerRow {
-                var sum = 0
-                let x0 = b * third, x1 = (b == bandsPerRow - 1) ? w : (b + 1) * third
-                for x in x0..<x1 { sum += Int(buf[y * w + x]) }
-                sig[y * bandsPerRow + b] = Float(sum) / Float(x1 - x0)
-            }
-        }
-        return sig   // row 0 = image TOP
-    }
-
-    /// Rows in a signature.
-    private static func rows(_ sig: [Float]) -> Int { sig.count / bandsPerRow }
-
-    /// Mean abs diff between the same row of two signatures.
-    @inline(__always)
-    private static func rowDiff(_ a: [Float], _ ra: Int, _ b: [Float], _ rb: Int) -> Float {
-        var s: Float = 0
-        for k in 0..<bandsPerRow { s += abs(a[ra * bandsPerRow + k] - b[rb * bandsPerRow + k]) }
-        return s / Float(bandsPerRow)
-    }
-
-    /// Sticky header height (rows): rows at the top that stayed identical
-    /// across EVERY frame (site nav bars, toolbars). They must be ignored when
-    /// aligning, or the header stitches into the image over and over.
-    private static func stickyHeaderRows(_ sigs: [[Float]]) -> Int {
-        guard sigs.count >= 3, let first = sigs.first else { return 0 }
-        let h = rows(first)
-        let maxHeader = h * 2 / 5
-        var header = maxHeader
-        for sig in sigs.dropFirst() {
-            guard rows(sig) == h else { return 0 }
-            var match = 0
-            while match < header, rowDiff(first, match, sig, match) < 2.0 { match += 1 }
-            header = min(header, match)
-            if header == 0 { break }
-        }
-        return header
-    }
-
-    private static func meanDiff(_ a: [Float], _ b: [Float]) -> Float {
-        guard a.count == b.count, !a.isEmpty else { return .infinity }
-        var s: Float = 0
-        for i in 0..<a.count { s += abs(a[i] - b[i]) }
-        return s / Float(a.count)
-    }
-
-    /// Row contrast (max band spread) — flat rows (whitespace) carry no
-    /// alignment information and are down-weighted in matching.
-    @inline(__always)
-    private static func rowContrast(_ a: [Float], _ r: Int) -> Float {
-        var lo = Float.greatestFiniteMagnitude, hi = -Float.greatestFiniteMagnitude
-        for k in 0..<bandsPerRow {
-            let v = a[r * bandsPerRow + k]
-            lo = min(lo, v); hi = max(hi, v)
-        }
-        return hi - lo
-    }
-
-    /// Find how many rows at the BOTTOM of `prev` match the TOP of `next`,
-    /// ignoring `header` sticky rows at the top of both frames. Contrast-
-    /// weighted SAD: flat (whitespace) rows contribute little, so alignment
-    /// locks onto real content edges instead of blank space.
-    private static func bestOverlap(_ prev: [Float], _ next: [Float], header: Int) -> Int? {
-        let h = min(rows(prev), rows(next)) - header
-        guard h > 40 else { return nil }
-        var bestO = 0
-        var bestScore = Float.infinity
-        let minO = max(12, h / 20)
-        var o = h - 1
-        while o >= minO {
-            var s: Float = 0
-            var wsum: Float = 0
-            let step = max(1, o / 160)   // sample rows for speed
-            var i = 0
-            while i < o {
-                let rp = header + h - o + i     // row in prev
-                let rn = header + i             // row in next
-                let w = max(0.15, min(1, rowContrast(prev, rp) / 24))
-                s += rowDiff(prev, rp, next, rn) * w
-                wsum += w
-                i += step
-            }
-            let score = s / max(0.001, wsum)
-            if score < bestScore { bestScore = score; bestO = o }
-            o -= 1
-        }
-        return bestScore < 4.0 ? bestO + header : nil   // weak match → new content
     }
 
     /// Vision translational registration between two frames — the ScrollSnap /
@@ -401,93 +350,6 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
         // caller verifies against signatures, so return magnitude.
         let scroll = Int(abs(ty).rounded())
         return (scroll > 2 && scroll < h) ? scroll : nil
-    }
-
-    /// SAD score of a specific overlap (rows) between prev-bottom and next-top.
-    private static func overlapScore(_ prev: [Float], _ next: [Float], overlap: Int, header: Int) -> Float {
-        let h = min(rows(prev), rows(next)) - header
-        let o = overlap - header
-        guard h > 0, o > 4, o < h else { return .infinity }
-        var s: Float = 0, wsum: Float = 0
-        let step = max(1, o / 160)
-        var i = 0
-        while i < o {
-            let rp = header + h - o + i, rn = header + i
-            let w = max(0.15, min(1, rowContrast(prev, rp) / 24))
-            s += rowDiff(prev, rp, next, rn) * w
-            wsum += w
-            i += step
-        }
-        return s / max(0.001, wsum)
-    }
-
-    private static func stitch(frames: [CGImage], signatures: [[Float]], offsets: [Int?] = []) -> CGImage? {
-        guard let first = frames.first else { return nil }
-        guard frames.count > 1 else { return first }
-        let w = first.width
-        // Sticky site header (nav bar etc.) present in every frame → ignore it
-        // while aligning and never re-append it mid-image.
-        let sigHeader = stickyHeaderRows(signatures)
-        let scaleY = first.height > 0 ? Float(first.height) / Float(rows(signatures[0])) : 1
-        let headerPx = Int(Float(sigHeader) * scaleY)
-        // Row ranges of each frame to append (frame, fromRow).
-        var pieces: [(CGImage, Int)] = [(first, 0)]
-        var total = first.height
-        var ref = 0   // last appended frame — skipped frames must not shift the chain
-        for i in 1..<frames.count {
-            let h = min(rows(signatures[ref]), rows(signatures[i]))
-            // 1) Vision registration candidate (precomputed during capture),
-            //    verified ±2 rows against the signature score…
-            var overlap: Int? = nil
-            if ref == i - 1, let scroll = (i - 1) < offsets.count
-                ? offsets[i - 1] : visionScroll(frames[i - 1], frames[i]) {
-                var bestO: Int? = nil
-                var bestS = Float(4.0)
-                for d in -2...2 {
-                    let o = h - scroll + d
-                    let sc = overlapScore(signatures[ref], signatures[i], overlap: o, header: sigHeader)
-                    if sc < bestS { bestS = sc; bestO = o }
-                }
-                overlap = bestO
-            }
-            // 2) …else the full contrast-weighted SAD search.
-            if overlap == nil {
-                overlap = bestOverlap(signatures[ref], signatures[i], header: sigHeader)
-            }
-            // No alignment (scrolled back up / jumped) → SKIP the frame: blindly
-            // appending duplicates or garbles content. The next frame usually
-            // re-overlaps with the last appended one.
-            guard let ov = overlap else { continue }
-            let from = max(Int(Float(ov) * scaleY), headerPx)
-            let add = frames[i].height - from
-            guard add > 0 else { ref = i; continue }   // fully-overlapping frame
-            pieces.append((frames[i], from))
-            total += add
-            ref = i
-            // Cap by BYTES too (w×total×4) — 60k rows of a wide capture would
-            // be a ~gigabyte single allocation.
-            if total > 60_000 || total * w * 4 > 700_000_000 { break }
-        }
-        guard total > 0,
-              let ctx = CGContext(data: nil, width: w, height: total, bitsPerComponent: 8,
-                                  bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
-                                  bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue |
-                                              CGBitmapInfo.byteOrder32Little.rawValue) else { return nil }
-        // CG origin bottom-left; lay pieces top-down. Draw ONLY each frame's
-        // new rows [from..h) — drawing the full frame would stamp its top rows
-        // (incl. any sticky header) over the previous piece at every seam.
-        var yTop = 0
-        for (img, from) in pieces {
-            let visible = img.height - from
-            guard visible > 0 else { continue }
-            let slice: CGImage? = from == 0 ? img
-                : img.cropping(to: CGRect(x: 0, y: from, width: img.width, height: visible))
-            guard let slice else { continue }
-            let y = total - yTop - visible
-            ctx.draw(slice, in: CGRect(x: 0, y: y, width: img.width, height: visible))
-            yTop += visible
-        }
-        return ctx.makeImage()
     }
 
     /// Selection rect in global AppKit coords.
@@ -562,7 +424,23 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
             // count also moves when a tick is throttled, which used to end the
             // run early and lose the rest of the page.)
             var still = 0
+            // A descent has to be able to END on its own. `.failed` resets the
+            // bottom counter, so a screen that can no longer be captured — a
+            // stale `selection.screen` after a display slept or was unplugged
+            // throws every single time — left this looping forever, posting
+            // scroll wheel events into whatever app is under the pointer twice a
+            // second. A consecutive-failure cap and a wall clock (as `scrollToTop`
+            // already has) end the session with a message instead.
+            var fails = 0
+            let deadline = Date().addingTimeInterval(300)
             while self.autoRunning, !Task.isCancelled, ScrollCapture.isActive {
+                guard Date() < deadline else {
+                    self.stage("Stopped — took too long")
+                    Notifier.info("Full Page stopped",
+                                  "Five minutes is the limit — stitching what's captured.")
+                    self.finish(save: true)
+                    return
+                }
                 // Smooth sub-steps — one big jump breaks lazy-loading pages.
                 for _ in 0..<3 where self.autoRunning {
                     Self.postScroll(-(stepPx / 3), at: pt)
@@ -575,6 +453,7 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
                 switch outcome {
                 case .stored:
                     still = 0
+                    fails = 0
                 case .unchanged:
                     still += 1
                     // Give a slow lazy-load one extra beat before believing it.
@@ -586,6 +465,14 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
                     }
                 case .failed:
                     still = 0
+                    fails += 1
+                    if fails >= 5 {
+                        self.stage("Can't read the screen")
+                        Notifier.error("Full Page stopped",
+                                       "Couldn't capture the screen — keeping the frames it got.")
+                        self.finish(save: true)
+                        return
+                    }
                 case .limit:
                     self.finish(save: true)
                     return
@@ -632,7 +519,7 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
             try? await Task.sleep(nanoseconds: 130_000_000)
             guard let sig = await areaSignatureNow() else { continue }
             if let p = prev {
-                if Self.meanDiff(p, sig) < 0.6 {
+                if ScrollStitcher.meanDiff(p, sig) < 0.6 {
                     still += 1
                     // THREE consecutive still reads, not two: a page can look
                     // unchanged for one step across a band of whitespace, and
@@ -686,7 +573,12 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
         let px = CGRect(x: r.minX * k, y: r.minY * k, width: r.width * k, height: r.height * k)
             .integral.intersection(CGRect(x: 0, y: 0, width: full.width, height: full.height))
         guard !px.isEmpty, let crop = full.cropping(to: px) else { return nil }
-        return Self.rowSignature(crop)
+        // A full-resolution downsample, run every ~130 ms for as long as the
+        // rewind lasts. On the main actor that stutters every window on the Mac,
+        // exactly as it did on the capture path before the same hop was added
+        // there. Nothing about frame ORDER moves with it: the rewind stores no
+        // frames at all, and its caller already awaits this one answer at a time.
+        return await BackgroundWork.run { ScrollStitcher.rowSignature(crop) }
     }
 
     /// Discard everything captured so far and start fresh (used after rewinding
@@ -774,16 +666,6 @@ final class ScrollCapture: NSObject, @unchecked Sendable {
         win.contentView = fx
         win.orderFront(nil)
         barWindow = win
-    }
-
-    // MARK: - Test hooks
-    //
-    // The stitcher is the part most worth testing (a seam bug silently
-    // duplicates or drops content), but it's private static. These two thin
-    // wrappers let a headless harness drive the real code path.
-    static func testRowSignature(_ img: CGImage) -> [Float] { rowSignature(img) }
-    static func testStitch(frames: [CGImage], signatures: [[Float]]) -> CGImage? {
-        stitch(frames: frames, signatures: signatures)
     }
 
     @objc private func doneTapped() { finish(save: true) }

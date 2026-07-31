@@ -561,21 +561,38 @@ enum OCRService {
         return true
     }
 
+    /// Hands the claim back, so a warm-up that never actually ran can be retried.
+    /// A latched claim over a failed prewarm costs the user the whole model load
+    /// on their first real grab — the exact wait this exists to remove.
+    private static func releasePrewarm() {
+        prewarmLock.lock()
+        defer { prewarmLock.unlock() }
+        prewarmed = false
+    }
+
     /// Load the recognizer's model BEFORE the user finishes dragging. The first
     /// `.accurate` pass in a process pays the full model load; nothing about a
     /// capture depends on it, so it overlaps the drag instead of the wait.
     /// Idempotent and cheap; safe to call on every OCR. MUST mirror the real
     /// request config, and the probe image MUST contain glyphs (a blank image
     /// short-circuits before the recognizer loads).
-    static func prewarm(options: OCROptions) async {
-        guard claimPrewarm() else { return }
-        guard let image = prewarmImage() else { return }
+    ///
+    /// Returns whether this call actually completed the warm-up — false when it
+    /// failed, and when someone else already owns it.
+    @discardableResult
+    static func prewarm(options: OCROptions) async -> Bool {
+        guard claimPrewarm() else { return false }
+        guard let image = prewarmImage() else { releasePrewarm(); return false }
         // Warm whichever recognizer will actually run first, then Vision, which
         // is the fallback for every mode.
         if options.usesLiveText { _ = await liveText(image, options: options) }
         let request = VNRecognizeTextRequest()
         configure(request, options: options)
-        try? VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
+        guard (try? VNImageRequestHandler(cgImage: image, options: [:]).perform([request])) != nil else {
+            releasePrewarm()
+            return false
+        }
+        return true
     }
 
     /// Build Vision's on-device model cache ONCE per installed build, in the
@@ -590,8 +607,10 @@ enum OCRService {
         let stamp = buildStamp()
         guard defaults.string(forKey: key) != stamp else { return }
         Task.detached(priority: .background) {
-            await prewarm(options: options)
-            defaults.set(stamp, forKey: key)
+            // Stamp only a warm-up that actually ran: recording a failed one as
+            // done means this build never retries, and the user pays the whole
+            // compile on their first real grab instead.
+            if await prewarm(options: options) { defaults.set(stamp, forKey: key) }
         }
     }
 
@@ -604,17 +623,28 @@ enum OCRService {
         return String(Int(date.timeIntervalSince1970))
     }
 
+    /// Drawn into an explicit bitmap context rather than through
+    /// `NSImage.lockFocus`: every caller prewarms off the main thread, and
+    /// lock-focus drawing is main-thread-only AppKit. A per-thread
+    /// `NSGraphicsContext` over an `NSBitmapImageRep` is safe where it runs.
     private static func prewarmImage() -> CGImage? {
         let size = NSSize(width: 240, height: 80)
-        let image = NSImage(size: size)
-        image.lockFocus()
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil,
+                                         pixelsWide: Int(size.width), pixelsHigh: Int(size.height),
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                         isPlanar: false, colorSpaceName: .deviceRGB,
+                                         bytesPerRow: 0, bitsPerPixel: 0),
+              let context = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+        rep.size = size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
         NSColor.white.setFill()
         NSRect(origin: .zero, size: size).fill()
         ("Ag 123" as NSString).draw(at: NSPoint(x: 10, y: 24),
                                     withAttributes: [.font: NSFont.systemFont(ofSize: 34),
                                                      .foregroundColor: NSColor.black])
-        image.unlockFocus()
-        return image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        NSGraphicsContext.restoreGraphicsState()
+        return rep.cgImage
     }
 }
 

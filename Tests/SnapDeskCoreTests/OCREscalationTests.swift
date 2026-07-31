@@ -140,6 +140,22 @@ struct OCREscalationTests {
         #expect(trimmed.isEmpty == false)
     }
 
+    @Test("The warm-up completes off the main thread, and says so honestly",
+          .tags(.regression))
+    func prewarmRunsOffTheMainThread() async throws {
+        // Every caller prewarms from a detached task, so that is where this runs
+        // it. What it pins down is the REPORTING: the warm-up used to be recorded
+        // as done whether or not it happened, and a warm-up that only appeared to
+        // run left the user paying the full model load on their first real grab.
+        let options = detailed
+        let warmed = await Task.detached { await OCRService.prewarm(options: options) }.value
+        #expect(warmed, "a prewarm off the main thread must actually complete")
+        // One-shot: a second caller must report that it did no work, so nothing
+        // stamps the warm-up twice.
+        let again = await OCRService.prewarm(options: options)
+        #expect(again == false)
+    }
+
     @Test("The recognizer reports the languages this Mac can actually read")
     func offersInstalledLanguages() {
         // Named for what it checks. It used to claim to prove the newest Vision
