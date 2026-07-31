@@ -1,6 +1,6 @@
 import AppKit
 
-// SnapDesk — app icon generator.
+// SnapDesk: app icon generator.
 //
 // Draws Resources/AppIcon.png and the .iconset that becomes AppIcon.icns, from
 // the SAME bracket geometry the menu-bar mark uses (App/MenuBarIcon.swift is
@@ -8,7 +8,7 @@ import AppKit
 // ./make-icon.sh after changing the mark.
 //
 // Everything is vector and every measurement is a fraction of the canvas, so
-// each size in the iconset is drawn fresh rather than downsampled — 16pt stays
+// each size in the iconset is drawn fresh rather than downsampled, so 16pt stays
 // legible instead of turning to mush.
 
 // MARK: - Palette (sampled from the icon this replaces, so the brand holds)
@@ -33,7 +33,7 @@ enum Palette {
 func drawIcon(side: CGFloat) {
     let canvas = NSRect(x: 0, y: 0, width: side, height: side)
 
-    // Rounded-square plate. The macOS grid leaves a margin around the artwork —
+    // Rounded-square plate. The macOS grid leaves a margin around the artwork,
     // an icon drawn edge to edge sits visibly larger than its neighbours.
     let plate = canvas.insetBy(dx: side * 0.085, dy: side * 0.085)
     let platePath = NSBezierPath(roundedRect: plate,
@@ -58,7 +58,7 @@ func drawIcon(side: CGFloat) {
     drawWheel(in: canvas, radius: side * 0.085)
 }
 
-/// The four-quadrant colour wheel at the centre — the one part of the mark that
+/// The four-quadrant colour wheel at the centre: the one part of the mark that
 /// is the same as it ever was.
 ///
 /// - Parameters:
@@ -164,5 +164,5 @@ for variant in variants {
 }
 
 writeMenuBarProof(to: "/tmp/snapdesk-menubar-mark.png")
-print("✅ Icon rendered — \(variants.count) iconset sizes + AppIcon.png")
+print("✅ Icon rendered: \(variants.count) iconset sizes + AppIcon.png")
 print("   Menu-bar mark proof sheet: /tmp/snapdesk-menubar-mark.png")

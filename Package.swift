@@ -2,7 +2,7 @@
 import PackageDescription
 
 // TEST-ONLY package. The shipping app is built by ./build.sh (plain swiftc over
-// every source file) — this manifest exists so `swift test` can run Swift Testing
+// every source file). This manifest exists so `swift test` can run Swift Testing
 // against the app's dependency-light, pure-logic types.
 //
 // `SnapDeskCore` deliberately lists its sources one by one instead of pulling in a

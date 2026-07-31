@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# SnapDesk — regenerate the app icon.
+# SnapDesk: regenerate the app icon.
 #
 # Compiles tools/icon/main.swift together with App/MenuBarIcon.swift, so the app
 # icon and the menu-bar mark are drawn from ONE set of geometry, then renders

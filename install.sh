@@ -45,7 +45,7 @@ sleep 1
 
 # Verify the signature BEFORE trusting the download. Stripping the Gatekeeper
 # quarantine flag disables the OS's own check, so this script must do that check
-# itself — otherwise a tampered or man-in-the-middled ZIP installs silently with
+# itself. Otherwise a tampered or man-in-the-middled ZIP installs silently with
 # every warning suppressed.
 echo "==> Verifying the code signature..."
 if ! codesign --verify --deep --strict "${TMP}/unpacked/${APP}.app" 2>/dev/null; then
@@ -59,7 +59,7 @@ echo "==> Installing to /Applications..."
 rm -rf "${DEST}"
 cp -R "${TMP}/unpacked/${APP}.app" "${DEST}"
 
-# Only now — with the signature verified above — remove the quarantine flag.
+# Only now, with the signature verified above, remove the quarantine flag.
 echo "==> Clearing the Gatekeeper quarantine flag..."
 xattr -dr com.apple.quarantine "${DEST}" 2>/dev/null || true
 

@@ -1,6 +1,6 @@
 name: Release
 
-# Tag a version and this builds, notarizes and publishes it — the same ZIP the
+# Tag a version and this builds, notarizes and publishes it: the same ZIP the
 # in-app updater downloads, and the same URL the Homebrew cask points at.
 #
 #   git tag v1.2.0 && git push origin v1.2.0
@@ -72,7 +72,7 @@ jobs:
             --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
             --password "$APPLE_APP_PASSWORD"
 
-      # build.sh already signs, notarizes and staples when these are set — the
+      # build.sh already signs, notarizes and staples when these are set, so the
       # same script used locally, so CI can't drift from a developer build.
       - name: Build
         env:

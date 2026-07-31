@@ -1,10 +1,10 @@
 #!/bin/bash
 #
-# SnapDesk — build an Apple Silicon (arm64, M-series) .app, sign it, package a
+# SnapDesk: build an Apple Silicon (arm64, M-series) .app, sign it, package a
 # release ZIP, and (optionally) notarize it so it installs with NO warning.
 #
 # Run on a Mac with Xcode command-line tools installed (`xcode-select --install`).
-# No Xcode project required — this compiles the sources directly with swiftc.
+# No Xcode project required: this compiles the sources directly with swiftc.
 #
 # USAGE
 #   ./build.sh                      # ad-hoc signed (for local use; see notes)
@@ -38,7 +38,7 @@ SOURCES=$(find "$ROOT" -name '*.swift' -not -path "$BUILD/*" -not -path "$ROOT/t
 # --- Compile a UNIVERSAL binary (arm64 + x86_64) -----------------------------
 # Build each arch separately, then lipo them into one fat binary so SnapDesk
 # runs natively on Apple Silicon AND on Intel Macs. (arm64-only wouldn't launch
-# at all on an Intel Mac — the #1 "my friend can't open it" cause.)
+# at all on an Intel Mac, the #1 "my friend can't open it" cause.)
 BIN="$APP/Contents/MacOS/$APP_NAME"
 echo "▶ Compiling for Apple Silicon (arm64)…"
 xcrun -sdk macosx swiftc \
@@ -88,7 +88,7 @@ fi
 #                               rebuilds. Create once with ./make-signing-cert.sh.
 #   3. otherwise             → ad-hoc (grant must be re-approved after each build).
 # --mas builds the Mac App Store variant: App Sandbox ON via the MAS
-# entitlements file. Same sources — only the entitlements differ.
+# entitlements file. Same sources; only the entitlements differ.
 ENTITLEMENTS="$ROOT/$APP_NAME.entitlements"
 if [[ " $* " == *" --mas "* ]]; then
   ENTITLEMENTS="$ROOT/$APP_NAME-MAS.entitlements"
@@ -114,7 +114,7 @@ fi
 codesign --verify --strict --verbose=2 "$APP"
 
 # --- Build the release ZIP (optional: ./build.sh --zip) ----------------------
-# Day-to-day testing does NOT need one — it just clutters build/ with extra
+# Day-to-day testing does NOT need one; it just clutters build/ with extra
 # copies. Only build one when explicitly asked (for distribution).
 if [[ " $* " == *" --zip "* ]]; then
   echo "▶ Building release ZIP…"
@@ -129,7 +129,7 @@ if [[ " $* " == *" --zip "* ]]; then
     xcrun stapler staple "$APP"
     # Re-zip so the stapled ticket ships inside the archive.
     ditto -c -k --keepParent "$APP" "$ZIP"
-    echo "✅ Notarized ZIP ready — installs with no warning."
+    echo "✅ Notarized ZIP ready. Installs with no warning."
   else
     echo "ℹ️  ZIP built without Apple notarization (fine for your own Mac)."
   fi
@@ -137,7 +137,7 @@ fi
 
 # --- Update THE one installed app (default; skip with --no-install) ----------
 # There is exactly one canonical app you test: /Applications/SnapDesk.app.
-# Every build quits it, replaces it in place, and relaunches — no second copy,
+# Every build quits it, replaces it in place, and relaunches, so there is no second copy,
 # no duplicate menu-bar icon. Stable signature ⇒ permissions persist.
 if [[ " $* " != *" --no-install "* ]]; then
   echo "▶ Updating /Applications/$APP_NAME.app (the app you test)…"

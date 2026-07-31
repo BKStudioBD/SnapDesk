@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# SnapDesk — fast correctness test.
+# SnapDesk: fast correctness test.
 #
 # Runs the full Swift compiler front-end (type-checking, name resolution, and
 # API validation) over every source file WITHOUT codegen or linking. This is the
@@ -27,8 +27,8 @@ xcrun -sdk macosx swiftc \
 echo "✅ All sources type-check cleanly."
 
 # Unit tests (Swift Testing, via the test-only Package.swift). These cover the
-# pure-logic types — classification, hex parsing, hotkey encoding, the mic
-# sample-buffer conversion — and need no microphone, screen or permission.
+# pure-logic types (classification, hex parsing, hotkey encoding, the mic
+# sample-buffer conversion) and need no microphone, screen or permission.
 echo "▶ Running unit tests…"
 swift test 2>&1 | grep -E "^(✔|✘|→).*|Test run|error:" || true
 swift test >/dev/null 2>&1 || { echo "❌ Unit tests FAILED (run: swift test)"; exit 1; }

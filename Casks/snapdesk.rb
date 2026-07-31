@@ -1,6 +1,6 @@
 # Homebrew cask for SnapDesk.
 #
-# This file lives in the repo so it can be served as a TAP — no need to get into
+# This file lives in the repo so it can be served as a TAP, with no need to get into
 # homebrew-cask itself, and every release updates in one commit:
 #
 #   brew tap bkstudiobd/snapdesk https://github.com/BKStudioBD/SnapDesk
@@ -10,7 +10,7 @@
 # this sits here rather than under docs/.)
 #
 # ON EACH RELEASE, update `version` and `sha256`. Get the checksum from the
-# published asset — never from a local build, which won't match the notarized one:
+# published asset, never from a local build, which won't match the notarized one:
 #
 #   shasum -a 256 <(curl -sL https://github.com/BKStudioBD/SnapDesk/releases/download/v1.1.0/SnapDesk.zip)
 #
