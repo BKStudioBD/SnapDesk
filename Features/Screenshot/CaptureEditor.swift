@@ -213,10 +213,23 @@ final class EditorView: NSView, NSTextFieldDelegate {
     /// rep (that would pin ~60 MB on a 5K capture for the whole editor session).
     private static func pixelColor(_ img: CGImage, x: Int, y: Int) -> NSColor? {
         var px: [UInt8] = [0, 0, 0, 0]
-        guard let ctx = CGContext(data: &px, width: 1, height: 1, bitsPerComponent: 8,
-                                  bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(),
-                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
-        ctx.draw(img, in: CGRect(x: -x, y: -(img.height - 1 - y), width: img.width, height: img.height))
+        // The context is DRAWN INTO after its initializer has returned, so the
+        // buffer pointer has to outlive that call. `&px` guarantees the pointer
+        // only for the duration of the call itself — Core Graphics then writes
+        // through memory the array may no longer own, and the bytes read back
+        // are whatever happened to be there. Same trap `CaptureService.looksBlank`
+        // documents; keep the draw inside the scope that owns the pointer.
+        let drawn = px.withUnsafeMutableBytes { buf -> Bool in
+            guard let ctx = CGContext(data: buf.baseAddress, width: 1, height: 1,
+                                      bitsPerComponent: 8, bytesPerRow: 4,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+            else { return false }
+            ctx.draw(img, in: CGRect(x: -x, y: -(img.height - 1 - y),
+                                     width: img.width, height: img.height))
+            return true
+        }
+        guard drawn else { return nil }
         return NSColor(srgbRed: CGFloat(px[0]) / 255, green: CGFloat(px[1]) / 255,
                        blue: CGFloat(px[2]) / 255, alpha: 1)
     }
@@ -1254,21 +1267,34 @@ final class EditorView: NSView, NSTextFieldDelegate {
                 self?.session?.showOverlays()   // cancelled → bring the editor back
                 return
             }
-            // A failed encode used to land in the SAME branch as "the user
-            // pressed Cancel": no file written, no message, the editor simply
-            // reappearing as though nothing had been asked for.
-            guard let data = AnnotationRenderer.encode(cg, format: fmt, quality: q) else {
-                Notifier.error("Save failed", "Couldn't encode that image.")
-                self?.session?.showOverlays()
-                return
-            }
-            do {
-                try data.write(to: url, options: .atomic)
-                self?.playFeedback()
-                self?.session?.finish()
-            } catch {
-                Notifier.error("Save failed", error.localizedDescription)
-                self?.session?.showOverlays()
+            // Encoding a full-resolution shot and writing it are seconds of work
+            // apiece on a 5K selection, and both ran on the main thread — with a
+            // `.screenSaver`-level overlay still on every display, so the whole
+            // Mac looked hung at the exact moment the app was told to finish.
+            // `cg` is immutable, so only the outcome has to come back.
+            DispatchQueue.global(qos: .userInitiated).async {
+                // A failed encode used to land in the SAME branch as "the user
+                // pressed Cancel": no file written, no message, the editor simply
+                // reappearing as though nothing had been asked for.
+                guard let data = AnnotationRenderer.encode(cg, format: fmt, quality: q) else {
+                    DispatchQueue.main.async {
+                        Notifier.error("Save failed", "Couldn't encode that image.")
+                        self?.session?.showOverlays()
+                    }
+                    return
+                }
+                do {
+                    try data.write(to: url, options: .atomic)
+                    DispatchQueue.main.async {
+                        self?.playFeedback()
+                        self?.session?.finish()
+                    }
+                } catch {
+                    DispatchQueue.main.async {
+                        Notifier.error("Save failed", error.localizedDescription)
+                        self?.session?.showOverlays()
+                    }
+                }
             }
         }
     }
@@ -1276,7 +1302,14 @@ final class EditorView: NSView, NSTextFieldDelegate {
     @objc private func beautifyAction() {
         commitTextIfEditing()
         commitCropIfPending()
-        guard let cg = compositeCG(), let nice = AnnotationRenderer.beautify(cg) else { return }
+        guard let cg = compositeCG() else { return }
+        // Beautify allocates a bitmap larger than the shot itself (padding on all
+        // four sides). When that allocation fails the wand button did nothing at
+        // all — no image, no toast, no clue that it had even been pressed.
+        guard let nice = AnnotationRenderer.beautify(cg) else {
+            Notifier.error("Beautify failed", "Couldn't build the padded image — try a smaller selection.")
+            return
+        }
         let pb = NSPasteboard.general; pb.clearContents()
         // Same reason as Copy: `finish()` throws the work away, so the toast
         // must not claim a copy that didn't happen.
@@ -1326,27 +1359,42 @@ final class EditorView: NSView, NSTextFieldDelegate {
     }
 
     private func autoSave(_ cg: CGImage, settings s: SettingsStore) {
-        let ext = s.saveFormat == .png ? "png" : "jpg"
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")   // stable digits in every locale
-        f.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
-        // Fall back to Desktop if the chosen folder was deleted/unmounted, so a
-        // capture is never silently lost.
-        var dir = s.autoSaveFolder
-        var isDir: ObjCBool = false
-        if !(FileManager.default.fileExists(atPath: dir, isDirectory: &isDir) && isDir.boolValue) {
-            dir = NSHomeDirectory() + "/Desktop"
+        let format = s.saveFormat
+        let quality = s.jpegQuality
+        let folder = s.autoSaveFolder
+        // Copy runs this INLINE, so a full-resolution encode plus an atomic write
+        // froze the main thread in the middle of ⌘C — on a 5K shot, seconds of it,
+        // right where the app was about to say "Copied". `cg` is immutable and this
+        // closure keeps it alive, so the editor is free to close underneath.
+        DispatchQueue.global(qos: .userInitiated).async {
+            let ext = format == .png ? "png" : "jpg"
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "en_US_POSIX")   // stable digits in every locale
+            f.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+            // Fall back to Desktop if the chosen folder was deleted/unmounted, so a
+            // capture is never silently lost.
+            var dir = folder
+            var isDir: ObjCBool = false
+            if !(FileManager.default.fileExists(atPath: dir, isDirectory: &isDir) && isDir.boolValue) {
+                dir = NSHomeDirectory() + "/Desktop"
+            }
+            // Same-second captures must not overwrite each other.
+            let base = "SnapDesk \(f.string(from: Date()))"
+            var url = URL(fileURLWithPath: dir).appendingPathComponent("\(base).\(ext)")
+            var n = 2
+            while FileManager.default.fileExists(atPath: url.path) {
+                url = URL(fileURLWithPath: dir).appendingPathComponent("\(base) \(n).\(ext)"); n += 1
+            }
+            // A nil encode returned in silence: the auto-save the user switched on
+            // simply never happened, and the only sign of it was a missing file
+            // discovered later.
+            guard let data = AnnotationRenderer.encode(cg, format: format, quality: quality) else {
+                Notifier.error("Auto-save failed", "Couldn't encode that screenshot.")
+                return
+            }
+            do { try data.write(to: url, options: .atomic) }
+            catch { Notifier.error("Auto-save failed", error.localizedDescription) }
         }
-        // Same-second captures must not overwrite each other.
-        let base = "SnapDesk \(f.string(from: Date()))"
-        var url = URL(fileURLWithPath: dir).appendingPathComponent("\(base).\(ext)")
-        var n = 2
-        while FileManager.default.fileExists(atPath: url.path) {
-            url = URL(fileURLWithPath: dir).appendingPathComponent("\(base) \(n).\(ext)"); n += 1
-        }
-        guard let data = AnnotationRenderer.encode(cg, format: s.saveFormat, quality: s.jpegQuality) else { return }
-        do { try data.write(to: url, options: .atomic) }
-        catch { Notifier.error("Auto-save failed", error.localizedDescription) }
     }
 
     /// The picture as it stands: the frozen screen cropped to the selection with the
