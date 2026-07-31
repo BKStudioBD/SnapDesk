@@ -37,11 +37,26 @@ final class FrameDecorator: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     private var camMaskSize: CGSize = .zero
 
     private var monitors: [Any] = []
+    /// Camera session/device notification tokens. Removed in `stop()` — an
+    /// observer left behind outlives the recording it belongs to.
+    private var observers: [NSObjectProtocol] = []
     private var camSession: AVCaptureSession?
     /// The running camera feed, for the live on-screen preview bubble — nil
     /// when the camera effect is off or the device couldn't be opened.
     var liveCameraSession: AVCaptureSession? { camSession }
     private let camControlQueue = DispatchQueue(label: "com.snapdesk.camera.control")
+    /// Called on the MAIN thread, at most once per recording, when the webcam
+    /// bubble can't work. The recording itself carries on without it.
+    var onCameraProblem: ((CameraProblem) -> Void)?
+    /// Main-thread only: `start()`, the first-frame watchdog and both observers
+    /// all run there, so one plain flag keeps this to a single message.
+    private var reportedCameraProblem = false
+    /// Lock-guarded like `cameraBuffer` — written on the camera queue, read by
+    /// the watchdog on main.
+    private var sawCameraFrame = false
+    /// How long an opened camera may stay silent before we say so. Long enough
+    /// for a cold FaceTime camera to warm up, short enough to still be useful.
+    private static let firstFrameGrace: TimeInterval = 3
 
     private let cursorImage: CIImage?
     private let cursorHotSpot: CGPoint
@@ -96,6 +111,8 @@ final class FrameDecorator: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     func stop() {
         monitors.forEach { NSEvent.removeMonitor($0) }
         monitors.removeAll()
+        observers.forEach { NotificationCenter.default.removeObserver($0) }
+        observers.removeAll()
         if let cam = camSession {
             camControlQueue.async { cam.stopRunning() }   // off-main, ordered after start
             camSession = nil
@@ -132,26 +149,82 @@ final class FrameDecorator: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         lock.unlock()
     }
 
+    /// Main thread (called from `start()`). Every failure path reports a reason:
+    /// a bubble that never appears with no explanation is the single most common
+    /// way this feature looks broken when nothing is actually wrong with it.
     private func startCamera() {
-        guard let device = AVCaptureDevice.default(for: .video) else { return }
+        guard let device = AVCaptureDevice.default(for: .video) else {
+            report(.noDevice)
+            return
+        }
         let session = AVCaptureSession()
         session.sessionPreset = .medium
-        guard let input = try? AVCaptureDeviceInput(device: device),
-              session.canAddInput(input) else { return }
+        let input: AVCaptureDeviceInput
+        do {
+            input = try AVCaptureDeviceInput(device: device)
+        } catch {
+            // The usual cause is another app holding the camera; the exact error
+            // is only useful in a log, so the user gets the actionable sentence.
+            NSLog("SnapDesk: camera input failed: \(error)")
+            report(.busy)
+            return
+        }
+        guard session.canAddInput(input) else { report(.rejected); return }
         session.addInput(input)
         let out = AVCaptureVideoDataOutput()
         out.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
         out.setSampleBufferDelegate(self, queue: DispatchQueue(label: "com.snapdesk.camera"))
-        guard session.canAddOutput(out) else { return }
+        guard session.canAddOutput(out) else { report(.rejected); return }
         session.addOutput(out)
+        observeCamera(session: session, device: device)
         camControlQueue.async { session.startRunning() }
         camSession = session
+        // A session that opens and then delivers nothing is its own failure mode
+        // — a sleeping Continuity Camera, a virtual camera whose app isn't
+        // running. Without this it is indistinguishable from a broken app.
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.firstFrameGrace) { [weak self] in
+            guard let self, self.camSession != nil else { return }   // stopped meanwhile
+            self.lock.lock()
+            let saw = self.sawCameraFrame
+            self.lock.unlock()
+            if !saw { self.report(.noFrames) }
+        }
+    }
+
+    /// Main thread. The mic already tells the user when its device vanishes; the
+    /// camera stayed silent about both disconnection and session errors.
+    private func observeCamera(session: AVCaptureSession, device: AVCaptureDevice) {
+        let center = NotificationCenter.default
+        observers.append(center.addObserver(forName: AVCaptureSession.runtimeErrorNotification,
+                                            object: session, queue: .main) { [weak self] note in
+            let error = note.userInfo?[AVCaptureSessionErrorKey] as? NSError
+            NSLog("SnapDesk: camera session runtime error: \(error?.localizedDescription ?? "unknown")")
+            self?.report(.runtimeError)
+        })
+        observers.append(center.addObserver(forName: AVCaptureDevice.wasDisconnectedNotification,
+                                            object: device, queue: .main) { [weak self] _ in
+            self?.report(.disconnected)
+        })
+    }
+
+    /// Main thread, once per recording.
+    private func report(_ problem: CameraProblem) {
+        guard !reportedCameraProblem else { return }
+        reportedCameraProblem = true
+        onCameraProblem?(problem)
     }
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
         guard let pb = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        lock.lock(); cameraBuffer = pb; lock.unlock()
+        acceptCameraFrame(pb)
+    }
+
+    /// The one door camera frames come in by — the delegate callback above, or a
+    /// test handing over a synthetic frame so the bubble can be rendered and
+    /// measured without a camera or a permission prompt.
+    func acceptCameraFrame(_ pb: CVPixelBuffer) {
+        lock.lock(); cameraBuffer = pb; sawCameraFrame = true; lock.unlock()
     }
 
     // MARK: - Frame decoration (recorder queue)
@@ -255,10 +328,13 @@ final class FrameDecorator: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
                     "inputRadius1": bubble / 2,
                     "inputColor0": CIColor(red: 1, green: 1, blue: 1, alpha: 1),
                     "inputColor1": CIColor(red: 1, green: 1, blue: 1, alpha: 0),
-                ])!.outputImage!
+                ])?.outputImage
                 camMaskSize = bufferSize
             }
-            let mask = camMask!
+            // No force-unwrap on a path that runs for every frame of every
+            // recording: if the mask can't be built, lose the bubble for this
+            // frame rather than take the whole take down with a crash.
+            guard let mask = camMask else { return img }
             let masked = moved.applyingFilter("CIBlendWithAlphaMask", parameters: [
                 kCIInputBackgroundImageKey: CIImage.empty(),
                 kCIInputMaskImageKey: mask,

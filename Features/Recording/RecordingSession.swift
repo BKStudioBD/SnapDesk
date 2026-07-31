@@ -140,6 +140,13 @@ final class RecordingSession: NSObject {
                                           displayID: displayID,
                                           sourceRect: selection.rectInScreenPoints,
                                           scale: selection.screen.backingScaleFactor)
+                // Wired BEFORE start(): the setup failures it reports — no
+                // device, camera busy, output refused — all happen synchronously
+                // inside start(), and used to vanish without a word.
+                deco.onCameraProblem = { problem in
+                    if problem.isDisruption { Notifier.error(problem.title, problem.body) }
+                    else { Notifier.info(problem.title, problem.body) }
+                }
                 deco.start()
                 decorator = deco
             }

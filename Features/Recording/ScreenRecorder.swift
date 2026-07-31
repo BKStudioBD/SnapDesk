@@ -103,6 +103,14 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
     /// own contract.
     private struct SampleBox: @unchecked Sendable { let sb: CMSampleBuffer }
 
+    /// Same narrow crossing for the mic device. `AVCaptureDevice` is not
+    /// `Sendable`, but this one is only READ — handed straight to `MicCapture` on
+    /// the recorder queue — and AVFoundation's device objects are safe to open
+    /// from any queue. Boxed here rather than marking the whole `import
+    /// AVFoundation` `@preconcurrency`, which would hide every other
+    /// Sendable warning in a file full of buffers crossing threads.
+    private struct DeviceBox: @unchecked Sendable { let device: AVCaptureDevice }
+
     // MARK: - Control
 
     @MainActor
@@ -227,12 +235,20 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
             // countdown and the control bar at the instant recording begins.
             // The mixer already tolerates a source that starts late.
             let recorderQueue = queue
+            let boxedDevice = DeviceBox(device: micDevice)
             recorderQueue.async {
                 do {
-                    try mc.start(device: micDevice, queue: recorderQueue,
+                    try mc.start(device: boxedDevice.device, queue: recorderQueue,
                                  noiseCancellation: noiseCancellation)
                 } catch {
+                    // Silent until now: the take finished with no voice on it and
+                    // the user only discovered that during playback. The screen
+                    // recording is fine, so this is a notice, not an alarm.
                     NSLog("SnapDesk: mic capture failed: \(error)")
+                    DispatchQueue.main.async {
+                        Notifier.info("Recording without your voice",
+                                      "The microphone couldn't be started — another app may be using it. The screen is still being recorded.")
+                    }
                 }
             }
         }
