@@ -8,7 +8,6 @@ import Foundation
 /// against a temporary directory in a test.
 struct CacheCategory: Identifiable, Sendable, Hashable {
     enum Group: String, CaseIterable, Sendable, Identifiable {
-        case developer = "Developer"
         case browsers = "Browsers"
         case apps = "Apps"
         case system = "System"
@@ -53,6 +52,16 @@ enum CacheCleaner {
     // MARK: - Catalog
 
     /// Every category SnapDesk knows how to clean, for the given home directory.
+    /// Folders under `~/Library/Caches` that belong to developer tooling.
+    ///
+    /// SnapDesk does not clean these. They are listed here so the "Other app
+    /// caches" row can skip them: that row sweeps every child of the caches
+    /// directory, so anything not named here would be swept by default.
+    static let developerCaches: Set<String> = [
+        "com.apple.dt.Xcode", "com.apple.CoreSimulator", "org.swift.swiftpm",
+        "Yarn", "Homebrew", "pip",
+    ]
+
     /// Pure: no disk access, no filtering. Call `present(in:)` for what exists.
     static func catalog(home: URL) -> [CacheCategory] {
         let library = home.appending(path: "Library")
@@ -60,46 +69,6 @@ enum CacheCleaner {
         func inCaches(_ name: String) -> URL { caches.appending(path: name) }
 
         var out: [CacheCategory] = []
-
-        // Developer. The biggest and safest wins on a working Mac.
-        out.append(.init(id: "xcode.derived", group: .developer, name: "Xcode DerivedData",
-                         detail: "Build products and indexes, rebuilt on the next build",
-                         symbol: "hammer",
-                         paths: [library.appending(path: "Developer/Xcode/DerivedData")],
-                         defaultOn: true, excluding: []))
-        out.append(.init(id: "xcode.devicesupport", group: .developer, name: "iOS DeviceSupport",
-                         detail: "Symbols for devices you once plugged in",
-                         symbol: "iphone",
-                         paths: [library.appending(path: "Developer/Xcode/iOS DeviceSupport")],
-                         defaultOn: true, excluding: []))
-        out.append(.init(id: "simulator.caches", group: .developer, name: "Simulator caches",
-                         detail: "CoreSimulator's own cache (not your simulators)",
-                         symbol: "square.stack",
-                         paths: [inCaches("com.apple.dt.Xcode"), inCaches("com.apple.CoreSimulator")],
-                         defaultOn: true, excluding: []))
-        out.append(.init(id: "swiftpm", group: .developer, name: "Swift Package Manager",
-                         detail: "Cloned dependencies, re-fetched on demand",
-                         symbol: "shippingbox",
-                         paths: [inCaches("org.swift.swiftpm"),
-                                 home.appending(path: ".swiftpm/cache")],
-                         defaultOn: true, excluding: []))
-        out.append(.init(id: "node", group: .developer, name: "npm · yarn · pnpm",
-                         detail: "Package manager download caches",
-                         symbol: "cube",
-                         paths: [home.appending(path: ".npm/_cacache"),
-                                 inCaches("Yarn"), home.appending(path: ".cache/yarn"),
-                                 library.appending(path: "pnpm/store")],
-                         defaultOn: true, excluding: []))
-        out.append(.init(id: "homebrew", group: .developer, name: "Homebrew",
-                         detail: "Downloaded bottles and formula tarballs",
-                         symbol: "mug",
-                         paths: [inCaches("Homebrew")],
-                         defaultOn: true, excluding: []))
-        out.append(.init(id: "pip", group: .developer, name: "pip",
-                         detail: "Python wheel cache",
-                         symbol: "chevron.left.forwardslash.chevron.right",
-                         paths: [inCaches("pip"), home.appending(path: ".cache/pip")],
-                         defaultOn: true, excluding: []))
 
         // Browsers: cleared every day by the browser itself; safe, and big.
         out.append(.init(id: "chrome", group: .browsers, name: "Chrome",
@@ -148,13 +117,18 @@ enum CacheCleaner {
         // directly does not work here: an appended path carries a trailing
         // slash its parent does not. So this walks the path components instead.
         let cachesComponents = caches.standardizedFileURL.pathComponents
-        let named = Set(out.flatMap(\.paths).compactMap { path -> String? in
+        var named = Set(out.flatMap(\.paths).compactMap { path -> String? in
             let components = path.standardizedFileURL.pathComponents
             guard components.count > cachesComponents.count,
                   Array(components.prefix(cachesComponents.count)) == cachesComponents
             else { return nil }
             return components[cachesComponents.count]
         })
+        // Developer caches are no longer offered as rows of their own, and the
+        // catch-all must not quietly pick them up instead. A row nobody chose
+        // that deletes a toolchain's cache is worse than not offering it at
+        // all, because the person never saw the name of what went.
+        named.formUnion(developerCaches)
         out.append(.init(id: "other.caches", group: .system, name: "Other app caches",
                          detail: "Everything in ~/Library/Caches not listed above",
                          symbol: "archivebox",

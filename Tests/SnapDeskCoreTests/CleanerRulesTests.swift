@@ -33,6 +33,24 @@ struct CacheCatalogTests {
         #expect(other.excluding.isEmpty == false)
     }
 
+    @Test("Developer tooling is not offered, and not swept up instead")
+    func developerCachesAreLeftAlone() throws {
+        let catalog = CacheCleaner.catalog(home: home)
+        // Dropping the rows is only half of it. "Other app caches" lists every
+        // child of ~/Library/Caches, so a folder that loses its own row lands
+        // there by default: still deleted, now without its name on screen.
+        let other = try #require(catalog.first { $0.id == "other.caches" })
+        for folder in CacheCleaner.developerCaches {
+            #expect(other.excluding.contains(folder), "\(folder) would be swept by the catch-all")
+        }
+        let developerIDs = ["xcode.derived", "xcode.devicesupport", "simulator.caches",
+                            "swiftpm", "node", "homebrew", "pip"]
+        #expect(catalog.contains { developerIDs.contains($0.id) } == false)
+        // Nothing points at Xcode's build products or a package manager's store.
+        let paths = catalog.flatMap(\.paths).map(\.path)
+        #expect(paths.contains { $0.contains("DerivedData") || $0.contains(".npm") } == false)
+    }
+
     @Test("Nothing outside the home directory it was given")
     func staysInsideTheGivenHome() {
         let paths = CacheCleaner.catalog(home: home).flatMap(\.paths).map(\.path)

@@ -113,7 +113,7 @@ A two-tab window for getting disk and memory back, built from the same system co
 
 **Dashboard** shows live processor, memory, disk and network readings with a 0 to 100 health score, and a Free up memory button. The memory pass targets reclaimable pages (inactive, purgeable, speculative) through `vm_allocate`, backs off the instant macOS reports memory pressure, and scales its reserve to the size of the Mac.
 
-**Clean** groups caches into Developer (Xcode DerivedData, iOS DeviceSupport, SwiftPM, npm/yarn/pnpm, Homebrew, pip), Browsers (Chrome, Safari, Firefox, Arc), Apps (Spotify, Slack, Discord) and System (everything else in `~/Library/Caches`, temp, logs, Trash). Tick a whole group from its header or the lot from Select all, and the button says exactly how much it will free. Anything written in the last ten minutes is skipped, because `unlink` succeeds on a file another app still has open, and a cache deleted mid-write is a corrupted app rather than a cleaned one.
+**Clean** groups caches into Browsers (Chrome, Safari, Firefox, Arc), Apps (Spotify, Slack, Discord) and System (everything else in `~/Library/Caches`, temp, logs, Trash). Developer tooling is left alone: Xcode, SwiftPM, Homebrew, npm and pip caches are neither offered nor swept up by the catch-all row. Tick a whole group from its header or the lot from Select all, and the button says exactly how much it will free. Anything written in the last ten minutes is skipped, because `unlink` succeeds on a file another app still has open, and a cache deleted mid-write is a corrupted app rather than a cleaned one.
 
 ### Everything else
 
@@ -219,7 +219,7 @@ Support/     Permissions, paster, notifier, sounds, diagnostics
 ./test-tools.sh  # headless render test of every annotation tool, writes PNGs
 ```
 
-`./test.sh` type-checks every source and runs `swift test`: Swift Testing, 267 tests in 38 suites, about two seconds. It needs no microphone, no screen recording and no permission of any kind, and it never writes to the real pasteboard.
+`./test.sh` type-checks every source and runs `swift test`: Swift Testing, 268 tests in 38 suites, about two seconds. It needs no microphone, no screen recording and no permission of any kind, and it never writes to the real pasteboard.
 
 What it pins down, chosen so every bug that actually shipped stays fixed:
 

@@ -110,7 +110,7 @@ struct DashboardTab: View {
         switch sample.health {
         case 70...: "Plenty of room. Nothing needs doing."
         case 40..<70: "Getting tight. The Clean tab is where the easy wins are."
-        default: "Low on memory or disk. Clean and Developer both have space to recover."
+        default: "Low on memory or disk. Free up memory above, then try the Clean tab."
         }
     }
 

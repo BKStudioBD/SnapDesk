@@ -780,7 +780,7 @@ private struct HelpTab: View {
             }
             Section("Cleaner  (menu bar → Cleaner…)") {
                 row("Dashboard", "Live processor, memory, disk and network, a 0–100 health score, and one button that frees inactive memory.")
-                row("Clean", "Caches grouped by Developer / Browsers / Apps / System, each sized. Tick a group from its header; the button says how much it will free. Anything written in the last 10 minutes is skipped. That file is still in use.")
+                row("Clean", "Caches grouped by Browsers / Apps / System, each sized. Tick a group from its header; the button says how much it will free. Anything written in the last 10 minutes is skipped. That file is still in use.")
                 row("Safety", "Everything goes to the Trash, so a wrong tick is undoable. Emptying the Trash is the one permanent action, and it is never pre-ticked.")
             }
             Section("Good to know") {
