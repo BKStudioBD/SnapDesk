@@ -98,7 +98,6 @@ let package = Package(
                 "Hotkeys/HotkeyCenter.swift",
                 "Settings/HotkeyRecorder.swift",
                 "Settings/SettingsStore.swift",
-                "Support/AppUninstaller.swift",
                 "Support/BackgroundWork.swift",
                 "Support/CacheCleaner.swift",
                 "Support/InstallHelper.swift",
@@ -107,7 +106,6 @@ let package = Package(
                 // Pulled in by FrameDecorator's keystroke overlay, which checks
                 // the Accessibility grant before installing its monitor.
                 "Support/Permissions.swift",
-                "Support/ProjectJunkScanner.swift",
                 "Support/SystemStats.swift",
                 "Support/Updater.swift",
             ],

@@ -5,8 +5,8 @@ import Foundation
 /// The rules that decide what a destructive feature is allowed to touch.
 ///
 /// Nothing here deletes: every test works on a scratch directory and checks the
-/// DECISION: what the cleaner would remove, and what the scanner would tick,
-/// which is where the damage would come from.
+/// DECISION of what the cleaner would remove, which is where the damage would
+/// come from.
 struct CleanerSafetyTests {
 
     /// Symlinks resolved: the temporary directory is `/var/…`, which is itself a
@@ -91,86 +91,5 @@ struct CleanerSafetyTests {
                                                  runningIDs: running) == false)
         #expect(CacheCleaner.isOwnedByRunningApp(slack, runningIDs: running))
         #expect(CacheCleaner.isOwnedByRunningApp(slack, runningIDs: []) == false)
-    }
-
-    // MARK: - What the build-folder scan would tick
-
-    @Test("A match stops the descent. The node_modules inside a node_modules is not its own row",
-          .tags(.regression))
-    func stopsAtTheFirstMatch() throws {
-        let root = try scratch()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let project = root.appending(path: "project")
-        let outer = project.appending(path: "node_modules")
-        try makeDirectory(outer.appending(path: "left-pad/node_modules"))
-
-        let found = ProjectJunkScanner.scan(roots: [root], maxDepth: 6)
-        #expect(found.count == 1)
-        // Suffix, not the absolute path: /var/folders is a symlink to
-        // /private/var/folders and the walk reports the resolved side.
-        #expect(found.first?.url.path.hasSuffix("project/node_modules") == true)
-    }
-
-    @Test("A symlink is never followed, so a link can't drag a folder outside the tree in",
-          .tags(.regression))
-    func ignoresSymlinks() throws {
-        let root = try scratch()
-        let outside = try scratch()
-        defer {
-            try? FileManager.default.removeItem(at: root)
-            try? FileManager.default.removeItem(at: outside)
-        }
-        try makeDirectory(outside.appending(path: "node_modules"))
-        try FileManager.default.createSymbolicLink(at: root.appending(path: "link"),
-                                                   withDestinationURL: outside)
-        try FileManager.default.createSymbolicLink(at: root.appending(path: "node_modules"),
-                                                   withDestinationURL: outside.appending(path: "node_modules"))
-
-        #expect(ProjectJunkScanner.scan(roots: [root], maxDepth: 6).isEmpty)
-    }
-
-    @Test("The walk never enters an app bundle", .tags(.regression))
-    func neverWalksIntoAPackage() throws {
-        let root = try scratch()
-        defer { try? FileManager.default.removeItem(at: root) }
-        // What an Electron app looks like on disk. That node_modules is the
-        // app's own shipped code: it was listed AND pre-ticked, and moving it to
-        // the Trash breaks the app permanently.
-        try makeDirectory(root.appending(path: "Downloads/Editor.app/Contents/Resources/app/node_modules"))
-        try makeDirectory(root.appending(path: "project/node_modules"))
-
-        let found = ProjectJunkScanner.scan(roots: [root], maxDepth: 7)
-        #expect(found.count == 1)
-        #expect(found.first?.url.path.hasSuffix("project/node_modules") == true)
-    }
-
-    @Test("A dot-directory straight under the root is a tool's home. Listed, never pre-ticked",
-          .tags(.regression))
-    func neverPreTicksAGlobalToolHome() throws {
-        let root = try scratch()
-        defer { try? FileManager.default.removeItem(at: root) }
-        // ~/.gradle holds gradle.properties: signing passwords and registry
-        // tokens, kept there precisely because they are not in the repo.
-        try makeDirectory(root.appending(path: ".gradle"))
-        try makeDirectory(root.appending(path: "project/.gradle"))
-
-        let found = ProjectJunkScanner.scan(roots: [root], maxDepth: 6)
-        let home = try #require(found.first { $0.url.path.contains("/project/") == false })
-        let inProject = try #require(found.first { $0.url.path.contains("/project/") })
-
-        #expect(home.isGlobalHome)
-        #expect(home.safeToPreselect == false)      // found, listed, not ticked
-        #expect(inProject.isGlobalHome == false)
-        #expect(inProject.safeToPreselect)
-    }
-
-    @Test("An ambiguous name is found but never pre-ticked", arguments: ["build", "dist", "target"])
-    func neverPreTicksAmbiguousNames(_ name: String) throws {
-        let root = try scratch()
-        defer { try? FileManager.default.removeItem(at: root) }
-        try makeDirectory(root.appending(path: "project/\(name)"))
-
-        let found = try #require(ProjectJunkScanner.scan(roots: [root], maxDepth: 6).first)
-        #expect(found.safeToPreselect == false)
     }
 }

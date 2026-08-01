@@ -253,10 +253,9 @@ enum CacheCleaner {
             do {
                 // Emptying the Trash is the ONE permanent delete in SnapDesk,
                 // and the UI names it before it happens. Everything else goes to
-                // the Trash like the uninstaller and the build-folder sweep do:
-                // a cache directory can hold something a vendor parked there
-                // (an IDE's local history, say) that no unlink should decide is
-                // disposable.
+                // the Trash, because a cache directory can hold something a
+                // vendor parked there (an IDE's local history, say) that no
+                // unlink should decide is disposable.
                 if category.isTrash {
                     try fm.removeItem(at: item)
                 } else {

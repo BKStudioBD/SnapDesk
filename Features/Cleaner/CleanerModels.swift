@@ -4,9 +4,9 @@ import Observation
 /// The cleaner's state, owned by the window rather than by the tab views.
 ///
 /// A `switch` in a ViewBuilder produces `_ConditionalContent`, so every tab
-/// change tore down the tab's `@State` and its `.task`: ticks were lost and the
-/// scans ran again: for Developer that is a full walk of the home directory.
-/// The scans now happen once per window, and a tab can be left and come back to.
+/// change tore down the tab's `@State` and its `.task`: ticks were lost and
+/// every cache was measured again from scratch. The measuring now happens once
+/// per window, and a tab can be left and come back to.
 
 @MainActor
 @Observable
@@ -69,76 +69,3 @@ final class CleanModel {
     }
 }
 
-@MainActor
-@Observable
-final class DeveloperModel {
-    var items: [JunkItem] = []
-    var selected: Set<String> = []
-    var isScanning = true
-    var isTrashing = false
-    var result: String?
-    private var scanned = false
-
-    var selectedItems: [JunkItem] { items.filter { selected.contains($0.id) } }
-    var selectedBytes: UInt64 { selectedItems.reduce(0) { $0 + $1.size } }
-    var totalBytes: UInt64 { items.reduce(0) { $0 + $1.size } }
-
-    /// Everything Select All would tick. The rows the scan left alone are not
-    /// counted, so the button doesn't sit on "Select All" after it was used.
-    var allSelected: Bool {
-        let selectable = items.filter(\.safeToPreselect)
-        return !selectable.isEmpty && selectable.allSatisfy { selected.contains($0.id) }
-    }
-
-    func scanIfNeeded() async {
-        guard !scanned else { return }
-        scanned = true
-        items = await ProjectJunkScanner.scanInBackground()
-        // A folder called `build` or `dist` might be somebody's source, and a
-        // dot-directory straight under ~ is a tool's home rather than a
-        // project's output: both are listed, neither is pre-ticked.
-        selected = Set(items.filter(\.safeToPreselect).map(\.id))
-        isScanning = false
-    }
-
-    func trashSelected(playSound: () -> Void) async {
-        isTrashing = true
-        let picked = selectedItems
-        // A node_modules tree is tens of thousands of files; moving it on the
-        // main actor froze the window until the last one landed.
-        let freed = await ProjectJunkScanner.trashInBackground(picked)
-        let removed = Set(picked.map(\.id))
-        items.removeAll { removed.contains($0.id) }
-        selected.subtract(removed)
-        isTrashing = false
-        result = "Moved \(SystemStats.format(freed)) to the Trash"
-        playSound()
-    }
-}
-
-@MainActor
-@Observable
-final class UninstallModel {
-    var apps: [AppUninstaller.App] = []
-    var search = ""
-    var isLoading = true
-    private var loaded = false
-
-    var filtered: [AppUninstaller.App] {
-        guard !search.isEmpty else { return apps }
-        return apps.filter { $0.name.localizedCaseInsensitiveContains(search) }
-    }
-
-    func loadIfNeeded() async {
-        guard !loaded else { return }
-        loaded = true
-        // Reading every bundle's Info.plist and icon is disk work; it used to
-        // run on the main actor while the view drew its first frame.
-        apps = await AppUninstaller.installedAppsInBackground()
-        isLoading = false
-    }
-
-    func forget(_ app: AppUninstaller.App) {
-        apps.removeAll { $0.id == app.id }
-    }
-}

@@ -109,15 +109,11 @@ Or scroll yourself and press Done, which captures the part you scrolled through.
 
 ### Cleaner (menu bar → Cleaner…)
 
-A four-tab window for getting disk and memory back, built from the same system controls as the rest of the app and following your Mac's light or dark appearance. Nothing is removed without being listed, sized and ticked first, and everything goes to the Trash. The one exception, emptying the Trash itself, is named out loud in the interface.
+A two-tab window for getting disk and memory back, built from the same system controls as the rest of the app and following your Mac's light or dark appearance. Nothing is removed without being listed, sized and ticked first, and everything goes to the Trash. The one exception, emptying the Trash itself, is named out loud in the interface.
 
 **Dashboard** shows live processor, memory, disk and network readings with a 0 to 100 health score, and a Free up memory button. The memory pass targets reclaimable pages (inactive, purgeable, speculative) through `vm_allocate`, backs off the instant macOS reports memory pressure, and scales its reserve to the size of the Mac.
 
 **Clean** groups caches into Developer (Xcode DerivedData, iOS DeviceSupport, SwiftPM, npm/yarn/pnpm, Homebrew, pip), Browsers (Chrome, Safari, Firefox, Arc), Apps (Spotify, Slack, Discord) and System (everything else in `~/Library/Caches`, temp, logs, Trash). Tick a whole group from its header or the lot from Select all, and the button says exactly how much it will free. Anything written in the last ten minutes is skipped, because `unlink` succeeds on a file another app still has open, and a cache deleted mid-write is a corrupted app rather than a cleaned one.
-
-**Developer** walks your home folder for rebuildable build output: `node_modules`, `DerivedData`, `.build`, `Pods`, `__pycache__`, `.venv`, `.next`, `.nuxt`, `.gradle`. Ambiguous names like `build`, `dist` and `target` are found and listed but never pre-ticked. Global caches such as `~/.nvm` are skipped, since those belong to the Clean tab.
-
-**Uninstall** removes an app together with what it scattered across the Library: support files, caches, preferences, containers, launch agents, logs. A running app is quit first, politely and then firmly. The matching is deliberately strict, so `com.google.Chrome` never takes `com.google.Chrome.canary`, "Snap" never takes SnapDesk's files, and inside a vendor folder a child must match a different word than the vendor did, which leaves `Google/GoogleUpdater` alone when you remove Chrome.
 
 ### Everything else
 
@@ -209,12 +205,11 @@ Features/
   OCR/         Vision text recognition
   Clipboard/   Pasteboard monitor, model, SwiftUI history window
   ColorPicker/ NSColorSampler + color formatting
-  Cleaner/     Dashboard, cache/build-junk/uninstall tabs
+  Cleaner/     Dashboard and cache-cleaning tabs
 Hotkeys/     Carbon global hotkey registration (no Accessibility permission needed)
 Settings/    Preferences store + SwiftUI settings dashboard
 Support/     Permissions, paster, notifier, sounds, diagnostics
-             + the cleaner's engines: system stats, cache catalog, junk scanner,
-               uninstaller, memory pass
+             + the cleaner's engines: system stats, cache catalog, memory pass
 ```
 
 ## Testing
@@ -224,7 +219,7 @@ Support/     Permissions, paster, notifier, sounds, diagnostics
 ./test-tools.sh  # headless render test of every annotation tool, writes PNGs
 ```
 
-`./test.sh` type-checks every source and runs `swift test`: Swift Testing, 295 tests in 40 suites, about two seconds. It needs no microphone, no screen recording and no permission of any kind, and it never writes to the real pasteboard.
+`./test.sh` type-checks every source and runs `swift test`: Swift Testing, 267 tests in 38 suites, about two seconds. It needs no microphone, no screen recording and no permission of any kind, and it never writes to the real pasteboard.
 
 What it pins down, chosen so every bug that actually shipped stays fixed:
 
@@ -235,7 +230,7 @@ What it pins down, chosen so every bug that actually shipped stays fixed:
 | Persist snapshot | clear-on-quit writes no unpinned plaintext, pinned survive the cap, aggregate byte budget |
 | Hex | parse/format round-trip, malformed input refused, channel order not reversed |
 | Colour formats | HEX and rgb() describe the same colour, lowercase honoured, a pattern colour falls back instead of trapping |
-| Cleaner safety | a clean offers the CONTENTS and never the directory itself, exclusions hold, a running app's cache is skipped, a match stops the descent, symlinks aren't followed, and neither a tool's home under ~ nor an ambiguous `build` is ever pre-ticked |
+| Cleaner safety | a clean offers the CONTENTS and never the directory itself, exclusions hold, a running app's cache is skipped |
 | Hotkeys | glyph order, menu equivalents, JSON round-trip, Shift-only combos refused |
 | OCR escalation | wide thin strips (over 40:1), tiny text, 1× captures, blank frames read empty, reading order |
 | OCR layout | table to TSV on a real grid, prose never turned into tabs, code mode keeps identifiers |
@@ -256,8 +251,6 @@ What it pins down, chosen so every bug that actually shipped stays fixed:
 | System stats | busy vs idle ticks, counters that went backwards read as zero, network as a rate, the health weighting |
 | Cache catalog | the Trash is never pre-ticked, the catch-all excludes the folders named categories own, ids stay unique |
 | In-use guard | a file written seconds ago, even one nested deep, keeps its whole folder |
-| Junk rules | the unambiguous names are pre-ticked and `build`/`dist` are not, dot-folders are skipped but `.build` is still found |
-| Uninstall matching | `com.google.Chrome` doesn't take `.canary`, "Snap" doesn't take SnapDesk, a vendor's child needs its own word |
 
 Then a one-minute manual smoke test: try each hotkey (⌃1 to ⌃8), copy a password and confirm it does not appear in clipboard history, and toggle Launch at login.
 

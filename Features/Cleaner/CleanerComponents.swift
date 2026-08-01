@@ -92,9 +92,9 @@ struct CleanerActionBar: View {
                 .truncationMode(.tail)
             Spacer(minLength: 8)
             if isBusy { ProgressView().controlSize(.small) }
-            // Deliberately NOT .defaultAction: in three of the four tabs this
-            // button deletes, and Return arriving from a stray focus should
-            // never be what starts that.
+            // Deliberately NOT .defaultAction: on the Clean tab this button
+            // deletes, and Return arriving from a stray focus should never be
+            // what starts that.
             Button(title, action: action)
                 .buttonStyle(.borderedProminent)
                 .disabled(!isEnabled || isBusy)
