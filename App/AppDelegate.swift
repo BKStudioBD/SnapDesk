@@ -29,6 +29,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Menu-bar only.
         NSApp.setActivationPolicy(.accessory)
         coordinator.start()
+        // After start(), so notification authorization has been asked for, and
+        // once per launch: this both reports the previous run and arms the
+        // marker for this one.
+        CrashLog.reportPreviousCrash()
     }
 
     /// Terminate every other running copy that shares our bundle identifier so
@@ -79,5 +83,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         coordinator.stop()
+        // The marker outliving a run is what makes the next launch call the
+        // last one a crash, so a deliberate quit has to clear it.
+        CrashLog.markCleanExit()
     }
 }

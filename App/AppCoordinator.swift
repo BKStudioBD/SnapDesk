@@ -168,6 +168,12 @@ final class AppCoordinator: NSObject, NSMenuDelegate {
         // there. The menu stays what you reach for mid-task.
         menu.addItem(plainItem("Cleaner…", #selector(openCleaner), "sparkles"))
         menu.addItem(plainItem("Settings…", #selector(openSettings), "gearshape"))
+        // Only when there is something to look at. A crash the user was told
+        // about needs somewhere to lead, and this menu is rebuilt on every
+        // open, so the row appears and disappears on its own.
+        if !CrashLog.saved().isEmpty {
+            menu.addItem(plainItem("Crash Reports…", #selector(revealCrashReports), "doc.text.magnifyingglass"))
+        }
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit SnapDesk", action: #selector(quit), keyEquivalent: "q")
         quit.keyEquivalentModifierMask = .command
@@ -760,6 +766,10 @@ final class AppCoordinator: NSObject, NSMenuDelegate {
     @objc private func restartForPermission() {
         // A menu action, so this is the main thread by construction.
         MainActor.assumeIsolated { InstallHelper.relaunchSelf() }
+    }
+
+    @objc private func revealCrashReports() {
+        CrashLog.revealInFinder()
     }
 
     @objc private func openScreenRecordingSettings() {

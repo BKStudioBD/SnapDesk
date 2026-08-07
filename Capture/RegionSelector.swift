@@ -206,7 +206,7 @@ enum RegionSelector {
             // The overlay is gone, so the user-paced part is over and the tight
             // ceiling applies again from here.
             DesktopCover.selectionEnded()
-            if let screen, let rect, rect.width > 2, rect.height > 2 {
+            if let screen, let rect, SelectionGeometry.isSelectable(rect) {
                 // The pixels are grabbed AFTER this returns, so the desktop cover
                 // has to outlive the callback: CaptureService drops it the
                 // instant it has the frame, and this is only the ceiling.
@@ -534,7 +534,7 @@ private final class SelectionView: NSView {
         let rect = currentRect
         // A stray click (no real drag) must NOT cancel the whole flow. The
         // session stays alive; Esc is the explicit cancel.
-        guard rect.width > 2, rect.height > 2 else {
+        guard SelectionGeometry.isSelectable(rect) else {
             reset()
             window?.invalidateCursorRects(for: self)
             return
@@ -599,7 +599,7 @@ private final class SelectionView: NSView {
             needsDisplay = true
             return true
         case OverlayKey.enter, OverlayKey.keypadEnter:
-            guard flags.isEmpty, currentRect.width > 2, currentRect.height > 2 else { return false }
+            guard flags.isEmpty, SelectionGeometry.isSelectable(currentRect) else { return false }
             confirm(currentRect)
             return true
         default:

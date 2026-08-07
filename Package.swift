@@ -100,6 +100,7 @@ let package = Package(
                 "Settings/SettingsStore.swift",
                 "Support/BackgroundWork.swift",
                 "Support/CacheCleaner.swift",
+                "Support/CrashLog.swift",
                 "Support/InstallHelper.swift",
                 "Support/MissLog.swift",
                 "Support/Notifier.swift",

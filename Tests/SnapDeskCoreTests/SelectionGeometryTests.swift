@@ -222,3 +222,32 @@ struct SelectionGeometryTests {
         #expect(SelectionGeometry.flipped(rect, inHeight: 900).minY == 0)
     }
 }
+
+/// The floor under a drag, which is the difference between a capture and a slip.
+struct SelectionFloorTests {
+
+    @Test("A slip is not a selection")
+    func tinyDragsAreRejected() {
+        // The one in the miss log: 10 × 3pt, captured, read, and reported back
+        // as "No text found" as though the reading had failed.
+        #expect(SelectionGeometry.isSelectable(CGRect(x: 0, y: 0, width: 10, height: 3)) == false)
+        #expect(SelectionGeometry.isSelectable(.zero) == false)
+    }
+
+    @Test("Both sides have to clear the floor, not just one")
+    func oneLongSideIsNotEnough() {
+        #expect(SelectionGeometry.isSelectable(CGRect(x: 0, y: 0, width: 400, height: 4)) == false)
+        #expect(SelectionGeometry.isSelectable(CGRect(x: 0, y: 0, width: 4, height: 400)) == false)
+    }
+
+    @Test("A small but deliberate selection still works")
+    func smallIntentionalSelectionsSurvive() {
+        // A 16pt icon is a real thing to capture, and has to stay possible.
+        #expect(SelectionGeometry.isSelectable(CGRect(x: 0, y: 0, width: 16, height: 16)))
+    }
+
+    @Test("The floor is a real floor, not the old any-movement-counts value")
+    func floorIsMeaningful() {
+        #expect(SelectionGeometry.minimumDragPoints > 2)
+    }
+}

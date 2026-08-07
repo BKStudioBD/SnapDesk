@@ -12,6 +12,21 @@ import CoreGraphics
 /// points.
 enum SelectionGeometry {
 
+    /// The smallest drag that counts as a selection, in points.
+    ///
+    /// The old floor was 2pt, which is "any movement at all". A 10 × 3pt slip
+    /// therefore ran a real capture: the OCR miss log has one, a 21 × 8 pixel
+    /// region that of course held no text, reported back to the user as "No
+    /// text found" as though the reading had failed. Nothing legible fits below
+    /// this, so a smaller drag is treated the way a plain click already is: the
+    /// overlay stays up and waits for a real one.
+    static let minimumDragPoints: CGFloat = 8
+
+    /// Whether a dragged rect is big enough to act on.
+    static func isSelectable(_ rect: CGRect) -> Bool {
+        rect.width >= minimumDragPoints && rect.height >= minimumDragPoints
+    }
+
     // MARK: - Readout chip
 
     /// Gap between the chip and the selection edge it hangs off.
