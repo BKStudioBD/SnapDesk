@@ -589,7 +589,29 @@ private struct KeyCommands: NSViewRepresentable {
             if let monitor { NSEvent.removeMonitor(monitor) }
             monitor = nil
         }
-        deinit { remove() }
+
+        /// Teardown happens HERE and in `dismantleNSView`, never in `deinit`.
+        ///
+        /// `NSView` is `@MainActor`, so a `deinit` on this class is a
+        /// main-actor-isolated deinit: releasing the view off the main thread
+        /// makes Swift hop executors while the object is already being torn
+        /// down. Two of this app's recorded crashes are exactly that hop,
+        /// `-[NSResponder dealloc]` → `swift_task_deinitOnExecutorImpl` →
+        /// `objc_msgSend` on freed memory, reached from an autorelease pool
+        /// draining inside a display-cycle flush.
+        ///
+        /// Both hooks below are AppKit callbacks on the main thread at a moment
+        /// AppKit chose, and `remove()` is idempotent, so the monitor is
+        /// released exactly once however the view goes away.
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window == nil {
+                remove()
+            } else if monitor == nil {
+                // Re-added to a window after a teardown: arm it again.
+                install()
+            }
+        }
 
         private static func action(for e: NSEvent) -> Action? {
             let flags = e.modifierFlags.intersection(.deviceIndependentFlagsMask)

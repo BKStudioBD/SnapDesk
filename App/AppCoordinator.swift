@@ -8,7 +8,7 @@ import ScreenCaptureKit
 /// Subclasses NSObject so NSMenu target/action validation (`respondsToSelector:`)
 /// works. Otherwise the menu-bar items get auto-disabled (greyed) and clicks
 /// don't dispatch, even though the global hotkeys still fire.
-final class AppCoordinator: NSObject {
+final class AppCoordinator: NSObject, NSMenuDelegate {
     let settings = SettingsStore()
     let hotkeys = HotkeyCenter()
     let clipboard = ClipboardManager()
@@ -93,12 +93,31 @@ final class AppCoordinator: NSObject {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.image = MenuBarIcon.image()
         item.button?.toolTip = "SnapDesk"
-        item.menu = buildMenu()
+        // ONE menu for the app's life, filled in when it is about to open.
+        //
+        // Assigning a fresh NSMenu whenever a label changed meant the status
+        // item's menu could be swapped at any moment, including while AppKit was
+        // waking or reconnecting the status item scene. Four of this app's seven
+        // recorded crashes are an exception escaping
+        // `-[NSSceneStatusItem _wakeStatusItem]`, and the others are a view
+        // being torn down inside a display-cycle flush. Nothing here mutates the
+        // menu outside `menuNeedsUpdate`, which AppKit calls at a moment it has
+        // chosen itself.
+        let menu = NSMenu()
+        menu.delegate = self
+        item.menu = menu
         statusItem = item
     }
 
-    private func buildMenu() -> NSMenu {
-        let menu = NSMenu()
+    /// AppKit is about to show the menu: this is the one safe moment to change
+    /// its items, and every label in here depends on state that moves
+    /// (recording, scrolling capture, the Screen Recording grant).
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        populate(menu)
+    }
+
+    private func populate(_ menu: NSMenu) {
         // When capture can't run, say it FIRST and say what fixes it. Five of
         // the items below are dead in that state, and a menu that lists them
         // as if they work is the whole problem.
@@ -155,7 +174,6 @@ final class AppCoordinator: NSObject {
         quit.target = self
         quit.image = NSImage(systemSymbolName: "power", accessibilityDescription: nil)
         menu.addItem(quit)
-        return menu
     }
 
     /// Menu item that shows its global shortcut (e.g. ⌃1) and an icon.
@@ -211,7 +229,8 @@ final class AppCoordinator: NSObject {
         hotkeys.bind(settings.scrollHotkey)     { [weak self] in self?.scrollingCapture() }
         hotkeys.bind(settings.ocrRepeatHotkey)  { [weak self] in self?.ocrRepeatCapture() }
         hotkeys.bind(settings.ocrStackHotkey)   { [weak self] in self?.ocrToggleStack() }
-        statusItem?.menu = buildMenu()
+        // The menu shows each shortcut, and it reads them when it opens, so a
+        // rebind needs nothing here.
     }
 
     // MARK: - Actions
@@ -702,7 +721,6 @@ final class AppCoordinator: NSObject {
         refreshStatusIcon()
         // Never clear the title directly. The text stack may still own it.
         refreshStatusTitle()
-        statusItem?.menu = buildMenu()
     }
 
     /// The ONE writer of the menu-bar image, so recording and the permission
@@ -728,7 +746,6 @@ final class AppCoordinator: NSObject {
     /// than letting five hotkeys quietly do nothing.
     @objc private func captureStateChanged() {
         refreshStatusIcon()
-        statusItem?.menu = buildMenu()
     }
 
     /// A capture was refused. The menu bar already carries the state; this is
