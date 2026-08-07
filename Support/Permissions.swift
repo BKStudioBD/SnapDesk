@@ -5,13 +5,12 @@ import ApplicationServices
 /// One place for every macOS privacy permission SnapDesk touches, written to
 /// match how TCC actually behaves (verified against Apple's model):
 ///
-/// • **Screen Recording** (`kTCCServiceScreenCapture`): needed by screenshots
-///   and OCR. macOS keys the grant on the app's code-signing *designated
-///   requirement*, not the binary hash, so with SnapDesk's stable signing the
-///   grant persists across launches and updates. The one catch: a freshly-
-///   granted permission is only honored by a NEW process. So after the user
-///   flips it on we detect that and relaunch automatically (the #1 cause of
-///   "I allowed it but nothing works" is the missing relaunch).
+/// • **Screen Recording** (`kTCCServiceScreenCapture`): needed by screenshots,
+///   OCR, recording and scrolling capture. macOS keys the grant on the app's
+///   code-signing *designated requirement*, not the binary hash, so with
+///   SnapDesk's stable signing the grant persists across launches and updates.
+///   The one catch: a freshly-granted permission is only honored by a NEW
+///   process, so `captureState` reports `.needsRestart` until the user restarts.
 ///
 /// • **Accessibility** (`AXIsProcessTrusted`): only needed to synthesize the
 ///   ⌘V keystroke for "paste from clipboard history". `AXIsProcessTrusted()`
@@ -19,11 +18,38 @@ import ApplicationServices
 ///   see a fresh grant; we prompt + open Settings and let the next launch pick
 ///   it up (paste already degrades gracefully until then).
 ///
-/// Note: on macOS Sequoia (15) / Tahoe (26) the system re-confirms Screen
-/// Recording for *every* app periodically: that's Apple's design and can't be
-/// disabled by any app (only MDM), so an occasional re-prompt is expected and
-/// is NOT a lost grant.
+/// **Nothing here quits or relaunches the app.** It used to: a watcher polled
+/// for the grant and restarted SnapDesk the moment it flipped on. For a
+/// menu-bar app with no window that is indistinguishable from quitting by
+/// itself, and on macOS Sequoia (15) / Tahoe (26) the system re-confirms Screen
+/// Recording for *every* app periodically, so it happened on its own schedule
+/// rather than the user's. The state is now reported to the menu bar and the
+/// restart is a menu item the user clicks.
 enum Permissions {
+
+    /// Whether the five capture features can run right now, and if not, why.
+    enum CaptureState: Equatable {
+        /// Granted before this process started: capture works.
+        case ready
+        /// Not granted. The user has to turn it on in System Settings.
+        case needsGrant
+        /// Granted, but after this process launched. Preflight says yes while
+        /// the capture engine still runs on the launch-time (denied) state, so
+        /// every capture would come back blank. Only a new process fixes it.
+        case needsRestart
+
+        /// One line, in the user's terms, for the menu and the notification.
+        var summary: String {
+            switch self {
+            case .ready: "Screen Recording is on"
+            case .needsGrant: "Screen Recording is off"
+            case .needsRestart: "Screen Recording is on. Restart to use it"
+            }
+        }
+    }
+
+    /// Posted whenever `captureState` changes, so the menu bar can say so.
+    static let captureStateChanged = Notification.Name("SnapDeskCaptureStateChanged")
 
     // MARK: - State (cheap, never prompts)
 
@@ -31,53 +57,100 @@ enum Permissions {
     static var hasAccessibility: Bool { AXIsProcessTrusted() }
 
     /// Whether Screen Recording was already granted when THIS process started.
-    /// A grant that appears later is only honored by a NEW process: capture
-    /// still fails in this one, so `ensureScreenRecording` must keep steering
-    /// toward a relaunch instead of letting a doomed capture run.
+    /// A grant that appears later is only honored by a NEW process.
     private static let grantAtLaunch: Bool = CGPreflightScreenCaptureAccess()
 
     /// Call once at app startup so `grantAtLaunch` is evaluated before any
     /// grant can change (static lets are lazy).
     static func primeLaunchState() { _ = grantAtLaunch }
 
-    // MARK: - Screen Recording
-
-    /// True if capture is allowed right now. If not, requests it, opens the
-    /// Settings pane, and starts watching so SnapDesk can relaunch itself the
-    /// instant the user turns it on, no manual quit-and-reopen. Callers should
-    /// abort the current capture when this returns false.
-    @discardableResult
-    static func ensureScreenRecording() -> Bool {
-        if hasScreenRecording {
-            if grantAtLaunch { return true }
-            // Granted AFTER this process launched: preflight says yes but the
-            // capture engine still runs on the launch-time (denied) state:
-            // any capture now fails confusingly. Offer the relaunch instead.
-            // (All callers are main-thread hotkey/menu paths.)
-            MainActor.assumeIsolated { promptRestartForFreshGrant() }
-            return false
-        }
-        CGRequestScreenCaptureAccess()            // registers SnapDesk / prompts
-        guideThenRelaunch(
-            title: "Turn on Screen Recording for SnapDesk",
-            body: """
-            SnapDesk needs Screen Recording to take screenshots and read text.
-
-            1. In the window that opens, turn ON SnapDesk.
-            2. That's it. SnapDesk restarts itself so the permission takes \
-            effect. No need to quit or reopen anything.
-            """,
-            pane: "Privacy_ScreenCapture",
-            isGranted: { CGPreflightScreenCaptureAccess() })
-        return false
+    static var captureState: CaptureState {
+        state(hasGrant: hasScreenRecording, grantedAtLaunch: grantAtLaunch)
     }
 
-    /// Just trigger the system request + open the pane, NO alert or auto-
-    /// relaunch. For UI (the Welcome window) that already guides the user and
-    /// has its own "Relaunch" control.
+    /// The rule on its own, so it can be checked without a TCC grant.
+    ///
+    /// The pair matters, not either half: a grant that arrived after launch
+    /// reads as allowed and captures blank, which is the state that used to
+    /// look like a broken app.
+    static func state(hasGrant: Bool, grantedAtLaunch: Bool) -> CaptureState {
+        guard hasGrant else { return .needsGrant }
+        return grantedAtLaunch ? .ready : .needsRestart
+    }
+
+    // MARK: - Screen Recording
+
+    /// True if capture is allowed right now. Callers abort when it returns
+    /// false; the reason is already on the menu bar, and `stateDetail` gives
+    /// them a sentence to put in front of the user.
+    ///
+    /// Deliberately silent otherwise: this runs on every ⌃1, ⌃2, ⌃5, ⌃6 and
+    /// ⌃7, and a modal alert on each press was how one lapsed grant turned into
+    /// a stack of dialogs.
+    @discardableResult
+    static func ensureScreenRecording() -> Bool {
+        let state = captureState
+        publish(state)
+        guard state == .ready else {
+            // Registers SnapDesk in the Screen Recording list so there is a row
+            // to switch on. Prompts at most once per launch; macOS ignores the
+            // rest, and the menu bar is carrying the message anyway.
+            if state == .needsGrant, !requestedThisLaunch {
+                requestedThisLaunch = true
+                CGRequestScreenCaptureAccess()
+            }
+            return false
+        }
+        return true
+    }
+
+    private static var requestedThisLaunch = false
+
+    /// What to tell the user when a capture was refused, including the fix.
+    static var stateDetail: String {
+        switch captureState {
+        case .ready:
+            "Screen Recording is on."
+        case .needsGrant:
+            "Turn SnapDesk on in System Settings → Privacy & Security → Screen Recording, then restart SnapDesk from its menu."
+        case .needsRestart:
+            "The permission is on, but it only takes effect in a new process. Restart SnapDesk from its menu."
+        }
+    }
+
+    /// Just trigger the system request + open the pane. For UI (the Welcome
+    /// window, the menu) that already guides the user.
     static func requestScreenRecording() {
         CGRequestScreenCaptureAccess()
         openScreenRecordingSettings()
+    }
+
+    // MARK: - Watching
+
+    private static var watcher: Timer?
+    private static var lastPublished: CaptureState?
+
+    /// Keep the menu bar honest without anyone pressing anything. A grant can
+    /// be revoked or re-confirmed by macOS at any time, and the only thing that
+    /// changes here is what the icon and the menu say.
+    ///
+    /// Five seconds: `CGPreflightScreenCaptureAccess` is a TCC lookup, not a
+    /// capture, and this is the difference between a dead hotkey the user has
+    /// to guess about and one the menu bar has already explained.
+    @MainActor
+    static func startWatching() {
+        guard watcher == nil else { return }
+        publish(captureState)
+        let timer = Timer(timeInterval: 5, repeats: true) { _ in publish(captureState) }
+        RunLoop.main.add(timer, forMode: .common)
+        watcher = timer
+    }
+
+    /// Posts only on a real change, so observers can rebuild a menu freely.
+    private static func publish(_ state: CaptureState) {
+        guard state != lastPublished else { return }
+        lastPublished = state
+        NotificationCenter.default.post(name: captureStateChanged, object: nil)
     }
 
     // MARK: - Accessibility
@@ -105,81 +178,5 @@ enum Permissions {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
             NSWorkspace.shared.open(url)
         }
-    }
-
-    // MARK: - Shared: guide the user, then auto-relaunch on grant
-
-    private static var watching = false
-    /// Re-entrancy guard: hotkey presses drain on the main queue even while a
-    /// modal alert runs, so without this each press STACKED another identical
-    /// alert (all hotkeys then look dead until every one is dismissed LIFO).
-    private static var alertUp = false
-
-    /// "Permission is on but this process predates the grant" → restart offer.
-    @MainActor
-    private static func promptRestartForFreshGrant() {
-        guard !alertUp else { return }
-        alertUp = true
-        defer { alertUp = false }
-        let a = NSAlert()
-        a.messageText = "Restart SnapDesk to finish"
-        a.informativeText = "Screen Recording is now enabled. SnapDesk just needs a quick restart for it to take effect."
-        a.addButton(withTitle: "Restart SnapDesk")
-        a.addButton(withTitle: "Later")
-        NSApp.activate(ignoringOtherApps: true)
-        a.window.orderFrontRegardless()
-        if a.runModal() == .alertFirstButtonReturn { InstallHelper.relaunchSelf() }
-    }
-
-    /// Show a one-time alert, open the Settings pane, then poll for the grant
-    /// and relaunch the moment it flips on (Screen Recording only. The grant
-    /// needs a fresh process to be honored). Safe to call repeatedly.
-    private static func guideThenRelaunch(title: String, body: String, pane: String,
-                                          isGranted: @escaping () -> Bool) {
-        guard !alertUp else { return }
-        alertUp = true
-        defer { alertUp = false }
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = body
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Open Settings")
-        alert.addButton(withTitle: "Later")
-        NSApp.activate(ignoringOtherApps: true)
-        // Activation can be denied for an accessory app: force the alert
-        // visible anyway (it used to open BEHIND a full-screen frontmost app,
-        // making the hotkey look dead while a hidden modal blocked everything).
-        alert.window.orderFrontRegardless()
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        openPane(pane)
-        watchForGrant(isGranted: isGranted)
-    }
-
-    private static func watchForGrant(isGranted: @escaping () -> Bool) {
-        guard !watching else { return }
-        watching = true
-        let start = Date()
-        let timer = Timer(timeInterval: 1.0, repeats: true) { t in
-            if Date().timeIntervalSince(start) > 180 {          // give up after 3 min
-                t.invalidate(); watching = false; return
-            }
-            guard isGranted() else { return }
-            t.invalidate(); watching = false
-            guard !alertUp else { return }   // another permission alert is already up
-            alertUp = true
-            defer { alertUp = false }
-            let a = NSAlert()
-            a.messageText = "Permission enabled"
-            a.informativeText = "SnapDesk will restart now so it can start working."
-            a.addButton(withTitle: "Restart SnapDesk")
-            NSApp.activate(ignoringOtherApps: true)
-            a.window.orderFrontRegardless()
-            a.runModal()
-            // The timer body is nonisolated even though it only ever runs on the
-            // main run loop, so hop explicitly rather than call a @MainActor
-            // method across isolation (a warning today, an error in Swift 6).
-            MainActor.assumeIsolated { InstallHelper.relaunchSelf() }
-        }
-        RunLoop.main.add(timer, forMode: .common)
     }
 }

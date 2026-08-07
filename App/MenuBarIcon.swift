@@ -55,6 +55,36 @@ enum MenuBarIcon {
         return img
     }
 
+    /// The mark with an orange badge, shown while the capture features can't
+    /// run (Screen Recording off, or on but not yet picked up by this process).
+    ///
+    /// Five hotkeys go dead in that state. Without something in the menu bar
+    /// the only symptom is a shortcut that does nothing, which reads as a broken
+    /// app rather than a permission that needs one click.
+    static func attentionImage(pointSize: CGFloat = 18) -> NSImage {
+        let size = NSSize(width: pointSize, height: pointSize)
+        let img = NSImage(size: size, flipped: false) { rect in
+            // labelColor, not black: this one can't be a template image (the
+            // badge has to stay orange), so it has to follow the menu bar's
+            // appearance itself.
+            NSColor.labelColor.setStroke()
+            NSColor.labelColor.setFill()
+            drawBrackets(in: rect)
+            drawCentre(in: rect)
+            // Top-right, over the gap between two brackets, so it never sits on
+            // top of the mark it is annotating.
+            let d = rect.width * 0.34
+            let badge = NSRect(x: rect.maxX - d, y: rect.maxY - d, width: d, height: d)
+            NSColor.systemOrange.setFill()
+            NSBezierPath(ovalIn: badge).fill()
+            return true
+        }
+        img.isTemplate = false
+        // The badge is a colour, and colour alone is not a message.
+        img.accessibilityDescription = "SnapDesk (Screen Recording needs attention)"
+        return img
+    }
+
     // MARK: - The mark
 
     /// The bracket ring: one bracket per polygon vertex, each with a short arm

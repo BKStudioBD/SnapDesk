@@ -171,7 +171,9 @@ Settings → General → Check for updates on launch (off by default), or menu b
 
 ### Granting Screen Recording
 
-Screenshots and OCR need macOS Screen Recording permission. On first use SnapDesk opens the right Settings pane. Turn SnapDesk on and it restarts itself, so you don't need to quit or reopen anything.
+Screenshots, OCR, recording and scrolling capture need macOS Screen Recording permission. On first use SnapDesk opens the right Settings pane; turn SnapDesk on there.
+
+A permission granted after SnapDesk started is only honoured by a new process, so the app has to be restarted once for it to take effect. SnapDesk will not do that on its own. While capture is unavailable the menu-bar icon carries an orange badge, and the menu says which of the two states you are in and offers the one action that fixes it: **Open Screen Recording Settings…** when the permission is off, **Restart SnapDesk to finish** when it is on but not yet picked up. Pressing one of the five capture shortcuts in that state gives you the same explanation instead of doing nothing.
 
 The grant sticks. SnapDesk is signed with a stable certificate and installs itself to `/Applications` on first run, so the permission you give it persists across launches and updates.
 
@@ -219,7 +221,7 @@ Support/     Permissions, paster, notifier, sounds, diagnostics
 ./test-tools.sh  # headless render test of every annotation tool, writes PNGs
 ```
 
-`./test.sh` type-checks every source and runs `swift test`: Swift Testing, 268 tests in 38 suites, about two seconds. It needs no microphone, no screen recording and no permission of any kind, and it never writes to the real pasteboard.
+`./test.sh` type-checks every source and runs `swift test`: Swift Testing, 272 tests in 39 suites, about two seconds. It needs no microphone, no screen recording and no permission of any kind, and it never writes to the real pasteboard.
 
 What it pins down, chosen so every bug that actually shipped stays fixed:
 

@@ -59,6 +59,16 @@ final class AppCoordinator: NSObject {
             [weak self] _ in self?.registerHotkeys()
         }
 
+        // Screen Recording can be revoked, or re-confirmed by macOS, at any
+        // moment. Watch it so the menu bar reports the state instead of leaving
+        // ⌃1, ⌃2, ⌃5, ⌃6 and ⌃7 to fail without saying anything.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(captureStateChanged),
+            name: Permissions.captureStateChanged, object: nil)
+        // `start()` is called from applicationDidFinishLaunching, so this is the
+        // main thread; the annotation is what the watcher's timer needs.
+        MainActor.assumeIsolated { Permissions.startWatching() }
+
         // Just updated? Say what changed, once.
         showWhatsNewIfUpdated()
         // Opt-in only, and quietly: a launch-time check must never interrupt.
@@ -89,6 +99,26 @@ final class AppCoordinator: NSObject {
 
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()
+        // When capture can't run, say it FIRST and say what fixes it. Five of
+        // the items below are dead in that state, and a menu that lists them
+        // as if they work is the whole problem.
+        let capture = Permissions.captureState
+        if capture != .ready {
+            let banner = NSMenuItem(title: capture.summary, action: nil, keyEquivalent: "")
+            banner.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill",
+                                   accessibilityDescription: nil)
+            banner.isEnabled = false
+            menu.addItem(banner)
+            switch capture {
+            case .needsGrant:
+                menu.addItem(plainItem("Open Screen Recording Settings…",
+                                       #selector(openScreenRecordingSettings), "gear"))
+            case .needsRestart, .ready:
+                menu.addItem(plainItem("Restart SnapDesk to finish",
+                                       #selector(restartForPermission), "arrow.clockwise"))
+            }
+            menu.addItem(.separator())
+        }
         menu.addItem(featureItem("Capture & Annotate", #selector(captureAndAnnotate), settings.screenshotHotkey, "camera.viewfinder"))
         menu.addItem(featureItem("Grab Text (OCR)", #selector(ocrCapture), settings.ocrHotkey, "text.viewfinder"))
         // "Grab again" and the text stack are NOT here on purpose. They live in
@@ -196,7 +226,7 @@ final class AppCoordinator: NSObject {
 
     @objc func captureAndAnnotate() {
         guard !screenshotInFlight else { return }
-        guard Permissions.ensureScreenRecording() else { return }
+        guard Permissions.ensureScreenRecording() else { reportCaptureUnavailable(); return }
         screenshotInFlight = true
         // Count captures so the editor's first-run hint can fade out after a few.
         let d = UserDefaults.standard
@@ -258,7 +288,7 @@ final class AppCoordinator: NSObject {
         // slower, OLDER selection can overwrite the newer result. Beep rather
         // than swallow: a dead-feeling hotkey reads as a broken app.
         guard !ocrInFlight else { NSSound.beep(); return }
-        guard Permissions.ensureScreenRecording() else { return }
+        guard Permissions.ensureScreenRecording() else { reportCaptureUnavailable(); return }
         // Spend the user's drag on the work that would otherwise be their wait:
         // loading the recognizer's models (~0.1s once per launch, and the whole
         // ~32s compile if `warmModelCacheAfterUpdate` hasn't run yet) and the
@@ -291,7 +321,7 @@ final class AppCoordinator: NSObject {
                           "The last area was on a monitor that's no longer connected. Grab a new one.")
             return
         }
-        guard Permissions.ensureScreenRecording() else { return }
+        guard Permissions.ensureScreenRecording() else { reportCaptureUnavailable(); return }
         prewarmOCR()
         runOCR(on: RegionSelection(screen: screen, rectInScreenPoints: area.rect))
     }
@@ -530,7 +560,7 @@ final class AppCoordinator: NSObject {
     @objc func recordScreen() {
         // Toggle: pressing the hotkey while recording stops & saves.
         if let session = recordingSession { session.stop(); return }
-        guard Permissions.ensureScreenRecording() else { return }
+        guard Permissions.ensureScreenRecording() else { reportCaptureUnavailable(); return }
         // Drag a region to record (Esc cancels, F or the button = full screen),
         // then show the pre-record options bar (audio/mic/camera/captions/blur).
         RegionSelector.selectRegion(prompt: .init(
@@ -658,7 +688,7 @@ final class AppCoordinator: NSObject {
             Task { @MainActor in ScrollCapture.finishActive() }
             return
         }
-        guard Permissions.ensureScreenRecording() else { return }
+        guard Permissions.ensureScreenRecording() else { reportCaptureUnavailable(); return }
         RegionSelector.selectRegion { [weak self] selection in
             guard let self, let selection else { return }
             Task { @MainActor in ScrollCapture.begin(selection: selection, settings: self.settings) }
@@ -668,14 +698,55 @@ final class AppCoordinator: NSObject {
     /// Red dot while recording, normal icon otherwise; rebuild menu for the label.
     private func updateRecordingUI() {
         let recording = recordingSession != nil
-        statusItem?.button?.image = recording
-            ? MenuBarIcon.recordingImage()
-            : MenuBarIcon.image()
-        statusItem?.button?.imagePosition = .imageLeft
         if !recording { recordingTick = nil }
+        refreshStatusIcon()
         // Never clear the title directly. The text stack may still own it.
         refreshStatusTitle()
         statusItem?.menu = buildMenu()
+    }
+
+    /// The ONE writer of the menu-bar image, so recording and the permission
+    /// badge can't overwrite each other. A running recording wins: capture is
+    /// obviously working if a take is in progress.
+    private func refreshStatusIcon() {
+        guard let button = statusItem?.button else { return }
+        let state = Permissions.captureState
+        if recordingSession != nil {
+            button.image = MenuBarIcon.recordingImage()
+            button.toolTip = "SnapDesk (recording)"
+        } else if state == .ready {
+            button.image = MenuBarIcon.image()
+            button.toolTip = "SnapDesk"
+        } else {
+            button.image = MenuBarIcon.attentionImage()
+            button.toolTip = "SnapDesk: \(state.summary)"
+        }
+        button.imagePosition = .imageLeft
+    }
+
+    /// Capture went from working to not, or back. Say so in the menu bar rather
+    /// than letting five hotkeys quietly do nothing.
+    @objc private func captureStateChanged() {
+        refreshStatusIcon()
+        statusItem?.menu = buildMenu()
+    }
+
+    /// A capture was refused. The menu bar already carries the state; this is
+    /// the answer to "I pressed the key and nothing happened".
+    private func reportCaptureUnavailable() {
+        Notifier.error(Permissions.captureState.summary, Permissions.stateDetail)
+    }
+
+    /// Restart, because the user asked for it in the menu. SnapDesk never does
+    /// this on its own: for a menu-bar app with no window, a self-restart is
+    /// indistinguishable from quitting unprompted.
+    @objc private func restartForPermission() {
+        // A menu action, so this is the main thread by construction.
+        MainActor.assumeIsolated { InstallHelper.relaunchSelf() }
+    }
+
+    @objc private func openScreenRecordingSettings() {
+        Permissions.requestScreenRecording()
     }
 
     private func recordingURL() -> URL {
