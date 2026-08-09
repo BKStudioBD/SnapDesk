@@ -197,8 +197,14 @@ enum CaptureService {
         config.showsCursor = false
         config.captureResolution = .best
 
-        let image = try await SCScreenshotManager.captureImage(
-            contentFilter: filter, configuration: config)
+        // A capture that never returns is what killed the shortcut latches:
+        // the task waiting on it never exited, so the "one at a time" flag was
+        // never cleared and the hotkey stayed dead until the app restarted.
+        // Ten seconds is many times a normal grab and still finite.
+        let image = try await withDeadline(10) {
+            try await SCScreenshotManager.captureImage(
+                contentFilter: filter, configuration: config)
+        }
         // A WHOLE display coming back as one flat shade is how macOS says it did
         // not really honour the Screen Recording grant: no error, just the
         // windows stripped out. Reported here rather than guessed at from the

@@ -221,7 +221,7 @@ Support/     Permissions, paster, notifier, sounds, diagnostics
 ./test-tools.sh  # headless render test of every annotation tool, writes PNGs
 ```
 
-`./test.sh` type-checks every source and runs `swift test`: Swift Testing, 286 tests in 41 suites, about two seconds. It needs no microphone, no screen recording and no permission of any kind, and it never writes to the real pasteboard.
+`./test.sh` type-checks every source and runs `swift test`: Swift Testing, 295 tests in 42 suites, about two seconds. It needs no microphone, no screen recording and no permission of any kind, and it never writes to the real pasteboard.
 
 What it pins down, chosen so every bug that actually shipped stays fixed:
 

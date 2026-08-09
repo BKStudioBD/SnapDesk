@@ -241,18 +241,23 @@ final class AppCoordinator: NSObject, NSMenuDelegate {
 
     // MARK: - Actions
 
-    /// True while a freeze-capture is queued/in flight: spamming ⌃1 must not
-    /// launch five full multi-display captures.
-    private var screenshotInFlight = false
-    private var ocrInFlight = false
-    private var colorPickInFlight = false
+    /// One capture at a time per feature: spamming ⌃1 must not launch five full
+    /// multi-display captures.
+    ///
+    /// Latches rather than plain flags, because a plain flag is only ever
+    /// cleared by the work finishing, and work that hangs then costs the user
+    /// the shortcut permanently. The timeouts differ because the holds do: a
+    /// screenshot is machine-paced, while OCR and the colour picker are held
+    /// across a drag the person is doing by hand.
+    private var screenshotLatch = InFlightLatch(timeout: 60)
+    private var ocrLatch = InFlightLatch(timeout: 300)
+    private var colorPickLatch = InFlightLatch(timeout: 300)
     /// The running update check, so two can't overlap and quit can cancel it.
     private var updateCheck: Task<Void, Never>?
 
     @objc func captureAndAnnotate() {
-        guard !screenshotInFlight else { return }
         guard Permissions.ensureScreenRecording() else { reportCaptureUnavailable(); return }
-        screenshotInFlight = true
+        guard screenshotLatch.take() else { return }
         // Count captures so the editor's first-run hint can fade out after a few.
         let d = UserDefaults.standard
         d.set(d.integer(forKey: "editorHintCount") + 1, forKey: "editorHintCount")
@@ -262,7 +267,7 @@ final class AppCoordinator: NSObject, NSMenuDelegate {
         afterCaptureDelay { [weak self] in
             guard let self else { return }
             Task { @MainActor in
-                defer { self.screenshotInFlight = false }
+                defer { self.screenshotLatch.release() }
                 // "Hide desktop icons while capturing" was advertised for THIS flow
                 // and never reached it: the cover was raised only by
                 // `RegionSelector`, which this flow doesn't use. It freezes every
@@ -312,7 +317,7 @@ final class AppCoordinator: NSObject, NSMenuDelegate {
         // One OCR at a time: overlapping tasks race on the clipboard and the
         // slower, OLDER selection can overwrite the newer result. Beep rather
         // than swallow: a dead-feeling hotkey reads as a broken app.
-        guard !ocrInFlight else { NSSound.beep(); return }
+        guard !ocrLatch.isHeld() else { NSSound.beep(); return }
         guard Permissions.ensureScreenRecording() else { reportCaptureUnavailable(); return }
         // Spend the user's drag on the work that would otherwise be their wait:
         // loading the recognizer's models (~0.1s once per launch, and the whole
@@ -335,7 +340,7 @@ final class AppCoordinator: NSObject, NSMenuDelegate {
     /// Re-read the last area with no drag. The winning move for a live-updating
     /// panel: a log line, a build number, a total that just changed.
     @objc func ocrRepeatCapture() {
-        guard !ocrInFlight else { NSSound.beep(); return }
+        guard !ocrLatch.isHeld() else { NSSound.beep(); return }
         guard let area = lastOCRArea else {
             Notifier.info("No previous area",
                           "Grab text once with \(settings.ocrHotkey.displayString) first. Then this repeats it.")
@@ -380,9 +385,9 @@ final class AppCoordinator: NSObject, NSMenuDelegate {
     /// Capture → recognize → clipboard, shared by the drag path and the
     /// repeat-last-area path so both report misses the same way.
     private func runOCR(on selection: RegionSelection) {
-        ocrInFlight = true
+        _ = ocrLatch.take()
         Task { @MainActor in
-            defer { self.ocrInFlight = false }
+            defer { self.ocrLatch.release() }
             do {
                 let image = try await CaptureService.capture(selection)
                 let text = try await OCRService.recognizeText(in: image,
@@ -470,10 +475,9 @@ final class AppCoordinator: NSObject, NSMenuDelegate {
         // In-flight guard, like the screenshot and OCR paths: the menu item and
         // the global hotkey share a key equivalent, so a press with the status
         // menu open can arrive twice and open two eyedroppers.
-        guard !colorPickInFlight else { return }
-        colorPickInFlight = true
+        guard colorPickLatch.take() else { return }
         ColorPickerService.pick { [weak self] color in
-            self?.colorPickInFlight = false
+            self?.colorPickLatch.release()
             // nil = user pressed Esc → stop (also ends continuous mode).
             guard let self, let color else { return }
             let value = color.formatted(as: self.settings.colorFormat,

@@ -101,6 +101,7 @@ let package = Package(
                 "Support/BackgroundWork.swift",
                 "Support/CacheCleaner.swift",
                 "Support/CrashLog.swift",
+                "Support/InFlight.swift",
                 "Support/InstallHelper.swift",
                 "Support/MissLog.swift",
                 "Support/Notifier.swift",
