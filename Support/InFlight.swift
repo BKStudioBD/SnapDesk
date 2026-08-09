@@ -58,20 +58,50 @@ struct InFlightLatch {
 ///
 /// The underlying call is not necessarily cancellable: ScreenCaptureKit may
 /// still be off doing whatever wedged it. What this guarantees is that the
-/// caller stops waiting, so the latch above is released, the error reaches the
+/// CALLER stops waiting, so the latch above is released, the error reaches the
 /// user, and the next press gets a fresh attempt.
+///
+/// Deliberately NOT a task group. A group awaits every child before its body
+/// can return, so cancelling the loser only helps when the loser cooperates. A
+/// call blocked inside a C API does not, and the group would sit there waiting
+/// for exactly the thing whose hanging this exists to survive. Unstructured
+/// tasks and a first-past-the-post resume are what make the timeout real. The
+/// stuck task is left to finish into a result nobody reads, which is the honest
+/// price of a system call that cannot be cancelled.
 func withDeadline<T: Sendable>(_ seconds: TimeInterval,
                                _ operation: @escaping @Sendable () async throws -> T) async throws -> T {
-    try await withThrowingTaskGroup(of: T.self) { group in
-        group.addTask { try await operation() }
-        group.addTask {
-            try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-            throw DeadlineError.timedOut(after: seconds)
+    let once = ResumeOnce<T>()
+    return try await withCheckedThrowingContinuation { continuation in
+        once.arm(continuation)
+        Task {
+            do { once.finish(.success(try await operation())) }
+            catch { once.finish(.failure(error)) }
         }
-        // Whichever finishes first decides, and the loser is cancelled.
-        guard let first = try await group.next() else { throw DeadlineError.timedOut(after: seconds) }
-        group.cancelAll()
-        return first
+        Task {
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            once.finish(.failure(DeadlineError.timedOut(after: seconds)))
+        }
+    }
+}
+
+/// Resumes a continuation exactly once, whichever racer gets there first.
+/// Resuming twice is undefined behaviour, and both racers here are expected to
+/// finish eventually.
+private final class ResumeOnce<T: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<T, Error>?
+
+    func arm(_ c: CheckedContinuation<T, Error>) {
+        lock.lock(); defer { lock.unlock() }
+        continuation = c
+    }
+
+    func finish(_ result: Result<T, Error>) {
+        lock.lock()
+        let c = continuation
+        continuation = nil
+        lock.unlock()
+        c?.resume(with: result)
     }
 }
 

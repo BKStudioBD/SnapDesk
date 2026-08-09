@@ -40,10 +40,20 @@ enum RegionSelector {
         // a "sometimes it just doesn't work" dead press when an (invisible,
         // selection-only) overlay was still alive from a previous attempt.
         dispatchPrecondition(condition: .onQueue(.main))
-        // Never open a capture overlay above a modal alert (e.g. the permission
-        // "Restart SnapDesk" dialog). The screen-level overlay would cover the
-        // alert and eat every click while the modal session ignores them.
-        guard NSApp.modalWindow == nil else { completion(nil); return }
+        // Never open a capture overlay above a modal (a save panel, a folder
+        // picker, an update prompt). The screen-level overlay would cover it and
+        // eat every click while the modal session ignores them.
+        //
+        // Say so. Refusing in silence here is indistinguishable from the app
+        // being broken, and this is one of the ways a shortcut "just does
+        // nothing": the panel is often on another Space or behind a full-screen
+        // window, so the user cannot see what is holding it up.
+        guard NSApp.modalWindow == nil else {
+            Notifier.info("Finish the open dialog first",
+                          "SnapDesk can't capture while one of its own panels is open.")
+            completion(nil)
+            return
+        }
         if let stale = session {
             session = nil
             stale.cancel()

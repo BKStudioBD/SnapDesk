@@ -89,6 +89,34 @@ struct InFlightTests {
         }
     }
 
+    @Test("The deadline fires even when the work IGNORES cancellation")
+    func deadlineBeatsAnUncooperativeHang() async {
+        // The case that matters, and the one the first version of this got
+        // wrong. A task group awaits its children before returning, so
+        // cancelling the loser only works if the loser cooperates. A capture
+        // blocked inside a C API does not, and the group would have waited for
+        // exactly the hang it was supposed to survive.
+        await #expect(throws: DeadlineError.self) {
+            try await withDeadline(0.05) {
+                // Swallows cancellation and keeps going, like a system call
+                // that has no idea a Swift task wants it to stop.
+                for _ in 0..<5 {
+                    try? await Task.sleep(nanoseconds: 200_000_000)
+                }
+                return 0
+            }
+        }
+    }
+
+    @Test("A deadline that is not hit leaves the value untouched")
+    func slowButInTimeStillReturns() async throws {
+        let value = try await withDeadline(5) {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            return "done"
+        }
+        #expect(value == "done")
+    }
+
     @Test("The timeout message tells the user what to do")
     func deadlineErrorReads() {
         let text = DeadlineError.timedOut(after: 10).errorDescription ?? ""
