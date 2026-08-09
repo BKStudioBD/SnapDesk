@@ -117,9 +117,19 @@ enum CaptureService {
     /// Fire-and-forget: a failure here just means the real capture refetches.
     static func warmShareableContent() {
         Task { @MainActor in
-            guard let content = try? await SCShareableContent.excludingDesktopWindows(
-                false, onScreenWindowsOnly: false) else { return }
+            guard let content = try? await shareableContent() else { return }
             cachedContent = (content, Date())
+        }
+    }
+
+    /// Enumerating windows is IPC to the window server, and it can hang for the
+    /// same reasons a capture can. Every caller here waits a bounded time so a
+    /// wedged window server surfaces as an error the user can act on, rather
+    /// than as a shortcut that silently does nothing ever again.
+    private static func shareableContent() async throws -> SCShareableContent {
+        try await withDeadline(8) {
+            try await SCShareableContent.excludingDesktopWindows(
+                false, onScreenWindowsOnly: false)
         }
     }
 
@@ -151,8 +161,7 @@ enum CaptureService {
            coverIDs.isSubset(of: Set(c.windows.map { $0.windowID })) {
             content = c
         } else {
-            content = try await SCShareableContent.excludingDesktopWindows(
-                false, onScreenWindowsOnly: false)
+            content = try await shareableContent()
             cachedContent = (content, Date())
         }
 
@@ -162,8 +171,7 @@ enum CaptureService {
         // monitor? Refetch once before failing. The cache is stale, not the display.
         var scDisplay = content.displays.first(where: { $0.displayID == displayID })
         if scDisplay == nil {
-            let fresh = try await SCShareableContent.excludingDesktopWindows(
-                false, onScreenWindowsOnly: false)
+            let fresh = try await shareableContent()
             cachedContent = (fresh, Date())
             // Adopt the fresh snapshot wholesale: reading the display from one
             // snapshot and our own app from another risks missing ourselves in

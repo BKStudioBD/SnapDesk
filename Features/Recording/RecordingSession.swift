@@ -106,7 +106,12 @@ final class RecordingSession: NSObject {
 
         var decorator: FrameDecorator?
         do {
-            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+            // Bounded like every other window-server round trip: a hang here
+            // used to leave the countdown finished and no recording started,
+            // with nothing to say why.
+            let content = try await withDeadline(8) {
+                try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+            }
             // NO first-display fallback: recording the wrong monitor is worse
             // than failing with a clear error (display just disconnected).
             guard let displayID = selection.screen.displayID,
