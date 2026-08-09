@@ -9,8 +9,9 @@ import ApplicationServices
 ///   OCR, recording and scrolling capture. macOS keys the grant on the app's
 ///   code-signing *designated requirement*, not the binary hash, so with
 ///   SnapDesk's stable signing the grant persists across launches and updates.
-///   The one catch: a freshly-granted permission is only honored by a NEW
-///   process, so `captureState` reports `.needsRestart` until the user restarts.
+///   Whether it is really live is decided by trying: a capture that comes back
+///   blank is the only reliable signal, so `captureState` reports
+///   `.needsRestart` after one, and clears itself after a capture that works.
 ///
 /// • **Accessibility** (`AXIsProcessTrusted`): only needed to synthesize the
 ///   ⌘V keystroke for "paste from clipboard history". `AXIsProcessTrusted()`
@@ -29,13 +30,13 @@ enum Permissions {
 
     /// Whether the five capture features can run right now, and if not, why.
     enum CaptureState: Equatable {
-        /// Granted before this process started: capture works.
+        /// Capture is working, or has not been shown otherwise.
         case ready
         /// Not granted. The user has to turn it on in System Settings.
         case needsGrant
-        /// Granted, but after this process launched. Preflight says yes while
-        /// the capture engine still runs on the launch-time (denied) state, so
-        /// every capture would come back blank. Only a new process fixes it.
+        /// The grant says yes and a capture still came back blank, which is how
+        /// macOS reports a permission it has not honoured for this process. A
+        /// new process is the only fix; the next capture that works clears it.
         case needsRestart
 
         /// One line, in the user's terms, for the menu and the notification.
@@ -56,26 +57,51 @@ enum Permissions {
     static var hasScreenRecording: Bool { CGPreflightScreenCaptureAccess() }
     static var hasAccessibility: Bool { AXIsProcessTrusted() }
 
-    /// Whether Screen Recording was already granted when THIS process started.
-    /// A grant that appears later is only honored by a NEW process.
+    /// Kept for the record at startup. Deliberately NOT a gate any more: see
+    /// `state(hasGrant:blankCaptureSeen:)` for why the launch-time answer is
+    /// the wrong thing to refuse on.
     private static let grantAtLaunch: Bool = CGPreflightScreenCaptureAccess()
 
-    /// Call once at app startup so `grantAtLaunch` is evaluated before any
-    /// grant can change (static lets are lazy).
+    /// Call once at app startup, before any grant can change.
     static func primeLaunchState() { _ = grantAtLaunch }
 
+    /// Set when a capture came back blank while the grant said yes. Cleared by
+    /// the first capture that works again.
+    private static var sawBlankCapture = false
+
     static var captureState: CaptureState {
-        state(hasGrant: hasScreenRecording, grantedAtLaunch: grantAtLaunch)
+        state(hasGrant: hasScreenRecording, blankCaptureSeen: sawBlankCapture)
     }
 
     /// The rule on its own, so it can be checked without a TCC grant.
     ///
-    /// The pair matters, not either half: a grant that arrived after launch
-    /// reads as allowed and captures blank, which is the state that used to
-    /// look like a broken app.
-    static func state(hasGrant: Bool, grantedAtLaunch: Bool) -> CaptureState {
+    /// Judged on EVIDENCE, not on when the grant arrived. The old rule refused
+    /// every capture for the whole life of a process that started before the
+    /// grant did, on the theory that only a new process can use it. A menu-bar
+    /// app runs for days: one instance here had been up for two and a half of
+    /// them, and macOS re-confirms Screen Recording on its own schedule, so a
+    /// single re-confirm left five shortcuts refusing to even try until someone
+    /// restarted the app. Now it tries, and a frame that comes back blank is
+    /// what says the permission is not really live.
+    static func state(hasGrant: Bool, blankCaptureSeen: Bool) -> CaptureState {
         guard hasGrant else { return .needsGrant }
-        return grantedAtLaunch ? .ready : .needsRestart
+        return blankCaptureSeen ? .needsRestart : .ready
+    }
+
+    /// A capture came back empty though the grant says yes. That combination is
+    /// how macOS reports a permission it has not actually honoured yet.
+    static func noteBlankCapture() {
+        guard !sawBlankCapture else { return }
+        sawBlankCapture = true
+        publish(captureState)
+    }
+
+    /// A capture worked, so whatever was wrong is over. Lets the app recover on
+    /// its own instead of holding a complaint until someone restarts it.
+    static func noteCaptureSucceeded() {
+        guard sawBlankCapture else { return }
+        sawBlankCapture = false
+        publish(captureState)
     }
 
     // MARK: - Screen Recording
@@ -91,11 +117,13 @@ enum Permissions {
     static func ensureScreenRecording() -> Bool {
         let state = captureState
         publish(state)
-        guard state == .ready else {
+        // A known-bad state still lets the attempt through: the grant may have
+        // become real since, and the capture itself is the only honest test.
+        guard state != .needsGrant else {
             // Registers SnapDesk in the Screen Recording list so there is a row
             // to switch on. Prompts at most once per launch; macOS ignores the
             // rest, and the menu bar is carrying the message anyway.
-            if state == .needsGrant, !requestedThisLaunch {
+            if !requestedThisLaunch {
                 requestedThisLaunch = true
                 CGRequestScreenCaptureAccess()
             }
@@ -114,7 +142,7 @@ enum Permissions {
         case .needsGrant:
             "Turn SnapDesk on in System Settings → Privacy & Security → Screen Recording, then restart SnapDesk from its menu."
         case .needsRestart:
-            "The permission is on, but it only takes effect in a new process. Restart SnapDesk from its menu."
+            "The permission is on, but this copy of SnapDesk is still being handed empty frames. Restart SnapDesk from its menu."
         }
     }
 

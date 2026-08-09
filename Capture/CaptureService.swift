@@ -197,8 +197,19 @@ enum CaptureService {
         config.showsCursor = false
         config.captureResolution = .best
 
-        return try await SCScreenshotManager.captureImage(
+        let image = try await SCScreenshotManager.captureImage(
             contentFilter: filter, configuration: config)
+        // A WHOLE display coming back as one flat shade is how macOS says it did
+        // not really honour the Screen Recording grant: no error, just the
+        // windows stripped out. Reported here rather than guessed at from the
+        // grant's age, and reported per-display because one uniform region is
+        // ordinary while one uniform screen is not.
+        if looksBlank(image) {
+            Permissions.noteBlankCapture()
+        } else {
+            Permissions.noteCaptureSucceeded()
+        }
+        return image
     }
 
     /// On-screen normal-window rectangles in CoreGraphics global coords
