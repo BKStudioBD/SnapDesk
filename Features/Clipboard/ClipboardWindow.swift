@@ -73,7 +73,9 @@ final class ClipboardWindowController: NSWindowController {
                   app.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
             self.previousApp = app
         }
-        window.contentViewController = makeHosting()
+        let host = makeHosting()
+        hosting = host
+        window.contentViewController = host
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -90,8 +92,17 @@ final class ClipboardWindowController: NSWindowController {
         return hc
     }
 
+    /// The hosting controller, created once. See `willShow` for why it is never
+    /// replaced.
+    private var hosting: NSHostingController<ClipboardHistoryView>?
+
+    /// Bumped on every open. The root view hangs its `.id` on this, which is
+    /// what discards the old `@State` without destroying anything AppKit owns.
+    private var session = 0
+
     private func makeRootView() -> ClipboardHistoryView {
         ClipboardHistoryView(
+            session: session,
             manager: manager, settings: settings, snippets: snippets,
             onPaste: { [weak self] item in
                 // One paste per opening, whatever the rows do. Click row A then
@@ -110,13 +121,28 @@ final class ClipboardWindowController: NSWindowController {
     /// Record the paste target and apply the chosen appearance before showing.
     func willShow(prev: NSRunningApplication?) {
         previousApp = prev
-        // Fresh view every open. Closing this window does NOT release it
-        // (isReleasedWhenClosed = false) and the controller lives as long as the
-        // app, so SwiftUI @State survives close → reopen: the history used to
-        // come back still filtered by the search you typed an hour ago, showing
-        // a fraction of the list. Rebuilding also guarantees no per-row state
-        // can outlive a session and quietly disable a row.
-        window?.contentViewController = makeHosting()
+        // Fresh STATE every open, same hosting controller. Closing this window
+        // does NOT release it (isReleasedWhenClosed = false) and the controller
+        // lives as long as the app, so SwiftUI @State survives close → reopen:
+        // the history used to come back still filtered by the search you typed
+        // an hour ago, showing a fraction of the list.
+        //
+        // That reset used to be done by assigning a NEW NSHostingController,
+        // which destroyed the old one, an NSResponder, along with its whole
+        // SwiftUI tree, on the main run loop inside an autorelease pool drain.
+        // Three of this app's crash reports are exactly that teardown:
+        // `-[NSResponder dealloc]` → `object_cxxDestructFromClass` →
+        // `swift_task_deinitOnExecutorImpl` → a trap in `objc_msgSend`. Some
+        // SwiftUI type held in there has a main-actor-isolated deinit (nothing
+        // of ours does; the binary references that symbol zero times), and
+        // releasing it from a pool drain is where it goes wrong. This is the
+        // only AppKit object in the app that was torn down repeatedly, and this
+        // happened on EVERY press of the clipboard shortcut.
+        //
+        // Changing the id discards the same `@State` without deallocating
+        // anything AppKit owns.
+        session &+= 1
+        hosting?.rootView = makeRootView()
         // Solid background follows the system appearance, always crisp & readable.
         window?.appearance = nil
         // FORCE the intended size every open. Swapping the content controller
@@ -183,6 +209,8 @@ private struct ClipboardSheet: Identifiable {
 }
 
 struct ClipboardHistoryView: View {
+    /// Changes on every open, so `.id` below throws away the previous `@State`.
+    var session: Int = 0
     @ObservedObject var manager: ClipboardManager
     @ObservedObject var settings: SettingsStore
     @ObservedObject var snippets: SnippetStore
@@ -264,6 +292,11 @@ struct ClipboardHistoryView: View {
 
             if selection.isEmpty == false { selectionBar(rows: rows) }
         }
+        // Every open gets a fresh view identity, and with it fresh @State: the
+        // search text, the cursor, the selection and every per-row flag. This is
+        // the reset that used to be done by replacing the whole hosting
+        // controller, which is what crashed. See `willShow`.
+        .id(session)
         // Default is the minimum: grow only, never shrink below it.
         .frame(minWidth: 400, minHeight: 560)
         .background(Color(nsColor: .windowBackgroundColor))
