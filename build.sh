@@ -65,6 +65,20 @@ cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
   /usr/libexec/PlistBuddy -c "Add :CFBundleExecutable string $APP_NAME" "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
+# Every key a real .app carries. This plist is written by hand, and a missing
+# one does not fail the build, it crashes the app later somewhere unrelated:
+# with no CFBundleDevelopmentRegion, ViewBridge throws out of
+# `_CFBundleGetValueForInfoKey` while macOS is waking the status item, and the
+# process aborts. Six recorded crashes came from that. Fail here instead.
+for key in CFBundleIdentifier CFBundleExecutable CFBundleName CFBundleVersion \
+           CFBundleShortVersionString CFBundlePackageType CFBundleDevelopmentRegion \
+           CFBundleInfoDictionaryVersion LSMinimumSystemVersion; do
+  if ! /usr/libexec/PlistBuddy -c "Print :$key" "$APP/Contents/Info.plist" >/dev/null 2>&1; then
+    echo "❌ Info.plist is missing $key. Add it to Resources/Info.plist." >&2
+    exit 1
+  fi
+done
+
 # Bundle custom UI sounds (Resources/Sounds/*.wav → Contents/Resources/Sounds).
 if [ -d "$ROOT/Resources/Sounds" ]; then
   mkdir -p "$APP/Contents/Resources/Sounds"

@@ -19,6 +19,30 @@
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
 
+    <!--
+      The keys Xcode would have written, and this hand-built plist did not.
+      CFBundleDevelopmentRegion is the load-bearing one: ViewBridge asks the
+      HOST bundle for its localization when a remote view's window is ordered on
+      screen, that lookup goes through `_CFBundleGetValueForInfoKey`, and with
+      no development region it throws. The exception escapes through
+      `-[NSRemoteView containingWindowWillOrderOnScreen:]` and aborts the
+      process. Six of this app's nine recorded crashes are that one stack,
+      always while macOS was waking the status item.
+    -->
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleSupportedPlatforms</key>
+    <array>
+        <string>MacOSX</string>
+    </array>
+    <key>CFBundleSignature</key>
+    <string>????</string>
+    <!-- Required by App Store Connect, and free to carry either way. -->
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.productivity</string>
+
     <!-- Menu-bar app: hide the Dock icon and main window. -->
     <key>LSUIElement</key>
     <true/>
