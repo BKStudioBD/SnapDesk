@@ -51,11 +51,11 @@ mkdir -p "$BUILD"
 # The project file is checked in. Regenerate it after adding or moving sources:
 #   ./tools/make-xcodeproj.py
 #
-# `generic/platform=macOS` is what makes it universal: without it xcodebuild
-# builds for this machine's architecture alone, and an arm64-only build does not
-# launch on an Intel Mac.
+# Apple Silicon only, by choice. A universal build doubles the compile for a
+# slice that has to be maintained and cannot be tested here. `generic/platform`
+# stays so the output does not depend on which machine ran the build.
 DERIVED="$BUILD/xcode"
-echo "▶ Building with Xcode (universal: arm64 + x86_64)…"
+echo "▶ Building with Xcode (Apple Silicon)…"
 xcodebuild \
   -project "$ROOT/$APP_NAME.xcodeproj" \
   -scheme "$APP_NAME" \

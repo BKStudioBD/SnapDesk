@@ -127,7 +127,7 @@ def main() -> int:
         release = configuration == "Release"
         return "\n".join([
             "\t\t\t\tALWAYS_SEARCH_USER_PATHS = NO;",
-            "\t\t\t\tARCHS = \"arm64 x86_64\";",
+            "\t\t\t\tARCHS = arm64;",
             "\t\t\t\tCLANG_ENABLE_OBJC_ARC = YES;",
             "\t\t\t\tCODE_SIGN_ENTITLEMENTS = SnapDesk.entitlements;",
             "\t\t\t\tCODE_SIGN_IDENTITY = \"-\";",

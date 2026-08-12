@@ -129,7 +129,7 @@ A two-tab window for getting disk and memory back, built from the same system co
 
 ### Requirements
 
-- Any Mac, Apple Silicon or Intel (universal binary)
+- A Mac with Apple Silicon (M-series). Intel Macs are not supported.
 - macOS 14.0 (Sonoma) or later
 
 ### One command, no Gatekeeper warning
@@ -165,7 +165,7 @@ cd SnapDesk
 
 `./build.sh` builds, signs and installs the app, and `--zip` adds a release archive. `./test.sh` type-checks every source file and runs the unit suite.
 
-The app is an Xcode project (`SnapDesk.xcodeproj`), so Apple's tooling owns the bundle: the Info.plist keys, the universal slices, the hardened runtime. It was assembled by hand until a missing `CFBundleDevelopmentRegion` crashed the app six times from inside ViewBridge, in a stack with none of our code in it. `build.sh` drives `xcodebuild` and keeps everything around it, including the stable local signing identity that makes the Screen Recording grant persist across rebuilds.
+The app is an Xcode project (`SnapDesk.xcodeproj`), so Apple's tooling owns the bundle: the Info.plist keys, the architecture slices, the hardened runtime. It was assembled by hand until a missing `CFBundleDevelopmentRegion` crashed the app six times from inside ViewBridge, in a stack with none of our code in it. `build.sh` drives `xcodebuild` and keeps everything around it, including the stable local signing identity that makes the Screen Recording grant persist across rebuilds.
 
 The project file is checked in, so a build needs nothing but Xcode. After adding or moving source files, regenerate it with `./tools/make-xcodeproj.py` rather than editing the pbxproj.
 
