@@ -8,13 +8,21 @@ import Observation
 /// looking at. Every reading but one is a handful of syscalls measured in
 /// microseconds, which is why they run right here on the main actor instead of
 /// paying for a thread hop; free disk space is the exception.
-@MainActor
+/// `@MainActor` sits on the members, not on the class, and that placement is
+/// load-bearing. A main-actor-ISOLATED class gets an isolated `deinit`: releasing
+/// it makes the runtime check and hop executors on an object that is already
+/// being destroyed. Three of this app's crashes are that hop reading freed
+/// metadata, `swift_task_deinitOnExecutorImpl` under `_swift_release_dealloc`,
+/// and the last one landed while the process was shutting down and the main
+/// executor was going away underneath it. Everything here is still only touched
+/// from the main actor; only the deinit stops being isolated.
 @Observable
 final class SystemMonitor {
     private(set) var sample = SystemSample()
     private var previous = SystemCounters()
 
     /// Sample once a second until cancelled.
+    @MainActor
     func run() async {
         previous = SystemStats.counters()
         await update()
@@ -26,6 +34,7 @@ final class SystemMonitor {
 
     /// Take a reading now: used after a memory clean, so the numbers move the
     /// moment the work finishes rather than up to a second later.
+    @MainActor
     func update() async {
         let current = SystemStats.counters()
         // Counted against the previous reading BEFORE the hop below, so the

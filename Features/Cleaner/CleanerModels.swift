@@ -7,8 +7,15 @@ import Observation
 /// change tore down the tab's `@State` and its `.task`: ticks were lost and
 /// every cache was measured again from scratch. The measuring now happens once
 /// per window, and a tab can be left and come back to.
-
-@MainActor
+///
+/// `@MainActor` sits on the members, not on the class, and that placement is
+/// load-bearing. A main-actor-ISOLATED class gets an isolated `deinit`: releasing
+/// it makes the runtime check and hop executors on an object that is already
+/// being destroyed. Three of this app's crashes are that hop reading freed
+/// metadata, `swift_task_deinitOnExecutorImpl` under `_swift_release_dealloc`,
+/// and the last one landed while the process was shutting down and the main
+/// executor was going away underneath it. Everything here is still only touched
+/// from the main actor; only the deinit stops being isolated.
 @Observable
 final class CleanModel {
     var categories: [CacheCategory] = []
@@ -22,23 +29,23 @@ final class CleanModel {
 
     /// Only what exists AND has something in it. A row reading "0 bytes" is a
     /// row nobody can act on.
-    var visible: [CacheCategory] { categories.filter { (sizes[$0.id] ?? 0) > 0 } }
-    var picked: [CacheCategory] { visible.filter { selected.contains($0.id) } }
-    var selectedBytes: UInt64 { picked.reduce(0) { $0 + (sizes[$1.id] ?? 0) } }
-    var totalBytes: UInt64 { visible.reduce(0) { $0 + (sizes[$1.id] ?? 0) } }
+    @MainActor var visible: [CacheCategory] { categories.filter { (sizes[$0.id] ?? 0) > 0 } }
+    @MainActor var picked: [CacheCategory] { visible.filter { selected.contains($0.id) } }
+    @MainActor var selectedBytes: UInt64 { picked.reduce(0) { $0 + (sizes[$1.id] ?? 0) } }
+    @MainActor var totalBytes: UInt64 { visible.reduce(0) { $0 + (sizes[$1.id] ?? 0) } }
 
     /// Everything Select All would tick, never the Trash, so the button
     /// doesn't sit on "Deselect All" forever.
-    var allSelected: Bool {
+    @MainActor var allSelected: Bool {
         let selectable = visible.filter { !$0.isTrash }
         return !selectable.isEmpty && selectable.allSatisfy { selected.contains($0.id) }
     }
 
-    func bytes(of rows: [CacheCategory]) -> UInt64 {
+    @MainActor func bytes(of rows: [CacheCategory]) -> UInt64 {
         rows.reduce(0) { $0 + (sizes[$1.id] ?? 0) }
     }
 
-    func scanIfNeeded() async {
+    @MainActor func scanIfNeeded() async {
         guard !scanned else { return }
         scanned = true
         // Building the catalog is a stat() per path; measuring walks whole
@@ -53,7 +60,7 @@ final class CleanModel {
         isScanning = false
     }
 
-    func clean(playSound: () -> Void) async {
+    @MainActor func clean(playSound: () -> Void) async {
         isCleaning = true
         let picked = self.picked
         let freed = await CacheCleaner.clean(picked)
