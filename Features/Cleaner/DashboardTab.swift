@@ -8,14 +8,15 @@ import Observation
 /// looking at. Every reading but one is a handful of syscalls measured in
 /// microseconds, which is why they run right here on the main actor instead of
 /// paying for a thread hop; free disk space is the exception.
-/// `@MainActor` sits on the members, not on the class, and that placement is
-/// load-bearing. A main-actor-ISOLATED class gets an isolated `deinit`: releasing
-/// it makes the runtime check and hop executors on an object that is already
-/// being destroyed. Three of this app's crashes are that hop reading freed
-/// metadata, `swift_task_deinitOnExecutorImpl` under `_swift_release_dealloc`,
-/// and the last one landed while the process was shutting down and the main
-/// executor was going away underneath it. Everything here is still only touched
-/// from the main actor; only the deinit stops being isolated.
+/// `@MainActor` sits on the members rather than on the type. That is a
+/// precaution, not a proven fix: a main-actor-isolated CLASS gets an isolated
+/// `deinit`, and three of this app's crashes are the runtime hopping executors
+/// inside one (`swift_task_deinitOnExecutorImpl` under `_swift_release_dealloc`).
+/// Checked afterwards, though: the binary references that symbol zero times
+/// either way, because isolated deinit is a Swift 6 feature and this ships in
+/// Swift 5 mode. So the isolated deinit in those crashes belongs to a framework
+/// type, not to this one. Keeping the annotation on the members costs nothing
+/// and removes the class from the list of candidates for good.
 @Observable
 final class SystemMonitor {
     private(set) var sample = SystemSample()
