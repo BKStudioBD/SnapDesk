@@ -225,6 +225,21 @@ Support/     Permissions, paster, notifier, sounds, diagnostics
 ./test-tools.sh  # headless render test of every annotation tool, writes PNGs
 ```
 
+For the things a unit test cannot reach, there is a headless stress harness. It
+compiles the app's own sources with its own `main.swift`, so the code under test
+is the shipping code, and it runs without taking over the screen:
+
+```bash
+./tools/stress/run.sh 200 --ocr      # recognitions over freshly drawn pages
+./tools/stress/run.sh 200 --capture  # full-display grabs through the real path
+./tools/stress/run.sh 500            # opening and closing the windows
+```
+
+It reports memory as it goes, so a leak shows up as a figure that keeps climbing
+rather than one that plateaus. What it cannot stage is the environment: there is
+no menu bar, no status item scene, and nothing suspending the process
+mid-teardown, which is the half of a real crash report no loop can arrange.
+
 `./test.sh` type-checks every source and runs `swift test`: Swift Testing, 297 tests in 42 suites, about two seconds. It needs no microphone, no screen recording and no permission of any kind, and it never writes to the real pasteboard.
 
 What it pins down, chosen so every bug that actually shipped stays fixed:
