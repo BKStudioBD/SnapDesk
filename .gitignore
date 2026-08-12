@@ -15,3 +15,9 @@ Package.resolved
 # Local signing material (never commit private keys / profiles)
 *.p12
 *.cer
+
+# Xcode per-user state: window layout, breakpoints, the scheme's last run
+# destination. Nothing here belongs to the project.
+xcuserdata/
+*.xcuserstate
+SnapDesk.xcodeproj/project.xcworkspace/

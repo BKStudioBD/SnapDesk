@@ -28,48 +28,54 @@ ZIP="$BUILD/$APP_NAME.zip"
 DEV_ID="${DEV_ID:-}"                 # Developer ID Application identity, or empty for ad-hoc
 NOTARY_PROFILE="${NOTARY_PROFILE:-}" # notarytool keychain profile name, or empty to skip
 
+# Which entitlements the build signs with. Decided here because Xcode signs
+# during the build, before the re-signing step below gets a say.
+ENTITLEMENTS_FOR_XCODE="$ROOT/$APP_NAME.entitlements"
+if [[ " $* " == *" --mas "* ]]; then
+  ENTITLEMENTS_FOR_XCODE="$ROOT/$APP_NAME-MAS.entitlements"
+fi
+
 echo "▶ Cleaning…"
 rm -rf "$BUILD"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+# Only the output directory. The bundle itself is Xcode's to create: pre-making
+# the .app made `cp -R` nest a second copy inside it.
+mkdir -p "$BUILD"
 
-SDK="$(xcrun --sdk macosx --show-sdk-path)"
-SOURCES=$(find "$ROOT" -name '*.swift' -not -path "$BUILD/*" -not -path "$ROOT/tools/*" -not -path "$ROOT/Tests/*" -not -path "$ROOT/.build/*" -not -name "Package.swift")
+# --- Build the bundle with Xcode ---------------------------------------------
+# Xcode owns the bundle now. It used to be assembled here by hand: a directory
+# tree, a copied Info.plist, two swiftc invocations and a lipo. That worked
+# until the plist was missing a key Apple's own tooling would always have
+# written, and the app aborted days later inside ViewBridge with nothing of ours
+# in the stack. Six of nine recorded crashes were that one omission.
+#
+# The project file is checked in. Regenerate it after adding or moving sources:
+#   ./tools/make-xcodeproj.py
+#
+# `generic/platform=macOS` is what makes it universal: without it xcodebuild
+# builds for this machine's architecture alone, and an arm64-only build does not
+# launch on an Intel Mac.
+DERIVED="$BUILD/xcode"
+echo "▶ Building with Xcode (universal: arm64 + x86_64)…"
+xcodebuild \
+  -project "$ROOT/$APP_NAME.xcodeproj" \
+  -scheme "$APP_NAME" \
+  -configuration Release \
+  -destination 'generic/platform=macOS' \
+  -derivedDataPath "$DERIVED" \
+  CODE_SIGN_ENTITLEMENTS="$ENTITLEMENTS_FOR_XCODE" \
+  build > "$BUILD/xcodebuild.log" 2>&1 || {
+    echo "❌ Build failed. Last lines of $BUILD/xcodebuild.log:" >&2
+    tail -30 "$BUILD/xcodebuild.log" >&2
+    exit 1
+  }
 
-# --- Compile a UNIVERSAL binary (arm64 + x86_64) -----------------------------
-# Build each arch separately, then lipo them into one fat binary so SnapDesk
-# runs natively on Apple Silicon AND on Intel Macs. (arm64-only wouldn't launch
-# at all on an Intel Mac, the #1 "my friend can't open it" cause.)
+cp -R "$DERIVED/Build/Products/Release/$APP_NAME.app" "$APP"
 BIN="$APP/Contents/MacOS/$APP_NAME"
-echo "▶ Compiling for Apple Silicon (arm64)…"
-xcrun -sdk macosx swiftc \
-  -O -whole-module-optimization -parse-as-library \
-  -target "arm64-apple-macos${MIN_MACOS}" -sdk "$SDK" \
-  $SOURCES -o "$BUILD/snapdesk-arm64"
-
-echo "▶ Compiling for Intel (x86_64)…"
-xcrun -sdk macosx swiftc \
-  -O -whole-module-optimization -parse-as-library \
-  -target "x86_64-apple-macos${MIN_MACOS}" -sdk "$SDK" \
-  $SOURCES -o "$BUILD/snapdesk-x86_64"
-
-echo "▶ Merging into a universal binary…"
-lipo -create "$BUILD/snapdesk-arm64" "$BUILD/snapdesk-x86_64" -output "$BIN"
-rm -f "$BUILD/snapdesk-arm64" "$BUILD/snapdesk-x86_64"
-
 echo "▶ Binary architectures: $(lipo -archs "$BIN")"
 
-# --- Assemble the bundle -----------------------------------------------------
-echo "▶ Assembling app bundle…"
-cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $APP_NAME" "$APP/Contents/Info.plist" 2>/dev/null || \
-  /usr/libexec/PlistBuddy -c "Add :CFBundleExecutable string $APP_NAME" "$APP/Contents/Info.plist"
-printf 'APPL????' > "$APP/Contents/PkgInfo"
-
-# Every key a real .app carries. This plist is written by hand, and a missing
-# one does not fail the build, it crashes the app later somewhere unrelated:
-# with no CFBundleDevelopmentRegion, ViewBridge throws out of
-# `_CFBundleGetValueForInfoKey` while macOS is waking the status item, and the
-# process aborts. Six recorded crashes came from that. Fail here instead.
+# The bundle Xcode produced, checked rather than trusted. These are the keys a
+# hand-written plist forgot; Apple's tooling writes them, and this says so out
+# loud rather than assuming.
 for key in CFBundleIdentifier CFBundleExecutable CFBundleName CFBundleVersion \
            CFBundleShortVersionString CFBundlePackageType CFBundleDevelopmentRegion \
            CFBundleInfoDictionaryVersion LSMinimumSystemVersion; do
@@ -79,17 +85,11 @@ for key in CFBundleIdentifier CFBundleExecutable CFBundleName CFBundleVersion \
   fi
 done
 
-# Bundle custom UI sounds (Resources/Sounds/*.wav → Contents/Resources/Sounds).
-if [ -d "$ROOT/Resources/Sounds" ]; then
-  mkdir -p "$APP/Contents/Resources/Sounds"
-  cp "$ROOT/Resources/Sounds/"*.wav "$APP/Contents/Resources/Sounds/" 2>/dev/null || true
-fi
-
-# Optional icon: drop an AppIcon.icns into Resources/ and it will be embedded.
-if [ -f "$ROOT/Resources/AppIcon.icns" ]; then
-  cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
-  /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile AppIcon" "$APP/Contents/Info.plist" 2>/dev/null || \
-    /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" "$APP/Contents/Info.plist"
+# Bundled sounds live in Resources/Sounds, which is where `Sounds.swift` looks
+# first. A flattened copy only works through its fallback.
+if [ ! -f "$APP/Contents/Resources/Sounds/SnapIn.wav" ]; then
+  echo "❌ Sounds/ did not make it into the bundle." >&2
+  exit 1
 fi
 
 # --- Code signing ------------------------------------------------------------

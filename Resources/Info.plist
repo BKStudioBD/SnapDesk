@@ -8,6 +8,11 @@
     <string>SnapDesk</string>
     <key>CFBundleIdentifier</key>
     <string>com.snapdesk.app</string>
+    <!-- Xcode substitutes the build setting. This used to be added after the
+         fact by build.sh, which is exactly the kind of gap that let a key go
+         missing in the first place. -->
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleShortVersionString</key>
     <string>1.1.0</string>
     <key>CFBundleVersion</key>
